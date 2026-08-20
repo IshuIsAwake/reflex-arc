@@ -1,0 +1,27 @@
+# Source critiques live in docs/critique/. The novelty review is tracked; the full
+# review is not, because it judges an execution plan that does not exist yet.
+*.docx
+*.doc
+*.pdf
+!docs/critique/gemini-novelty-critique.docx
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Python (for when code lands)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Experiment artifacts
+runs/
+wandb/
+checkpoints/
+*.ckpt
+*.pt
