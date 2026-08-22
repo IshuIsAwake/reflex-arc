@@ -15,25 +15,25 @@ using the best available method.
 ## Layout
 
 ```
-docs/00-raw-transcript.md        original ideation, verbatim
-docs/01-ideas.md                 the superset of ideas — architecture, domain, constraints
+README.md                        the idea and the current phase — read this first
+docs/ideas.md                    the full idea, vision then technicalities
+docs/rover-expedition.md         the second implementation, on hardware
 docs/02-critique-response.md     prior art and novelty, checked against primary sources
-docs/03-ideas-2.md               current decisions — read this first
+docs/literature.md               reading list, every link opened and verified
 docs/phase1-problem-statement.md coursework deliverable
+docs/00-raw-transcript.md        original ideation, verbatim
 docs/critique/                   source critiques (mostly untracked binaries)
 ```
 
-`docs/` is the source of truth. Numbered files are a sequence: later ones supersede parts of
-earlier ones and say so explicitly rather than editing history.
+`docs/` is the source of truth. `00-raw-transcript.md` is history and is never edited; everything
+else is rewritten in place rather than superseded by a new numbered file. Rejected ideas stay in
+the document that rejected them, with the reasoning, so they don't get rediscovered.
 
 ## Phases, and not mixing them
 
-Work proceeds **idea → scope → execution**, gated, in separate conversations.
-
-Scope is deliberately blocked until team headcount and commitment levels are known, because a
-plan written before that doesn't survive contact with the real team. During the idea phase, do
-not produce timelines, task breakdowns, or work allocation. If something is scope-shaped, note
-it in one line and move on.
+Work proceeds **idea → scope → execution**, gated, in separate conversations. Scope opened
+2026-08-20 and the current plan lives in the README. Don't reopen settled idea questions during
+scope and execution — there is a deferred list for that.
 
 ## Maintaining HANDOFF.md
 
@@ -48,9 +48,16 @@ should cost a negligible fraction of a context window.
 
 ## How to write documents here
 
-Short and story-shaped, not specification-shaped. Lead with the thesis, then narrate how the
-design was arrived at, then implications, then references. Roughly a page for anything
-outward-facing; the detailed version lives in the repo and gets linked.
+Short and story-shaped. Lead with the thesis, then narrate how the design was arrived at, then
+implications, then references. Roughly a page for anything outward-facing; the detailed version
+lives in the repo and gets linked.
+
+**Cut the scaffolding.** Constructions of the form *this and only this*, *this and not that*, and
+*this, and here is why this* are padding. State the conclusion. Keep a contrast only where the
+wrong option is a real temptation someone would otherwise take.
+
+**Argue it out before writing it down.** Reach the conclusions in conversation, offer a recap to
+check, then write once. Documents drafted mid-discussion are mostly material that gets deleted.
 
 **State plainly what has not been decided.** Padding an open question to fill a heading is
 dishonest and gets revised anyway. A gap framed as a deliberate choice reads as control.

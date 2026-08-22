@@ -65,7 +65,7 @@ rovers (Spirit/Opportunity). The critique sourced this to a hobbyist blog.
 to rank candidate paths and invokes the deterministic safety checker only on top scorers —
 10× fewer collision checks on real Martian terrain, and it succeeds on terrain where baseline
 ENav times out. The pattern is **learned proposer + deterministic verifier**, which is a
-better argument for this project than the one originally in `01-ideas.md`, and a better
+better argument for this project than the one originally in `ideas.md`, and a better
 architecture than the one it described.
 
 **HKRL is not a baseline.** [AdityaJain1030/HKRL](https://github.com/AdityaJain1030/HKRL) is
@@ -82,9 +82,9 @@ residue is generic. This does not mean the finding in §1 is wrong — it isn't 
 *degree* of the verdict is an artifact of the question.
 
 **Two sections attack positions the project does not hold.** The traversal section argues
-deterministic A\* beats RL, when `01-ideas.md` §2 already uses A\* for waypoint routing and
+deterministic A\* beats RL, when `ideas.md` §3 already uses A\* for waypoint routing and
 RL only for 1–3 s local motion. The Mars section attacks sim-to-real transfer, which
-`01-ideas.md` §8 explicitly disclaims in favour of architectural transfer.
+`ideas.md` §8 explicitly disclaims in favour of architectural transfer.
 
 **The two critiques contradict each other.** Doc 1: CPU-bound, wall-clock-limited, insufficient
 compute. Doc 2: frozen libraries are obsolete, adopt co-evolutionary training loops — where
@@ -154,5 +154,5 @@ be assumed.
 ## 7. Dropped
 
 **The surgical implication.** RRT\* over a cost-weighted voxel grid genuinely does solve
-stereotactic corridor planning, and adding stochasticity to it is a downgrade. `01-ideas.md`
+stereotactic corridor planning, and adding stochasticity to it is a downgrade. `ideas.md`
 §8 already preferred Mars; this closes it.
