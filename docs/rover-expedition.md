@@ -63,6 +63,56 @@ The map is fixed. What varies must be things a human could not precompute — st
 positions, objective order. The headline experiment is *does the model beat a hardcoded table*, and
 on a fixed map with nothing varying, the table wins and deserves to.
 
+## The surprise
+
+Simulation covers sandstorms, sinkholes, terrain and objective types, and the log fills up with
+what worked. Then at test time a hazard appears that was never in it — ground gives way across a
+corridor that was clear all week.
+
+The fog makes the world **unknown**. The surprise makes the model's world **wrong**. A hardcoded
+table has no entry for it and a trained policy has no experience of it, so what is left is general
+knowledge. This is the rover's version of the held-out protocol in [`ideas.md` §7](ideas.md).
+
+**Hazard overlays, not geometry changes.** A region becomes unsafe while walls and structure stay
+put. In simulation that is a flip in a hazard layer; physically it is a shape placed on the floor.
+Anything that genuinely moves a wall needs the arena re-shot and the map regenerated, so **hazards
+can appear mid-day and geometry can only change between days.**
+
+**Semi-permanent, which is the interesting part.** A hazard that persists a while and then clears
+is a harder decision than one that lasts forever — route around now, or wait it out. It also lets
+the log poison itself: the model records that a corridor is impassable, the ground settles, and it
+keeps routing around clear ground for two days. That is the over-generalisation failure mode in
+[`ideas.md` §4](ideas.md), made concrete and measurable.
+
+Which hands the log schema a rule it did not have. **Facts about the world expire. Facts about
+yourself do not.** *The east corridor was blocked on day 2* needs a validity horizon. *I cannot
+climb a 30-degree slope* does not.
+
+**Hold it out from day one.** If hazards ever appear mid-expedition during training, the category
+is in the distribution and the test is gone. Written down because adding one to the simulator for
+fun would destroy the experiment without anyone noticing.
+
+The rover finds out through a failure code — `goto()` comes back unsafe rather than done, and the
+planner has to interpret a code it has never seen in that context, which makes this a stress test
+of the skill interface as much as of the model.
+
+**A family, sampled at test time**, rather than one scripted event. Members should differ in *what
+belief they invalidate* — blocking a route demands re-planning, slowing one demands re-budgeting,
+losing the home base demands both. Two hazards that block different corridors are the same test
+twice.
+
+Measured against the table baseline on the same event: daylight lost, and whether the expedition
+still completes. **Same seed for both**, or the comparison is noise rather than a result. With a
+family the finding also gets sharper than pass or fail — *re-routes reliably, fails to re-budget
+when terrain slows* is a real answer.
+
+The measurement lives in simulation, across many draws. The classroom gets one draw from the same
+family, which makes demo day an honest sample rather than a rehearsed set piece.
+
+Keep the family in its own module, out of the training environment config. It will want to grow,
+and the moment a member leaks into training the whole test is gone. Not MVP either way; a surprise
+only means something against a system that already succeeds without it.
+
 ## What the RL does
 
 Terrain. Slopes make battery cost a function of grade, and that cost depends on real motor
