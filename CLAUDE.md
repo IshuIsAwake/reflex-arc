@@ -5,9 +5,9 @@ Repo-scoped instructions. These are standing rules; anything true only *right no
 
 ## The project
 
-Hollow Knight played autonomously by a language model that issues goals to frozen, learned
-control policies. The model has knowledge and no hands; the policies have hands and no
-knowledge.
+**Reflex Arc.** A language model that issues goals to frozen, learned control policies. The model
+has knowledge and no hands; the policies have hands and no knowledge. Two implementations behind
+one skill interface — Hollow Knight for coursework, a rover for hackathons.
 
 This is **not a paper.** It is a from-scratch build, and learning and explainability outrank
 using the best available method.
@@ -17,7 +17,7 @@ using the best available method.
 ```
 README.md                        the idea and the current phase — read this first
 docs/ideas.md                    the full idea, vision then technicalities
-docs/rover-expedition.md         the second implementation, on hardware
+docs/rover-expedition.md         the hardware implementation — the hackathon track
 docs/02-critique-response.md     prior art and novelty, checked against primary sources
 docs/literature.md               reading list, every link opened and verified
 docs/phase1-problem-statement.md coursework deliverable

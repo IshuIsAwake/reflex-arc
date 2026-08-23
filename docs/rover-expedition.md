@@ -1,6 +1,6 @@
 # The rover expedition
 
-A second implementation of this project's architecture, on hardware.
+The hardware implementation of this project's architecture, and the hackathon track.
 
 ## The idea
 
@@ -181,11 +181,19 @@ terrain model is fixed, and that cannot be fixed until the real rover has been m
 - What the rover senses onboard. Sets both the observation space and the parts list.
 - Whether the storm forecast is free or has to be earned.
 - Day length, grid size, flight budget.
-- Whether this is worth doing at all. Still the embedded friend's call.
+
+## Status
+
+**Committed, as of 2026-08-23.** This is the hackathon track and it has its own team; Hollow
+Knight keeps a separate one and stays the PRJ-1 deliverable. The old worry here was that the robot
+is the easier and more fun build and would quietly displace the game. It did displace it — but by
+splitting into two teams rather than by one team drifting, which is the version that costs
+nothing.
 
 ## Risks
 
-The mod layer is at zero and is still the critical path, and Hollow Knight is still the PRJ-1
-deliverable. The robot is the easier and more fun build and could quietly displace the game. The
-arena is escape-room construction, weeks of someone's time and none of it machine learning, and it
-exists for one rented day. **The classroom is a shoot. The simulator is the lab.**
+The arena is escape-room construction, weeks of someone's time and none of it machine learning,
+and it exists for one rented day. **The classroom is a shoot. The simulator is the lab.**
+
+Terrain does not fight back, so this track cannot carry the reactive-opponent claim. That one
+stays with the game, and the pitch here leans on latency instead.

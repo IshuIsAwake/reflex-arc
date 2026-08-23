@@ -54,8 +54,8 @@ possible statement of what the traversal module alone has to be capable of.
 
 The reason we think this is worth doing is what the split implies elsewhere. A Mars rover
 cannot be driven from Earth in real time — the signal takes 3 to 22 minutes each way. Reflexes
-must be local; deliberation must be remote and slow. That is the same brain-and-spine division,
-forced by physics rather than chosen by us. NASA's rovers already have the reflex half. The
+must be local; deliberation must be remote and slow. That is the same reflex arc, forced by
+physics rather than chosen by us. NASA's rovers already have the reflex half. The
 deliberating half is what is missing. If the composition works in a game that punishes bad
 timing, the pattern is worth testing where timing matters for real.
 

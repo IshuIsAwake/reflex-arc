@@ -15,7 +15,8 @@ get rediscovered.
 
 - An LLM knows everything about Hollow Knight and cannot press a button. RL policies have
   frame-perfect motor control and no idea what a Hallownest Seal is. Bolt them together.
-- **Brain and spine.** Accurate down to the biology — reflexes do not route through the brain.
+- **Reflex arc.** The project's name, and accurate down to the biology — a reflex arc runs
+  sense → spinal cord → muscle and never routes through the brain.
 - Technically: an LLM as the **gating function** over a library of conditioned expert policies.
   Mixture-of-experts, except the gate is a reasoning model instead of a learned linear layer.
   Experts stay frozen, no gradients at composition time.
@@ -199,7 +200,7 @@ as the competence table.
 
 **Mars, the strong one.** Earth–Mars one-way light time is 3–22 minutes, so ground-in-the-loop
 reactive control is physically impossible. Reflexes must be local and deliberation remote — the
-brain/spine split forced by the speed of light. Perseverance already runs AutoNav onboard, so the
+reflex arc forced by the speed of light. Perseverance already runs AutoNav onboard, so the
 spine is flight-proven and the brain is what is missing. In space you also cannot learn on
 hardware: one rover, billions of dollars, cannot fall in a pit twice. Train in sim, freeze, deploy,
 adapt at runtime without gradients is the only admissible architecture there.

@@ -7,64 +7,80 @@ a changelog. Rules for maintaining this file are in [`CLAUDE.md`](CLAUDE.md).
 
 ## The project
 
-Hollow Knight played autonomously by a language model issuing goals to frozen, learned control
-policies. The model has knowledge and no hands; the policies have hands and no knowledge. Not a
-paper — a from-scratch build prioritising learning and explainability.
+**Reflex Arc.** A language model issuing goals to frozen, learned control policies. The model has
+knowledge and no hands; the policies have hands and no knowledge. Not a paper — a from-scratch
+build prioritising learning and explainability.
+
+Named on 2026-08-23. It was "Brain and Spine" until then, so older context still says that. The
+name has not gone outside the repo yet.
+
+## Two tracks, since 2026-08-23
+
+The environment question was never one question. It is two, with different teams:
+
+| track | implementation | team | deliverable |
+|---|---|---|---|
+| **coursework** | Hollow Knight | separate, already set, retrieval covered | PRJ-1 |
+| **hackathon** | the rover | the six, being assembled | SIH |
+
+The rover leads the hackathon track because judges reward something they can watch move, and
+because it demonstrates the latency argument literally rather than by analogy. The cost: terrain
+does not fight back, so the reactive-opponent claim — the novel part — lives only on the
+coursework track.
+
+**The skill interface is what makes this two tracks rather than two projects.** Written once, both
+implementations behind it. Design it against the rover, where `goto()` must also return an
+estimated battery cost, and the game inherits a superset.
 
 ## Current phase
 
-**Scope, since 2026-08-20.** Read [`README.md`](README.md) first — it now holds the idea *and*
-the current plan, including the dates, the mod-layer gauge, the team shape and what is out of
-scope for this window.
+**Scope.** Read [`README.md`](README.md) first — the idea *and* the current plan: dates, the
+mod-layer gauge, team, out of scope per track.
 
-**SIH is not the goal.** It is development time with a deadline, plus a cheap read on how the idea
-lands with outsiders. What is optimised is the state of the project at the end of the window, not
-a placing. Do not plan as though selection matters.
+**SIH is not the goal.** Development time with a deadline, plus a cheap read on how the idea lands
+with outsiders. What is optimised is the state of the project at the end of the window, not a
+placing.
 
 ## What to read
 
 - [`README.md`](README.md) — **the idea and the current plan. Start here.**
 - [`docs/ideas.md`](docs/ideas.md) — the full idea, vision then technicalities.
-- [`docs/rover-expedition.md`](docs/rover-expedition.md) — the second implementation.
+- [`docs/rover-expedition.md`](docs/rover-expedition.md) — the hackathon track, designed.
 - [`docs/02-critique-response.md`](docs/02-critique-response.md) — prior art and novelty. Only
   when the question is "has this been done" or "is this claim defensible."
 - [`docs/00-raw-transcript.md`](docs/00-raw-transcript.md) — verbatim ideation. Rarely needed.
 
-## State as of 2026-08-22
+## State as of 2026-08-23
 
-- Registration closes **6 Sept**, internal hackathon Sept–Oct, Grand Finale **December**.
-- **Mod layer is at zero** and is the critical path. The weekend gauge (22–23 Aug) answers the
-  five questions in the README. **Write the answers down, including the ugly ones** — that has not
-  happened yet.
-- **The training environment is still undecided.** The gauge decides it.
-- **The rover expedition was designed out on 2026-08-22** — Perseverance/Ingenuity dynamic, a day
-  the rover must return home before, sandstorms, fog of war revealed by an overhead camera that
-  doubles as Ingenuity, RL on terrain. Full design in
-  [`docs/rover-expedition.md`](docs/rover-expedition.md). **Second priority, not committed**,
-  blocked on the embedded friend owning it end to end. It merges the old environment candidates 2
-  and 3, and it is the takeover risk the old scope doc warned about.
-- **Hollow Knight stays primary** — the only candidate with precision timing, a reactive opponent
-  and an hours-long horizon, and PRJ-1 has it as the deliverable.
-- RL here is cheaper than assumed: OC-STORM ran this game at **9 FPS control**, ~100k samples ≈
-  3.1 hours of gameplay, several bosses cleared. Compute was never the constraint.
-
-## Repo restructure, 2026-08-22
-
-Done this session, so the old paths in any stale context are wrong:
-
-- `01-ideas.md` + `03-ideas-2.md` → merged into [`docs/ideas.md`](docs/ideas.md).
-- `scope-sih-2026.md` → **deleted**; its live content is now the README's "Current phase".
-- Numbered-sequence convention is gone. Files are rewritten in place; only the raw transcript is
-  immutable. See [`CLAUDE.md`](CLAUDE.md).
-- Nothing committed. Ishan handles the remote himself.
+- **Registration closes 6 Sept — two weeks.** Internal hackathon Sept–Oct, Grand Finale December.
+- **Team: three confirmed** — Ishan (interface, both tracks), Abhishek (game dev), Koushik (IoT).
+  Nithin likely, hardware, meeting 24 Aug. Two slots open, one must be filled by a woman per SIH
+  rules; one candidate contacted and yet to reply, another is unavailable.
+- **Roles are deliberately undivided.** The full team ideates first and the division comes out of
+  that session. It also doubles as the only honest read on who will actually work. Do not produce
+  a work-division document before that session happens.
+- **Mod layer is still at zero and the gauge answers are still unwritten.** It no longer gates the
+  hackathon track, which is what the split bought. Abhishek is the person for it and was idle for
+  want of a spec — giving him the five README questions is the cheapest unblock available.
+- **The rover's "surprise" hazard family is held out from training from day one.** Let one member
+  leak into the training distribution and the test is gone. It also gave the log a schema rule:
+  *facts about the world expire, facts about yourself do not.*
+- **Headcount does not parallelize the rover.** Arena waits on the terrain model, which waits on
+  measuring the real rover. Extra people need work genuinely off that chain.
+- RL here is cheaper than assumed: OC-STORM ran the game at **9 FPS control**, ~100k samples ≈ 3.1
+  hours of gameplay, several bosses cleared. Compute was never the constraint.
+- Repo restructured 2026-08-22 — `01-ideas.md` + `03-ideas-2.md` merged into
+  [`docs/ideas.md`](docs/ideas.md), `scope-sih-2026.md` folded into the README, numbered-sequence
+  convention gone. **Old paths in stale context are wrong.** Ishan handles the remote himself.
 
 ## Next conversation
 
-Driven by the weekend gauge. If the mod layer works, execution in Hollow Knight. If it doesn't,
-the environment decision reopens and the rover simulator is the leading candidate.
+Recruiting closes out first — Nithin on 24 Aug, then the two open slots. After that the whole
+team ideates, and work division comes out of that rather than before it.
 
-Either way the first two artifacts are the same: the **Any% route**, then the **skill interface**.
-Both block everything else, and the interface is what keeps the environment choice reversible.
+The first artifact either track needs is the **skill interface**. It is what keeps two
+implementations from becoming two projects, and its failure codes are the schema of the
+experience log.
 
 ---
-*Last rewritten: 2026-08-22. Rewrite by replacing "State as of" — do not keep both.*
+*Last rewritten: 2026-08-23. Rewrite by replacing "State as of" — do not keep both.*
