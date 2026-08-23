@@ -16,7 +16,8 @@ using the best available method.
 
 ```
 README.md                        the idea and the current phase — read this first
-docs/ideas.md                    the full idea, vision then technicalities
+docs/ideas.md                    the idea, in full
+docs/technicalities.md           design decisions, constraints, deferred list
 docs/rover-expedition.md         the hardware implementation — the hackathon track
 docs/02-critique-response.md     prior art and novelty, checked against primary sources
 docs/literature.md               reading list, every link opened and verified
