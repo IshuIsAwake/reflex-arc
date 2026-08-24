@@ -1,23 +1,26 @@
-# Ideas
+# Hollow Knight — the coursework implementation
 
-The idea in one place. Merged from the ideation sessions of 2026-08-17 and 2026-08-18; the raw
-conversation is in [`00-raw-transcript.md`](00-raw-transcript.md).
-
-The implementation-level half lives in [`technicalities.md`](technicalities.md). Rejected ideas keep
+The design and the experiments. The idea itself is in [`../README.md`](../README.md), the
+implementation-level half in [`technicalities.md`](technicalities.md), and the raw ideation of
+2026-08-17 and 2026-08-18 in [`00-raw-transcript.md`](00-raw-transcript.md). Rejected ideas keep
 their reasoning so they don't get rediscovered.
+
+Section numbers run continuously into `technicalities.md`, which starts at §9.
 
 ---
 
 ## 1. Thesis
 
-> The LLM doesn't waste its weights on learning movements.
-> The RL doesn't waste its weights on making informed decisions.
-
 An LLM knows everything about Hollow Knight and cannot press a button. RL policies have
-frame-perfect motor control and no idea what a Hallownest Seal is. Bolt them together.
+frame-perfect motor control and no idea what a Hallownest Seal is.
 
-- **Reflex arc.** The project's name, and accurate down to the biology — a reflex arc runs
-  sense → spinal cord → muscle and never routes through the brain.
+**That first clause is not hypothetical, and the demonstration is worth keeping.**
+[`00-raw-transcript.md`](00-raw-transcript.md) lines 262–345: asked for a one-time geo source in
+King's Station, the model retrieved the Seal's location from the wiki *and* derived a bench-reset
+farm the wiki never stated — then, told to go and collect it, checked for a running process and
+reported it had no hands. `goto(x, y)` and `kill(target)` were written down in the next paragraph.
+The architecture was diagnosed, not designed. Show this rather than argue it.
+
 - Technically: an LLM as the **gating function** over a library of conditioned expert policies.
   Mixture-of-experts, except the gate is a reasoning model instead of a learned linear layer.
 - **Not Voyager.** Voyager generates *code*, in a domain where scripted actions suffice because
@@ -25,18 +28,12 @@ frame-perfect motor control and no idea what a Hallownest Seal is. Bolt them tog
 
 ## 2. What we are claiming
 
-- **Not a paper.** A system that plays Hollow Knight autonomously, built from scratch and
-  understood end to end.
-- **The architecture is not the contribution.** "LLM plans, RL executes" has five published
-  instantiations ([`02-critique-response.md`](02-critique-response.md) §1). What is unoccupied is
-  the *regime* — precision timing, a reactive opponent, hours of unbroken execution.
-- **The claim is duration and recovery.** Every comparable system runs for minutes, or for short
-  episodes with resets between them.
-- **Recovery beats perfection in a demo.** A system that misjudges a jump, dies, walks back,
-  retrieves its shade and re-plans is more convincing than one that never slips — and much harder
-  to accuse of being a TAS.
-- **The research question:** how far does world knowledge get you with frozen experts and no
-  additional training?
+The architecture is not the contribution; the regime is — precision timing, a reactive opponent,
+hours of unbroken execution ([`02-critique-response.md`](02-critique-response.md) §1).
+
+**Recovery beats perfection in a demo.** A system that misjudges a jump, dies, walks back,
+retrieves its shade and re-plans is more convincing than one that never slips — and much harder to
+accuse of being a TAS.
 
 ## 3. Architecture
 
@@ -184,7 +181,7 @@ reactive control is physically impossible — the reflex arc forced by the speed
 Perseverance already runs AutoNav onboard, so the spine is flight-proven and the brain is missing.
 In space you also cannot learn on hardware: one rover, billions of dollars, cannot fall in a pit
 twice. Train in sim, freeze, deploy, adapt at runtime without gradients is the only admissible
-architecture there. *Now built — [`rover-expedition.md`](rover-expedition.md).*
+architecture there. *Now built — [`ROVER.md`](../ROVER.md).*
 
 **Surgery, rejected as execution.** ❌ Surgical execution has no reward function — "dealt damage" is
 measurable, "made a good incision" is not, which is why da Vinci is teleoperation. ✅ The salvageable
@@ -215,7 +212,7 @@ question is whether it is a good one. *"It's a game"* — framing, not substance
 
 ---
 
-**That is the idea.** Design decisions and their reasoning, engineering constraints, process, the
+**That is the design.** Design decisions and their reasoning, engineering constraints, process, the
 deferred list, failure modes, open questions and vocabulary are in
 [`technicalities.md`](technicalities.md). Read that when you are implementing, not when you are
 trying to understand what this is.

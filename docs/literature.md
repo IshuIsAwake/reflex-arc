@@ -35,7 +35,7 @@ anything that claims the write path is new.
 
 | paper | why |
 |---|---|
-| [ExpeL](https://arxiv.org/abs/2308.10144) — Zhao et al., AAAI-24 | Gathers its own experience, extracts insights in natural language, retrieves at inference, **no weight updates**. This is [`ideas.md` §4](ideas.md) with a citation attached. |
+| [ExpeL](https://arxiv.org/abs/2308.10144) — Zhao et al., AAAI-24 | Gathers its own experience, extracts insights in natural language, retrieves at inference, **no weight updates**. This is [`hollow-knight.md` §4](hollow-knight.md) with a citation attached. |
 | [Reflexion](https://arxiv.org/abs/2303.11366) — Shinn et al. | Verbal reinforcement learning — reflect on failure, keep the reflection in episodic memory. The mechanism, in its simplest form. |
 
 ## 3. Foundations — the things we actually have to implement
@@ -53,7 +53,7 @@ anything that claims the write path is new.
 ## 4. Simulation to reality — for the robot track
 
 Added when the physical robot entered scope. Thin on purpose; fill it in as the track firms up.
-Design in [`rover-expedition.md`](rover-expedition.md).
+Design in [`ROVER.md`](../ROVER.md).
 
 | paper | why |
 |---|---|

@@ -16,9 +16,10 @@ using the best available method.
 
 ```
 README.md                        the idea and the current phase — read this first
-docs/ideas.md                    the idea, in full
+ROVER.md                         the hardware implementation — the hackathon track
+docs/hollow-knight.md            the coursework implementation — design and experiments
 docs/technicalities.md           design decisions, constraints, deferred list
-docs/rover-expedition.md         the hardware implementation — the hackathon track
+docs/sih-decision.md             which SIH entry to make — open, closes 6 Sept
 docs/02-critique-response.md     prior art and novelty, checked against primary sources
 docs/literature.md               reading list, every link opened and verified
 docs/phase1-problem-statement.md coursework deliverable
@@ -26,9 +27,10 @@ docs/00-raw-transcript.md        original ideation, verbatim
 docs/critique/                   source critiques (mostly untracked binaries)
 ```
 
-`docs/` is the source of truth. `00-raw-transcript.md` is history and is never edited; everything
-else is rewritten in place rather than superseded by a new numbered file. Rejected ideas stay in
-the document that rejected them, with the reasoning, so they don't get rediscovered.
+The two implementations sit at the root; everything else is in `docs/`.
+`00-raw-transcript.md` is history and is never edited; everything else is rewritten in place
+rather than superseded by a new numbered file. Rejected ideas stay in the document that rejected
+them, with the reasoning, so they don't get rediscovered.
 
 ## Phases, and not mixing them
 

@@ -1,7 +1,7 @@
 # Technicalities
 
-The implementation-level half of [`ideas.md`](ideas.md), split out on 2026-08-23 so the idea itself
-reads short. Section numbers continue from `ideas.md`, which ends at §8.
+The implementation-level half of [`hollow-knight.md`](hollow-knight.md), split out on 2026-08-23 so
+the design itself reads short. Section numbers continue from `hollow-knight.md`, which ends at §8.
 
 ---
 

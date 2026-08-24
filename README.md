@@ -67,7 +67,7 @@ it must return home before, sandstorms on a forecast, terrain that costs battery
 revealed only where it has driven or flown. Trained in a simulator we write, then deployed. It
 demonstrates the argument literally — delay the link to the planner and the machine keeps
 operating, because the reflexes were never on the far end of it. Designed in
-[`docs/rover-expedition.md`](docs/rover-expedition.md).
+[`ROVER.md`](ROVER.md).
 
 Its value is failing differently. A design that works in exactly one place is hard to distinguish
 from a design fitted to it.
@@ -178,14 +178,15 @@ Model choice is settled by default: Gemma via Ollama, because it already runs. D
 
 ## Repository
 
-**Reading order for anyone new:** this file → [`CLAUDE.md`](CLAUDE.md) →
-[`docs/ideas.md`](docs/ideas.md). Not the raw transcript.
+**Reading order for anyone new:** this file → [`ROVER.md`](ROVER.md) →
+[`docs/hollow-knight.md`](docs/hollow-knight.md). Not the raw transcript.
 
 | | |
 |---|---|
-| [`docs/ideas.md`](docs/ideas.md) | the idea, in full |
+| [`ROVER.md`](ROVER.md) | the hardware implementation — the hackathon track |
+| [`docs/hollow-knight.md`](docs/hollow-knight.md) | the coursework implementation — design and experiments |
 | [`docs/technicalities.md`](docs/technicalities.md) | design decisions, constraints, deferred list — for implementing |
-| [`docs/rover-expedition.md`](docs/rover-expedition.md) | the hardware implementation — the hackathon track |
+| [`docs/sih-decision.md`](docs/sih-decision.md) | which SIH entry to make — open, closes 6 Sept |
 | [`docs/02-critique-response.md`](docs/02-critique-response.md) | prior art and novelty, verified against primary sources |
 | [`docs/literature.md`](docs/literature.md) | reading list with links |
 | [`docs/00-raw-transcript.md`](docs/00-raw-transcript.md) | original ideation, verbatim |

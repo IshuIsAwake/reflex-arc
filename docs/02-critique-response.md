@@ -63,7 +63,7 @@ Approximate Clearance Evaluation with two-stage path selection. Field D\* was th
 rank candidate paths and invokes the deterministic safety checker only on top scorers — 10× fewer
 collision checks on real Martian terrain, succeeding where baseline ENav times out. The pattern is
 **learned proposer + deterministic verifier**, a better argument for this project than the one
-originally in `ideas.md`.
+originally in `hollow-knight.md`.
 
 **HKRL is not a baseline.** [AdityaJain1030/HKRL](https://github.com/AdityaJain1030/HKRL) is 18
 stars, 26 commits, abandoned, no metrics, unfinished TODO list. Presented as established evidence
@@ -77,8 +77,8 @@ the domain, the measurement and the claim from any systems paper and the same ha
 in §1 still stands; the *degree* of the verdict does not.
 
 **Two sections attack positions the project does not hold.** The traversal section argues
-deterministic A\* beats RL, when `ideas.md` §3 already uses A\* for waypoint routing and RL only for
-1–3 s local motion. The Mars section attacks sim-to-real transfer, which `ideas.md` §8 explicitly
+deterministic A\* beats RL, when `hollow-knight.md` §3 already uses A\* for waypoint routing and RL only for
+1–3 s local motion. The Mars section attacks sim-to-real transfer, which `hollow-knight.md` §8 explicitly
 disclaims in favour of architectural transfer.
 
 **The two critiques contradict each other.** Doc 1: CPU-bound, wall-clock-limited, insufficient
@@ -146,5 +146,5 @@ attack, and it survives a reviewer who has read all five papers — which must n
 ## 7. Dropped
 
 **The surgical implication.** RRT\* over a cost-weighted voxel grid genuinely does solve stereotactic
-corridor planning, and adding stochasticity to it is a downgrade. `ideas.md` §8 already preferred
+corridor planning, and adding stochasticity to it is a downgrade. `hollow-knight.md` §8 already preferred
 Mars; this closes it.

@@ -17,7 +17,7 @@ Four ministry statements looked close and are not:
 
 | PS | why not |
 |---|---|
-| 26126 — Vision-based autonomous navigation for UGV (BEL) | wants visual SLAM and GPS-denied localisation — the exact thing [`rover-expedition.md`](docs/rover-expedition.md) cut as "would eat the project" |
+| 26126 — Vision-based autonomous navigation for UGV (BEL) | wants visual SLAM and GPS-denied localisation — the exact thing [`ROVER.md`](../ROVER.md) cut as "would eat the project" |
 | 26177 — Autonomous SAR drone (Qualcomm) | needs a real drone with onboard compute; ours has neither |
 | 26039 — Mine rescue rover (Jharkhand) | a sensing rover, not a deciding one |
 | 26098 — Artillery guidance (MoD) | terminal guidance, no deliberation layer at all |
@@ -88,7 +88,7 @@ and the fraction is smaller than it feels.
 
 **And personally — Ishan.** I want to build something new from scratch. GHOST was months of
 sleepless nights and it is *done*; entering it feels like turning up with homework I finished last
-term. [`CLAUDE.md`](CLAUDE.md) already says learning outranks using the best available method, and
+term. [`CLAUDE.md`](../CLAUDE.md) already says learning outranks using the best available method, and
 that rule was written before we knew we might hold a winning hand. Whether it survives that
 discovery is a real question and not a rhetorical one.
 

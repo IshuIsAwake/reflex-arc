@@ -65,7 +65,7 @@ that was clear all week.
 
 The fog makes the world **unknown**. The surprise makes the model's world **wrong**. A hardcoded
 table has no entry for it and a trained policy has no experience of it, so what is left is general
-knowledge. This is the rover's version of the held-out protocol in [`ideas.md` §7](ideas.md).
+knowledge. This is the rover's version of the held-out protocol in [`hollow-knight.md` §7](docs/hollow-knight.md).
 
 - **Hazard overlays, not geometry changes.** A region becomes unsafe while walls stay put. In
   simulation that is a flip in a hazard layer; physically it is a shape placed on the floor. So
@@ -74,7 +74,7 @@ knowledge. This is the rover's version of the held-out protocol in [`ideas.md` �
   is a harder decision than one that lasts forever — route around now, or wait it out. It also lets
   the log poison itself: the model records that a corridor is impassable, the ground settles, and it
   keeps routing around clear ground for two days. That is the over-generalisation failure mode in
-  [`ideas.md` §4](ideas.md), made concrete and measurable.
+  [`hollow-knight.md` §4](docs/hollow-knight.md), made concrete and measurable.
 - Which hands the log schema a rule it did not have. **Facts about the world expire. Facts about
   yourself do not.** *The east corridor was blocked on day 2* needs a validity horizon. *I cannot
   climb a 30-degree slope* does not.
