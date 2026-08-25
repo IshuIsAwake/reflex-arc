@@ -52,10 +52,12 @@ def _targets(area, goal, avoid, opened):
 
     **A known wall is not a thing and gets none of this.** It is `THINGS`, not
     `SOLID`. Asking to walk into a wall you can already see is a mistake, and the
-    honest answer is UNREACHABLE. Answering DONE says you arrived somewhere you
-    never went, and a caller that believes it has moved has nothing to correct: on
-    2026-08-26 the model spent four days stood beside the shop at nought coins
-    re-issuing a move it had been told succeeded.
+    honest answer is UNREACHABLE. Answering `DONE(beside=...)` says you arrived
+    somewhere you never went, and a caller that believes it has moved has nothing to
+    correct: on 2026-08-26 the model spent four days stood beside the shop at nought
+    coins re-issuing a move it had been told succeeded. Widening this back to `SOLID`
+    is all it takes to bring that back, and two tests in `test_nav.py` are the whole
+    of what stands in the way.
 
     A **fogged** cell that turns out to be a wall is the opposite case and stays
     exactly as it was -- that one is a hypothesis, and walking into it is how the
@@ -153,17 +155,24 @@ class Result:
     so there is one wording rather than two. `at` is what the call is about -- where
     you ended up, or the wall you hit. `stopped` appears only when those differ.
     Every result carries `steps`, because in gemma mode the day is made of them.
+
+    `beside` says the target was solid and this is as close as anyone gets. Without
+    it, arriving at the shop reads as `DONE(at=(10,15))` for a `goto(10,16)`, and a
+    model reasonably concludes it has not arrived and asks again -- watched gemma do
+    exactly that three times on 2026-08-25. It is set for things, never for walls,
+    and `_targets` is what guarantees that.
     """
 
     GOOD = {"DONE", "LEFT_AREA"}
 
     def __init__(self, code, steps=0, at=None, stopped=None, area=None,
-                 walls=(), antidotes=()):
+                 beside=None, walls=(), antidotes=()):
         self.code = code
         self.steps = steps
         self.at = at
         self.stopped = stopped
         self.area = area
+        self.beside = beside
         self.walls = list(walls)
         self.antidotes = list(antidotes)
 
@@ -177,6 +186,8 @@ class Result:
             bits.append(self.area)
         if self.at:
             bits.append(f"at={_c(self.at)}")
+        if self.beside:
+            bits.append(f"beside={_c(self.beside)}")
         if self.stopped:
             bits.append(f"stopped={_c(self.stopped)}")
         bits.append(f"steps={self.steps}")
@@ -212,6 +223,13 @@ def goto(world, x, y, avoid=None):
     """
     area, area_name, goal, start = world.here, world.area, (x, y), world.pos
 
+    # Every cell actually stepped on, as against the cells that were planned for.
+    # Handed to the world by reference so it grows as the walk does -- a watcher
+    # redrawing per move needs no second channel. It can never contain a wall,
+    # which is exactly what makes it worth drawing beside a plan that can.
+    walk = [start]
+    world.last_walk = (area_name, walk)
+
     if avoid == "auto":
         if goal not in area.visited:
             world.last_path = (area_name, [])
@@ -239,6 +257,10 @@ def goto(world, x, y, avoid=None):
 
     def done(code, **kw):
         kw.setdefault("at", world.pos)
+        if code == "DONE" and world.pos != goal:
+            # The target was solid, so this is as close as it gets. Say so, or
+            # arriving reads as not having arrived.
+            kw["beside"] = goal
         return _log(world, area_name, start, goal, planned,
                     Result(code, steps=steps, walls=walls, antidotes=burned, **kw))
 
@@ -269,6 +291,7 @@ def goto(world, x, y, avoid=None):
                 break
 
             steps += 1
+            walk.append(cell)
             if world.area != was_area:
                 if (known(area, *cell) or ".") in GATES:
                     return done("LEFT_AREA", area=world.area)
@@ -303,6 +326,7 @@ def distance(world, x, y, avoid=None):
     opened = frozenset(c for a, c in world.unlocked if a == world.area)
     path = plan(area, world.pos, (x, y), avoid, opened)
     world.last_path = (world.area, list(path) if path else [])
+    world.last_walk = (world.area, [])   # priced, not walked -- say so on the map
 
     steps = None if path is None else len(path) - 1
     # Logged even though it moves nothing: whether gemma prices a trip before

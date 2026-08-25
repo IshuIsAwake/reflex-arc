@@ -193,6 +193,14 @@ def draw_map(surf, w, f, cursor):
         t = f.tiny.render(str(y), True, (140, 137, 131))
         surf.blit(t, t.get_rect(midright=(ox - 4, oy + y * cell + cell // 2)))
 
+    # Two routes, and the difference between them is the whole point. The walk is
+    # shaded into the floor and is what happened. The plan goes on top as dots and
+    # is a hypothesis -- through fog it crosses walls it could not have known about.
+    # The plan is also replaced on every replan and the walk is not, so wherever the
+    # shading goes somewhere the dots do not, that is where the surprises were.
+    walk_area, walked = w.last_walk
+    walked = set(walked) if walk_area == a.name else set()
+
     for y in range(a.h):
         for x in range(a.w):
             r = pygame.Rect(ox + x * cell, oy + y * cell, cell, cell)
@@ -203,7 +211,7 @@ def draw_map(surf, w, f, cursor):
             if ch == "#":
                 pygame.draw.rect(surf, C.INK, r)
             else:
-                pygame.draw.rect(surf, C.PAPER, r)
+                pygame.draw.rect(surf, C.WALKED if (x, y) in walked else C.PAPER, r)
                 pygame.draw.rect(surf, C.FAINT, r, 1)
             if ch in GATES:
                 pygame.draw.rect(surf, C.GOOD, r.inflate(-3, -3))
@@ -214,8 +222,7 @@ def draw_map(surf, w, f, cursor):
             if (x, y) in a.marks:
                 _x_mark(surf, r)
 
-    # The last route A* planned. Seeing a wrong plan beats inferring one from the
-    # failure code -- and through fog it is a hypothesis, so it often is wrong.
+    # Seeing a wrong plan beats inferring one from the failure code.
     path_area, path = w.last_path
     if path_area == a.name:
         for cx, cy in path:
@@ -228,7 +235,8 @@ def draw_map(surf, w, f, cursor):
     cr = pygame.Rect(ox + cursor[0] * cell, oy + cursor[1] * cell, cell, cell)
     pygame.draw.rect(surf, C.MARK, cr.inflate(2, 2), 2)
 
-    foot = [f"cursor ({cursor[0]}, {cursor[1]})   green = gates   blue = last planned route",
+    foot = [f"cursor ({cursor[0]}, {cursor[1]})   green = gates   "
+            "blue = the plan   shaded = the walk",
             "WASD move cursor   X mark/unmark   M or ESC close"]
     for i, line in enumerate(foot):
         s = f.hud.render(line, True, C.INK)

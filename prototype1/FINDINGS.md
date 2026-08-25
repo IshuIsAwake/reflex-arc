@@ -82,6 +82,17 @@ having, which is what `world.on_move` existed for in the spike. And `NAV_REPLANS
 against facts per call: at 0 it stops on the first surprise, at 5 it comes back with six walls and no
 obvious connection between what you asked for and where it ended up.
 
+**A picture of the plan gets read as a picture of the walk.** The map view drew `last_path`, which is
+replaced on every replan, so a blocked `goto` showed the sixth hypothesis and nothing of the five
+attempts that had produced the walls it was reporting. Read off the screen by hand on 2026-08-26:
+`goto(1,1)` from the Savana's west gate came back `BLOCKED(at=(12,8), stopped=(13,8), steps=24,
+walls=[(1,11), (4,11), (7,11), (10,11), (13,11), (12,8)])`, and the drawing ran west across walls
+nothing had ever touched. That reads as a planner routing through walls, and it cannot answer the one
+question worth asking — how did the thing get inside a maze behind a sealed band. Through the single
+gap at (15,11), five replans in. `world.last_walk` now records every cell actually stepped on and the
+map shades it. The walk can never cross a wall and the plan can, so where the two disagree is exactly
+where the fog lied.
+
 ## The order to rebuild in
 
 One at a time, each landing with its own tests before the next starts.

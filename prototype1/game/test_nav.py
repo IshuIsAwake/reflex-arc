@@ -142,12 +142,26 @@ def test_steps_charged_equal_tiles_walked():
 
 
 def test_a_solid_target_lands_you_next_to_it():
+    """And the answer has to say so. `DONE(at=(10,15))` for a `goto(10,16)` reads as
+    not having arrived, and gemma asked for the same cell three times running on
+    2026-08-25. `beside` is only safe because a known wall is refused before this can
+    fire -- see test_a_known_wall_is_not_somewhere_you_can_arrive, which is the other
+    half of the same rule."""
     w = World()
     r = nav.goto(w, 3, 8)            # the notice board
     assert r.code == "DONE", str(r)
     assert w.pos in _around((3, 8)), w.pos
+    assert r.beside == (3, 8) and "beside=(3,8)" in str(r), str(r)
     w.interact()
     assert w.here.has_map, "goto then interact should just work"
+
+    # An ordinary cell says nothing, or every answer carries the noise.
+    r = nav.goto(w, 10, 14)
+    assert r.code == "DONE" and r.beside is None, str(r)
+
+    # A wall never gets one, because it never gets a DONE to hang it on.
+    w.pos = (10, 15)
+    assert nav.goto(w, 9, 15).beside is None, "a wall is UNREACHABLE, not beside"
 
 
 def test_a_known_wall_is_not_somewhere_you_can_arrive():
@@ -175,6 +189,7 @@ def test_a_shut_gate_stops_you_beside_it_and_an_open_one_lets_you_through():
     w = mapped()
     r = nav.goto(w, 20, 13)          # the east gate, still locked
     assert r.code == "DONE" and w.pos == (19, 13), (str(r), w.pos)
+    assert r.beside == (20, 13), "a shut gate is a thing you stop next to, and it says so"
 
     w.items.add("savana_key")
     w.interact()
@@ -195,6 +210,38 @@ def test_a_wall_it_could_not_have_known_about_stops_the_walk():
     assert abs(r.stopped[0] - r.at[0]) + abs(r.stopped[1] - r.at[1]) == 1, \
         "it stops face to face with the wall, where the most map has been revealed"
     assert w.pos == r.stopped
+
+
+def test_the_map_keeps_the_walk_as_well_as_the_plan():
+    """The plan is thrown away on every replan, so after a blocked goto the drawing
+    explains neither the walls reported nor where the player ended up standing. The
+    walk is the record that survives, and unlike the plan it can never cross a wall
+    -- which is what makes the two worth drawing together. Reading one of these off
+    the screen on 2026-08-26 is what this is for: six walls, five replans, and no
+    way to see that it got through the band at (15, 11).
+    """
+    w = World()
+    w.area, w.pos = "savana", (1, 16)
+    w._arrive()
+
+    r = nav.goto(w, 1, 1)
+    assert r.code == "BLOCKED", str(r)
+
+    area, walk = w.last_walk
+    assert area == "savana" and walk[0] == (1, 16) and walk[-1] == w.pos
+    assert len(walk) - 1 == r.steps, (len(walk) - 1, r.steps)
+    for a, b in zip(walk, walk[1:]):
+        assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1, (a, b)
+    for x, y in walk:
+        assert C.SAVANA[y][x] not in SOLID, ("the walk never crosses a wall", x, y)
+
+    plan_cells = w.last_path[1]
+    assert set(walk) - set(plan_cells), "the walk has to carry what the replans lost"
+    assert any(C.SAVANA[y][x] == "#" for x, y in plan_cells), \
+        "while the plan, made through fog, is still allowed to be wrong"
+
+    nav.distance(w, 1, 1)
+    assert w.last_walk[1] == [], "pricing a trip walks nothing and should show nothing"
 
 
 def test_unreachable_says_whether_the_avoid_list_caused_it():

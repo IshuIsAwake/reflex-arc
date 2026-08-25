@@ -73,7 +73,12 @@ class World:
         self.elapsed = 0.0      # stopwatch, so a gemma run can be timed and logged
         self.history = []       # one record per finished day
         self.nav_log = []       # one record per goto/distance -- planned vs walked
-        self.last_path = ("", [])  # (area, cells) of the last plan, for the map view
+        # The last goto, for the map view: what it planned and what it actually
+        # covered. Written together, always. The plan is replaced on every replan
+        # and the walk is not, so a drawing that mixed two calls would explain
+        # neither -- which is the confusion these two exist to end.
+        self.last_path = ("", [])
+        self.last_walk = ("", [])
         self.log = []
         self._arrive()
 
@@ -146,6 +151,7 @@ class World:
         self.cooldown.clear()
         self.log.clear()
         self.last_path = ("", [])
+        self.last_walk = ("", [])
         self.day_start_coins = self.coins
         self.area, self.pos = "plaza", C.PLAZA_SPAWN
         self._arrive()

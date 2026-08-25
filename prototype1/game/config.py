@@ -31,6 +31,7 @@ FOG = (206, 203, 197)
 GOLD = (198, 152, 42)
 MARK = (176, 62, 150)
 PATH = (74, 116, 186)   # the last route A* planned, drawn on the map view
+WALKED = (229, 212, 176)  # ...and the ground it actually covered, shaded under it
 GOOD = (60, 132, 74)
 BAD = (176, 60, 56)
 
