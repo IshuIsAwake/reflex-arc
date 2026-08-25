@@ -17,9 +17,11 @@ using the best available method.
 ```
 README.md                        the idea and the current phase — read this first
 ROVER.md                         the hardware implementation — the hackathon track
+prototype1/                      the experiments lab — code, DESIGN.md, its own HANDOFF.md
 docs/hollow-knight.md            the coursework implementation — design and experiments
 docs/technicalities.md           design decisions, constraints, deferred list
 docs/sih-decision.md             which SIH entry to make — open, closes 6 Sept
+docs/team-session.md             the team ideation session plan — prepared, not yet run
 docs/02-critique-response.md     prior art and novelty, checked against primary sources
 docs/literature.md               reading list, every link opened and verified
 docs/phase1-problem-statement.md coursework deliverable
@@ -27,7 +29,9 @@ docs/00-raw-transcript.md        original ideation, verbatim
 docs/critique/                   source critiques (mostly untracked binaries)
 ```
 
-The two implementations sit at the root; everything else is in `docs/`.
+The two implementations sit at the root; everything else is in `docs/`. Code lives in numbered
+`prototypeN/` directories — a lab rather than a deliverable, where the rules above bend and things
+get messed with.
 `00-raw-transcript.md` is history and is never edited; everything else is rewritten in place
 rather than superseded by a new numbered file. Rejected ideas stay in the document that rejected
 them, with the reasoning, so they don't get rediscovered.
