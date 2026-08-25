@@ -249,9 +249,20 @@ def goto(world, x, y, avoid=None):
                 return done("OUT_OF_STEPS")
 
             was_area, was_pos, was_anti = world.area, world.pos, world.antidotes
+            was_steps = world.steps
             world.move(cell[0] - was_pos[0], cell[1] - was_pos[1])
 
-            if world.area == was_area and world.pos == was_pos:
+            # A refused move is detected by the step not being charged, never by
+            # the position being unchanged. `world.move` charges a step only when
+            # it actually moved, so this is exact -- and it does not read
+            # `Area.traps`, so there is still nothing to leak.
+            #
+            # Position is not enough: a pit teleports you to the Plaza spawn, and
+            # if you stepped into one *from* the spawn you land back where you
+            # started. That reads as a refused move, so the pit gets reported as a
+            # wall, the coins go missing with no TRAPPED to explain them, and the
+            # notes end up with a wall recorded where a pit is.
+            if world.steps == was_steps:
                 wall = cell           # a wall, or a gate that will not open
                 if cell not in walls:
                     walls.append(cell)

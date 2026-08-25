@@ -89,6 +89,27 @@ reveals a contradiction further down the path.
 > nothing. The rover version of this rule will be different, and that is the rover's
 > problem. Do not reintroduce a tunable margin here to serve both.
 
+### One `goto` is atomic, and in fog that looks like teleporting
+
+Nothing is drawn between steps, so the whole walk happens inside one console
+command and the player appears at the far end of it. In a revealed area that is
+invisible — the route is direct, a median of 7 cells, and it ends on the cell you
+named. Through fog it is not. Measured on the Plaza, 40 unmapped trials:
+
+| `NAV_REPLANS` | ends on the goal | median walk | worst walk |
+|---|---|---|---|
+| 0 | 14/40 | 7 | 15 |
+| 5 | 24/40 | 13 | 39 |
+| 10 | 25/40 | 13 | 71 |
+
+At 5 a single call has been seen walking 31 cells, revisiting 9 of them, and
+stopping `BLOCKED` six walls later somewhere the caller never asked for. That is
+the design working — each replan is a fresh hypothesis over a map that is still
+mostly fantasy — but **it is not a correctness bug and it is not erratic**; every
+move is one cell and every path is shortest given what was known when it was
+planned. If it needs to *look* right, the fix is a redraw per step, not a change
+here. Turning `NAV_REPLANS` down to 0 buys legibility at four fewer facts a call.
+
 `settings.NAV_REPLANS = 5` is how many times one call replans before handing back
 `BLOCKED`. Aiming north out of the Plaza with no map, that one call comes back having
 found six walls and walked 26 steps against a promised 14 — six facts for one model

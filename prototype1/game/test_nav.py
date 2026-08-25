@@ -230,6 +230,25 @@ def test_an_antidote_absorbs_a_pit_and_the_walk_carries_on():
     assert w.pos == C.PLAZA_SPAWN and w.antidotes == 0
 
 
+def test_a_pit_that_lands_you_where_you_started_is_still_a_pit():
+    """The Plaza spawn is where a pit sends you, so stepping into one *from* the
+    spawn puts you back on the cell you left. Detect a refused move by position and
+    that reads as a wall: the coins vanish with no TRAPPED to explain them, and a
+    wall gets written into the notes where a pit is. The step charge is the exact
+    test, because `move` charges one only when it moved."""
+    w = mapped()
+    w.pos = C.PLAZA_SPAWN
+    w.here.traps.add((11, 14))
+    coins = w.coins = 100
+
+    r = nav.goto(w, 13, 14)
+    assert r.code == "TRAPPED", str(r)
+    assert r.at == (11, 14), r.at
+    assert (11, 14) not in r.walls, "a pit must never be reported as a wall"
+    assert w.coins == coins - S.TRAP_PENALTY, "and the penalty has to be explained"
+    assert w.pos == C.PLAZA_SPAWN
+
+
 def test_an_unmarked_pit_is_still_walked_into():
     """The one that has to stay red. If falling in ever marks the cell for you, the
     notes file stops being the thing under test and the avoid mechanic is dead."""

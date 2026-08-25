@@ -71,6 +71,17 @@ which is the only thing making the tribe's far corner mean anything.
 not the name of a game, so there is no name gemma can pass to `play` for one it has not walked up
 to. Falling out of the naming rule beats a check that can be forgotten.
 
+## Not from the spike, but found the same day
+
+**A `goto` executes atomically, and through fog that reads as teleporting.** Nothing redraws between
+steps, so the player appears at the end of a walk that may have been 31 cells long, doubled back on
+itself, and stopped somewhere nobody asked for. It is not a correctness bug — every move is one cell
+and every path is shortest given what was known — and the numbers are in
+[`NAVIGATION.md`](NAVIGATION.md). Two things follow. A watcher needs a redraw per step to be worth
+having, which is what `world.on_move` existed for in the spike. And `NAV_REPLANS` trades legibility
+against facts per call: at 0 it stops on the first surprise, at 5 it comes back with six walls and no
+obvious connection between what you asked for and where it ended up.
+
 ## The order to rebuild in
 
 One at a time, each landing with its own tests before the next starts.
