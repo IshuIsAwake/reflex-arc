@@ -1,0 +1,59 @@
+"""The human's way into the planner: press T, type a goto.
+
+It prints back the exact string gemma will get, so playtesting the planner and
+reading a model transcript are the same activity. No pygame in here, so the tests
+can drive it too.
+"""
+
+import re
+
+import nav
+
+HELP = [
+    "goto X Y                     walk there over the map you have",
+    "goto X Y avoid=auto          ...dodging every X you marked. Visited only",
+    "goto X Y avoid=(3,4),(5,6)   ...dodging these cells, this trip only",
+    "distance X Y [avoid=...]     planned length, optimistic, costs no steps",
+]
+
+
+def _cells(text):
+    """Every pair of numbers in a string, however it was punctuated. `15 10`,
+    `15,10` and `(15,10)` all mean the same thing -- this is a console, not a
+    parser exercise."""
+    n = [int(t) for t in re.findall(r"-?\d+", text)]
+    return list(zip(n[::2], n[1::2]))
+
+
+def _parse(text):
+    head, sep, tail = text.partition("avoid")
+    avoid = None
+    if sep:
+        tail = tail.lstrip("= \t")
+        avoid = "auto" if tail[:4].lower() == "auto" else frozenset(_cells(tail))
+    words = head.split()
+    return (words[0].lower() if words else ""), _cells(head), avoid
+
+
+def run(world, text):
+    """One typed line in, the lines to print out, as (text, tone) pairs."""
+    echo = [(f"> {text.strip()}", "plain")]
+    verb, cells, avoid = _parse(text)
+
+    if verb in ("", "help", "?"):
+        return echo + [(line, "plain") for line in HELP]
+    if verb not in ("goto", "distance", "dist"):
+        return echo + [(f"no such command: {verb}   (try help)", "bad")]
+    if not cells:
+        return echo + [("needs an X and a Y -- try  goto 19 13", "bad")]
+
+    x, y = cells[0]
+    if verb == "goto":
+        result = nav.goto(world, x, y, avoid)
+        world.say(str(result), result.tone)   # so the HUD carries it too
+        return echo + [(str(result), result.tone)]
+
+    steps = nav.distance(world, x, y, avoid)
+    if steps is None:
+        return echo + [("UNREACHABLE", "bad")]
+    return echo + [(f"distance to ({x},{y}) = {steps} steps, optimistic", "plain")]
