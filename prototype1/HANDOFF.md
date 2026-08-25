@@ -50,13 +50,13 @@ spike cost to learn, an order to rebuild in, and bugs no review would catch.
 **Three couplings in `world.py` have to be broken before any of it fits.** Found 2026-08-25, not yet
 touched:
 
-1. **`interact()` takes no argument** ([world.py:203](game/world.py:203)) — it acts on the first
+1. **`interact()` takes no argument** ([world.py:204](game/world.py:204)) — it acts on the first
    adjacent thing `facing()` returns. The skill is `interact(thing)`, so it needs a name or a cell,
    an adjacency check, and `NOT_HERE`.
-2. **Interacting with a terminal auto-plays it** ([world.py:259](game/world.py:259)), which makes
+2. **Interacting with a terminal auto-plays it** ([world.py:260](game/world.py:260)), which makes
    `play(game)` redundant and hides a cooldown decision inside a movement one. Split them: interact
    discovers the terminal, play spends the cooldown.
-3. **`play(game, ch)` needs the tile character** ([world.py:282](game/world.py:282)) to look up
+3. **`play(game, ch)` needs the tile character** ([world.py:283](game/world.py:283)) to look up
    `NEEDS_KEY`. A skill call has a name, not a char.
 
 **`look()` has no home yet.** The "a terminal reads `discover` until you walk up to it" rule exists
