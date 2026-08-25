@@ -28,13 +28,17 @@ planner.
 **A\* plans over what has been seen, not the true map**, which is what keeps maps worth buying. Fog
 is assumed empty, so a plan is a hypothesis and walking into an unseen wall is how the map fills in.
 `Area.at` returns ground truth at every fog setting, so `nav.known()` is the single gated door onto
-the grid and a test counts the reads to keep it that way.
+the grid and a test counts the reads to keep it that way. The map view draws the plan and the walk
+together for the same reason: the plan may cross walls, the walk cannot, and the gap between them is
+what the fog cost.
 
 ## Next conversation: rebuild the skill interface, one piece at a time
 
 **A spike built the whole gemma integration in one session on 2026-08-26 and it was reverted** —
 skill interface, Ollama loop, persistence, replay and a watch window, all at once, which is more
-than one gate's worth of work. It survives on the `spike/gemma-integration` branch and it worked.
+than one gate's worth of work. It survives on `spike/gemma-integration` and it worked. **Rebuild it
+by hand anyway — do not cherry-pick from that branch.** Decided 2026-08-26: it is a record of what
+went wrong, not a patch to apply, and its four decisions stay settled rather than re-argued.
 
 **Read [`prototype1/FINDINGS.md`](prototype1/FINDINGS.md) first.** It is what that spike cost to
 learn: six bugs and four decisions, most of them invisible to a code review because the tests were

@@ -14,10 +14,10 @@ keyboard controls, A\* behind a console. No model in it yet. From `prototype1/`,
 .venv/bin/python game/main.py        # and test_world.py, test_nav.py -- run both
 ```
 
-`game/settings.py` is every knob. `game/config.py` is the maps and the drawing. `game/world.py` is
-pure state with no pygame in it — **that is the file the planner drives.** `game/nav.py` is the
-planner, `game/console.py` the human's way into it. Design in [`DESIGN.md`](DESIGN.md), controls and
-world tour in [`README.md`](README.md), the planner in [`NAVIGATION.md`](NAVIGATION.md). Numbers are
+`game/settings.py` is every knob, `game/config.py` the maps and the drawing, `game/nav.py` the
+planner, `game/console.py` the human's way into it. `game/world.py` is pure state with no pygame in
+it — **that is the file the planner drives.** Design in [`DESIGN.md`](DESIGN.md), controls and world
+tour in [`README.md`](README.md), the planner in [`NAVIGATION.md`](NAVIGATION.md). Numbers are
 guesses and lenient on purpose; `game/economy.py` prices them — see **Balance**.
 
 ## The planner
@@ -30,18 +30,16 @@ setting. That is the one edit that breaks this silently, and it applies to `look
 as it did to the planner — see the trap section in NAVIGATION.md and the two tests it names.
 
 Closed 2026-08-26, both found by reading a run off the screen rather than by a test. **The map draws
-the plan and the walk together** — `world.last_walk` is every cell actually stepped on, handed over
-by reference so a per-step watcher needs no second channel; the walk can never cross a wall and the
-plan can, so where they disagree is where the fog lied. **`DONE` at a solid target carries
-`beside=`**, ported from the spike, and this time the field and the guard keeping it off walls name
-each other in both files — because the fix for one of those bugs is what caused the other.
+the plan and the walk together** — `world.last_walk` is every cell stepped on, handed over by
+reference so a per-step watcher needs no second channel. **`DONE` at a solid target carries
+`beside=`**, or arriving next to a thing reads as not arriving; it and the `_targets` guard that
+keeps it off walls now name each other, because the first fixed one bug by causing another.
 
 **`NAV_REPLANS` is an ablation, not a comfort setting.** At 5 one `goto` makes up to six plans and
-reports every wall it met, so an unmapped maze falls in two calls; at 0 it hands control back on the
-first surprise. The dial moves the searching across the seam — at 5 the skill does it, at 0 the
-planner does — which is this project's own question in miniature. Steps are charged either way; a
-replan buys model calls, not distance. Left at 5 on purpose. Run it at 0 before concluding anything
-about whether gemma reasons about failure, and expect fog to cost dozens of calls a day when you do.
+reports every wall it met, so an unmapped maze falls in two calls; at 0 it stops on the first
+surprise. The dial moves the searching across the seam — at 5 the skill does it, at 0 the planner
+does. Steps are charged either way; a replan buys model calls, not distance. Left at 5 on purpose,
+but run it at 0 before concluding anything about whether gemma reasons about failure.
 
 ## Next: the rest of the skill interface
 
@@ -52,7 +50,11 @@ the Ollama loop. Build it against the console first — it is the same driver ge
 
 **Read [`FINDINGS.md`](FINDINGS.md) first.** It is what the reverted gemma spike cost to learn — six
 bugs and four decisions, most invisible to a code review — and it ends with the order to rebuild in.
-The spike itself survives on `spike/gemma-integration`.
+
+**Write it by hand. Do not cherry-pick from `spike/gemma-integration`.** Decided 2026-08-26: the
+branch records what went wrong, it is not a patch to apply. Read it for a symptom, then build the
+thing yourself. Its four decisions stay settled and are not re-argued. `beside=` was the one piece
+taken across, and its guard was rewritten rather than copied.
 
 **Three couplings in `world.py` have to be broken before any of it fits.** Found 2026-08-25, not yet
 touched:
@@ -67,10 +69,9 @@ touched:
    `NEEDS_KEY`. A skill call has a name, not a char.
 
 **`look()` has no home yet.** The "a terminal reads `discover` until you walk up to it" rule lives
-only in [`render.py:62`](game/render.py:62), which is pygame-land and cannot be imported by the model
-loop. Move it into `world.py` and share it, or the human and the model drift on what a thing is
-called. **Before the first run:** set `settings.DAY_MODE = "gemma"`, and solve saving — nothing
-persists between processes and prototype 1 is several days long.
+only in [`render.py:62`](game/render.py:62), which the model loop cannot import. Move it into
+`world.py` and share it, or human and model drift on what a thing is called. **Before the first
+run:** set `settings.DAY_MODE = "gemma"` and solve saving — a process is not several days long.
 
 **[`DESIGN.md`](DESIGN.md) still lists two questions FINDINGS has since answered** — notes injected
 into the day's first message rather than fetched, and a `why` required on every call. Fold the
@@ -81,9 +82,8 @@ an area's extent.
 so they are paid in walking not waiting ([`README.md`](README.md) §Turning the knobs). Marks stay in
 world state, not the notes file. `world.history` is one record per day — hang model latencies there.
 
-**The vault is what all of this is for** — every route in crosses pits on purpose and `avoid="auto"`
-is not offered for it, so gemma must override a habit it spent days forming.
-[`DESIGN.md`](DESIGN.md) §The chain worth watching.
+**The vault is what all of this is for** — every route in crosses pits and `avoid="auto"` is not
+offered for it, so gemma overrides a habit it spent days forming. Argued in [`DESIGN.md`](DESIGN.md).
 
 ## Balance
 
@@ -92,9 +92,9 @@ snake, per step and after the walk from spawn. **Coins per day *after the walk* 
 decides anything** — the snake terminal is 66 steps from the Plaza spawn, out of the same 400.
 Margins are ~4% a rung after travel, on purpose. All still guesses, and lenient ones.
 
-**Run both tests after touching a map.** `test_world.py` flood-fills all three areas and checks every
-object, pit and gate is reachable, links land somewhere walkable, `settings.BAGS` matches the `$`/`*`
-tiles, and the vault costs exactly `POUCH_UPGRADED` antidotes.
+**Run both tests after touching a map.** `test_world.py` flood-fills the areas and checks every
+object, pit and gate is reachable, links land walkable, `BAGS` matches the tiles, and the vault costs
+exactly `POUCH_UPGRADED` antidotes.
 
 ---
 *Last rewritten: 2026-08-26. Rewrite by replacing "Where it stands" — do not keep both.*
