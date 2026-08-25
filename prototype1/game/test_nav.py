@@ -150,6 +150,27 @@ def test_a_solid_target_lands_you_next_to_it():
     assert w.here.has_map, "goto then interact should just work"
 
 
+def test_a_known_wall_is_not_somewhere_you_can_arrive():
+    """"Get next to it" is for things you interact with. A wall already on the map
+    is a mistake, and answering DONE says you arrived somewhere you never went --
+    which leaves the caller nothing to correct. It cost four days on 2026-08-26."""
+    w = mapped()
+    w.pos = (10, 15)
+    assert C.PLAZA[15][9] == "#", "this test is about a wall"
+
+    r = nav.goto(w, 9, 15)
+    assert r.code == "UNREACHABLE", str(r)
+    assert w.steps == 0, "and it does not pretend to walk"
+
+    # ...but a wall it has *not* seen stays a hypothesis worth walking into, which
+    # is the whole design. Only known walls are refused.
+    fresh = World()
+    fresh.pos = (10, 15)
+    assert not fresh.here.visible(9, 6), "needs to still be fogged"
+    assert nav.plan(fresh.here, fresh.pos, (9, 6)) is not None, \
+        "a fogged wall must still be plannable, or exploring is impossible"
+
+
 def test_a_shut_gate_stops_you_beside_it_and_an_open_one_lets_you_through():
     w = mapped()
     r = nav.goto(w, 20, 13)          # the east gate, still locked

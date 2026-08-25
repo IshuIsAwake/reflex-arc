@@ -106,6 +106,14 @@ solid, so `goto(30, 16)` at the tribe would be `UNREACHABLE` taken literally. Th
 ends on the cheapest free neighbour and returns `DONE` from there, so `goto` followed
 by `interact` reads the way gemma expects.
 
+**A known wall gets none of this.** The rule reads `THINGS`, not `SOLID`, and `#` is
+the difference. Asking to walk into a wall already on the map is a mistake and the
+honest answer is `UNREACHABLE`; `DONE` says you arrived somewhere you never went,
+and a caller that believes it has moved has nothing to correct. That cost a four-day
+model run on 2026-08-26 — see [`FINDINGS.md`](FINDINGS.md). A **fogged** cell that
+turns out to be a wall is untouched: that one is a hypothesis, and walking into it is
+how the map fills in.
+
 **Gates are aimed at, never routed through.** Stepping on one teleports you, so no plan
 may cross one in transit. A shut gate as the destination counts as solid: you stop
 beside it, `DONE`, and press E — gates never open by being walked into. An open one as

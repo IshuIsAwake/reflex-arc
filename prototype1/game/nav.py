@@ -21,7 +21,7 @@ Spec and the decisions behind it: NAVIGATION.md.
 import heapq
 
 import settings as S
-from world import GATES, SOLID
+from world import GATES, SOLID, THINGS
 
 NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
 FAR = 1 << 30
@@ -45,13 +45,24 @@ def _around(cell):
 def _targets(area, goal, avoid, opened):
     """Where a plan is allowed to end.
 
-    A solid goal -- a terminal, a counter, a bag, the board -- means "get next to
+    A solid *thing* -- a terminal, a counter, a bag, the board -- means "get next to
     it", or `goto(30, 16)` at the tribe would be UNREACHABLE taken literally. A gate
-    that has not been opened yet counts as solid for the same reason: you stop
-    beside it and press E, because gates never open by being walked into.
+    that has not been opened yet counts the same way: you stop beside it and press
+    E, because gates never open by being walked into.
+
+    **A known wall is not a thing and gets none of this.** It is `THINGS`, not
+    `SOLID`. Asking to walk into a wall you can already see is a mistake, and the
+    honest answer is UNREACHABLE. Answering DONE says you arrived somewhere you
+    never went, and a caller that believes it has moved has nothing to correct: on
+    2026-08-26 the model spent four days stood beside the shop at nought coins
+    re-issuing a move it had been told succeeded.
+
+    A **fogged** cell that turns out to be a wall is the opposite case and stays
+    exactly as it was -- that one is a hypothesis, and walking into it is how the
+    map fills in. Only walls already seen are refused.
     """
     ch = known(area, *goal)
-    if ch is None or not (ch in SOLID or (ch == "D" and goal not in opened)):
+    if ch is None or not (ch in THINGS or (ch == "D" and goal not in opened)):
         return {goal}
 
     out = set()

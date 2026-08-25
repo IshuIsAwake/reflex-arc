@@ -10,6 +10,7 @@ import config as C
 import settings as S
 
 SOLID = set("#BCFSNTL$*")  # walls and everything you interact with
+THINGS = SOLID - set("#")  # ...and just the things. A wall is not a destination
 GATES = "DEvn"
 COUNTERS = {"S": "shop", "T": "tribe"}
 TERMINALS = {"C": "cartpole", "F": "flappy", "N": "snake"}
