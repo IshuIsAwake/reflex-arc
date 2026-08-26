@@ -5,7 +5,7 @@ Scoped to `prototype1/`. Repo-wide context is in [`../HANDOFF.md`](../HANDOFF.md
 
 ---
 
-## Next conversation: read every line of this, then build `interact`
+## Next conversation: read every line of this
 
 **The next session is a code read, not a build.** Opus in VS Code, medium–high effort, one file at a
 time. Nothing here is trusted to be understood and the point is to end that. Dependency order, which
@@ -26,71 +26,72 @@ every world change happens on the main thread inside `pump()`.
 
 ## Where it stands
 
-**Gemma can see, and it can walk.** Built 2026-08-26. A view block on every request and two tools,
-`goto` and `distance`. It reads its own coordinates and does the arithmetic: *"go 6 blocks north"*
-from (1,15) comes back `goto(1,9) → DONE(steps=6)`.
+**Gemma can see, and it can walk.** Built 2026-08-26. A view block injected on every request and two
+tools, `goto` and `distance`. It reads its own coordinates and does the arithmetic — *"go 6 blocks
+north"* from (1,15) comes back `goto(1,9) → DONE(steps=6)`.
 
 ```sh
-.venv/bin/python game/main.py           # the human's game, unchanged
-.venv/bin/python game/main.py --gemma   # ...steps instead of a clock, gemma in a pane
+.venv/bin/python game/main.py --gemma   # steps instead of a clock, gemma in a pane
 ```
 
 ## What the runs cost to learn
 
-**[`FINDINGS.md`](FINDINGS.md) has eleven items — read it before touching the interface.** The two
-that will bite again: *a field is not a sentence* (the `beside=` fix was not enough, and gemma spent
-a run trying to walk into a shop counter) and *check the fact, not the label* (the repeat-detector
-read the return code, so the same loop wearing a different code went unnoticed for five calls).
+**[`FINDINGS.md`](FINDINGS.md) has eleven items — read it before touching the interface.** Three
+recur: *a field is not a sentence*, *check the fact not the label*, and *a call that vanishes is the
+lying success code inverted* — all three were answers that were true and useless, and all three were
+found by reading a tape rather than by testing.
 
 **Two measurements, so nobody re-derives them by argument.** Gemma reads a named cell off the grid
 correctly **5 times in 10**, and 5 in 10 with thinking on at 187× the wall clock — assume any
 coordinate it counts out of the grid is wrong, and leave `MODEL_THINK` off. And shrinking the view
 by dropping empty cells makes it **five times bigger**: the grid is 196 tokens where coordinate
-lists are 972. The map was never the expensive part; the system prompt and tool schemas are, at a
-fixed 1,028.
+lists are 972. The map was never the expensive part; the prompt and tool schemas are, at ~1,300.
 
-## Next: `interact`, and then `mark`
+## Next: notes, then `interact`
 
-**`interact` is the blocking one and every run says so.** Gemma arrives somewhere and there is
-nothing to do, so it re-issues `goto` — its own words: *"I don't see any obvious mechanism for
-interaction yet."* Three couplings in `world.py` block it: [:210](game/world.py:210),
-[:266](game/world.py:266), [:289](game/world.py:289). Now the critical path, not deferred.
+**Notes and `interact`, in that order — every remaining failure is one of the two.** It cannot
+remember what it has done, and there is nothing to do when it arrives. Neither is a perception
+problem and no prompt touches either. `interact` is blocked by three couplings in `world.py`:
+[:210](game/world.py:210), [:266](game/world.py:266), [:289](game/world.py:289).
 
 **Then `mark()`, which brings `avoid="auto"` back.** Refused by name today because gemma cannot mark
-a cell, and advertising it would describe a capability whose other half does not exist. Load-bearing:
-with `avoid` described merely as "optional", gemma volunteered `avoid="auto"` unasked.
+a cell, and advertising it would describe a capability whose other half does not exist — with
+`avoid` described merely as "optional", gemma volunteered `avoid="auto"` unasked.
 
 **`NAV_REPLANS` is an ablation, not a comfort setting.** Left at 5; run it at 0 before concluding
 anything about whether gemma reasons about failure.
 
-## The first human-played run, 2026-08-26
+## The human-played runs, 2026-08-26
 
-Ishan played it rather than Claude, which is how it goes from here. **It works.**
+Ishan plays it, Claude reads the tape afterwards — that is the order from here.
+**It works: 397 of the plaza's 399 cells mapped in eight turns**, off nudges rather than rules.
 
-**A hint about the fog paid for itself.** Told *"try `goto` to a coordinate you cannot see"*, gemma
-aimed at (0,2) from across the map and came back `BLOCKED(at=(0,4), stopped=(1,4), steps=26)` —
-twenty-six cells of map from one call, off a nudge rather than a rule.
+**Telling it to aim far was the single biggest change.** Walks went from one cell at a time to 17,
+18, 21, 24 and 35 steps, one finding six walls. It extrapolates past the edge unprompted.
 
-**It re-walks ground it has already mapped**, 45+ steps of it, because it has no record of where it
-has been. The notes file does not exist.
+**The 22% that is wasted has one cause.** 14 of 64 calls returned `steps=0`, nearly all aiming at the
+border wall — `goto(20,17)` four times running. The rim is `#` at x=0/20 and y=0/18, and a known wall
+is deliberately `UNREACHABLE`. Aiming far works and the far thing is usually the wall around the
+world. **Cheapest next fix: have `UNREACHABLE` on a known wall name the nearest reachable cell.**
 
-**Context ran out at 40 calls** (`16162/16384`, the morning being dropped). Raising `MODEL_CTX` is
-not the fix and is not free: `ollama ps` shows 10.85 GB total with only **3.69 GB on the GPU**, so
-7.2 GB already runs on CPU and a bigger KV cache pushes more off. The nightly reset and the notes
-file are the design's own answer; `gemma4:e4b-it-qat` (6.1 GB) changes the hardware picture.
+**It re-walks corridors it has already mapped** — ~100 steps along plaza row 1 in one run. It knows
+the cells are there and has no record of having been down them. No prompt fixes this.
+
+**Context ran out at 40 calls** (`16162/16384`). Raising `MODEL_CTX` is not the fix and is not free:
+`ollama ps` shows 10.85 GB total with only **3.69 GB on the GPU**, so 7.2 GB already runs on CPU and
+a bigger KV cache pushes more off. The nightly reset and the notes file are the design's own answer;
+`gemma4:e4b-it-qat` (6.1 GB) changes the hardware picture.
 
 ## Still true, still not done
 
 Persistence does not exist and prototype 1 is several days long. [`DESIGN.md`](DESIGN.md) still asks
 two questions FINDINGS answered; the step budget is still a guess. `M` revealing an area's extent is
 **settled deliberately** — the view discloses it, because `nav.known()` already does. **The vault is
-what all of this is for**: every route in crosses pits, `avoid="auto"` is not offered for it, and
-gemma has to override a habit it spent days forming.
+what all of this is for**: every route crosses pits, `avoid="auto"` is not offered, and gemma has to
+override a habit it spent days forming.
 
 **Never quote one run as a result.** The same script on the same build gave 31 calls, then 14, then
-32 — a 31 → 14 drop went into an earlier draft of this file as a win and was luck. What repeated:
-the cap fires at most once a turn, `bad_args` stays 0 (56 calls), and "go six blocks north" landed
-right three times out of three.
+32 — the 31 → 14 drop went into an earlier draft of this file as a win and was luck.
 
 `economy.py` prints the ladder and shouts `INVERTED` if a change breaks it. **The 600-step day is
 not balance-neutral**: snake's edge over flappy went +3.7% → +17.6%, the vault chain 1.0 days of
