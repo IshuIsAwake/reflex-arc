@@ -164,24 +164,34 @@ def neighbours(w):
 
 
 def _sightline(w, x, y, dx, dy):
-    """How far you can walk this way before something stops you.
+    """How far you can walk this way, given as the furthest cell you can stand on.
 
     The neighbour alone answers "can I step there" and leaves "which way is worth
     going" to be counted off the grid, which is the arithmetic gemma gets wrong half
     the time. Walking the ray here costs nothing and hands over the answer.
+
+    **The coordinate offered is the last walkable cell, never the thing that stops
+    you.** The first version read "open for 3 cells, then a wall at (14,5)", and on
+    2026-08-26 gemma standing at (18,5) called `goto(14,5)` twice and got UNREACHABLE
+    both times. It read correctly and acted on the only number in the sentence -- which
+    was the one coordinate `goto` is guaranteed to refuse, because a known wall is
+    deliberately not a destination. A line read before every call must put the useful
+    number where the model will reach for it, and must not make a trap the most
+    salient thing in it.
     """
     n = 0
     while True:
         cell = (x + dx * (n + 1), y + dy * (n + 1))
         ch = nav.known(w.here, *cell)
-        if ch is None:
-            return (f"open for {n} cell{'' if n == 1 else 's'}, then unexplored "
-                    f"from {_c(cell)}" if n else f"unexplored from {_c(cell)}")
-        if ch == "#":
-            return f"open for {n} cell{'' if n == 1 else 's'}, then a wall at {_c(cell)}"
-        if ch != ".":
-            return (f"open for {n} cell{'' if n == 1 else 's'}, then "
-                    f"{label_for(w, ch) or ch} at {_c(cell)}")
+        if ch is None or ch == "#" or ch != ".":
+            far = (x + dx * n, y + dy * n)
+            reach = (f"you can walk {n} cell{'' if n == 1 else 's'} to {_c(far)}"
+                     if n else "blocked immediately")
+            if ch is None:
+                return f"{reach}; beyond that {_c(cell)} is unexplored"
+            if ch == "#":
+                return f"{reach}; a wall at {_c(cell)} stops you"
+            return f"{reach}; {label_for(w, ch) or ch} at {_c(cell)} stops you"
         n += 1
 
 

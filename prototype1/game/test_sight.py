@@ -17,6 +17,7 @@ import pathlib
 import re
 import sys
 
+import nav
 import settings as S
 import sight
 from world import World
@@ -109,7 +110,7 @@ def test_the_four_cells_you_could_step_into():
     ok &= check("and south names the shop", "south (10,16): shop" in lines)
     # Open floor gets the whole sightline instead of just the one cell: "which way
     # is worth going" is the other question gemma was counting off the grid to answer.
-    ok &= check("north reports how far it is open", "north: open for" in lines)
+    ok &= check("north reports how far it is open", "north: you can walk" in lines)
     ok &= check("it says you stop beside a solid thing",
                 "you stop beside it" in lines)
     ok &= check("and the view carries it", "IMMEDIATELY AROUND YOU" in sight.view(w))
@@ -117,6 +118,21 @@ def test_the_four_cells_you_could_step_into():
     w.area, w.pos = "savana2", (16, 11)    # somewhere with nothing revealed
     ok &= check("unseen neighbours say so",
                 "never seen" in " ".join(sight.neighbours(w)))
+
+    # The exact cell from the run on 2026-08-26. Plaza row 5 is "#.............#.....#",
+    # so from (18,5) the floor runs west to (15,5) and (14,5) is a wall. The old
+    # wording offered only the wall's coordinate; gemma called goto(14,5) twice and
+    # got UNREACHABLE both times, because a known wall is deliberately not a
+    # destination. The coordinate handed over must be one goto will accept.
+    w2 = World()
+    w2.area, w2.pos = "plaza", (18, 5)
+    w2.here.has_map = True
+    west = next(l for l in sight.neighbours(w2) if l.strip().startswith("west"))
+    ok &= check("the walkable cell is the one offered", "(15,5)" in west, west.strip())
+    ok &= check("and the wall is named as a stopper, not a target",
+                "(14,5) stops you" in west, west.strip())
+    ok &= check("goto accepts what the line offers",
+                nav.goto(w2, 15, 5).code == "DONE")
     return ok
 
 
