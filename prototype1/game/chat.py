@@ -315,20 +315,45 @@ class Conversation:
         stop: once a turn has been cut short, further calls are dropped on the floor
         rather than run, whatever comes back.
         """
-        if self.capped:
-            self.write("error", f"dropped {len(wanted)} call(s) -- this turn is over")
-            return
         if self.hops >= S.MODEL_MAX_HOPS:
-            self.capped = True
-            self.messages.append({"role": "user", "content":
-                                  f"You have made {self.hops} calls without saying "
-                                  f"anything, so your skills are switched off for the "
-                                  f"rest of this turn. Say what you found and what you "
-                                  f"would try next."})
-            self.write("error", f"hop cap: {self.hops} calls in one turn, tools off")
-            self._go(use_tools=False)
+            first, self.capped = not self.capped, True
+            self._refuse(wanted)
+            if first:
+                self.messages.append({"role": "user", "content":
+                                      f"You have made {self.hops} calls without saying "
+                                      f"anything, so your skills are switched off for "
+                                      f"the rest of this turn. Say what you found and "
+                                      f"what you would try next."})
+                self.write("error", f"hop cap: {self.hops} calls in one turn, tools off")
+                self._go(use_tools=False)
             return
 
+        self._answer(wanted)
+
+    def _refuse(self, wanted):
+        """Turn down calls that arrive after the cap, out loud and in the context.
+
+        Writing this to the pane alone left gemma asking for something and getting
+        silence -- eight turns running on 2026-08-26, one refused call in every one of
+        them and not a word about any. **A call that vanishes is the lying success code
+        inverted**: no outcome, nothing to reason about, so the same call comes back.
+
+        It also keeps the history well formed. `_settle` has already appended the
+        assistant turn carrying these `tool_calls`, so a call with no answer dangles,
+        and a conversation where a call has no answer is one no template was written
+        for. Both refusal paths go through here so neither can forget.
+        """
+        if not wanted:
+            return
+        self.write("error", f"refused {len(wanted)} call(s) -- this turn is over")
+        for fn in wanted:
+            self.messages.append({
+                "role": "tool", "tool_name": fn.get("name") or "unknown",
+                "content": f"REFUSED -- you had already used all {S.MODEL_MAX_HOPS} "
+                           f"calls for this turn, so this one did not run and nothing "
+                           f"happened. Say something to be given another turn."})
+
+    def _answer(self, wanted):
         for fn in wanted:
             self.hops += 1
             c = skills.call(self.world, fn.get("name"), _args(fn.get("arguments")),

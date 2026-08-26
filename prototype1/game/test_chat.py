@@ -196,9 +196,10 @@ def test_the_hop_cap_stops_a_loop():
     # enforced. Once is the whole point: after it, the tools are gone.
     ok &= check("and it fires exactly once",
                 sum(1 for who, text in c.lines if who == "error" and "hop cap" in text) == 1)
-    ok &= check("not one call ran past the cap",
-                sum(1 for m in c.messages if m["role"] == "tool") == S.MODEL_MAX_HOPS,
-                f"{sum(1 for m in c.messages if m['role'] == 'tool')} results")
+    ran = [m for m in c.messages
+           if m["role"] == "tool" and not m["content"].startswith("REFUSED")]
+    ok &= check("not one call ran past the cap", len(ran) == S.MODEL_MAX_HOPS,
+                f"{len(ran)} actually ran")
     ok &= check("and the turn is over", not c.busy)
 
     # Withholding the schemas is a request, not an enforcement. Live, the model kept
@@ -210,10 +211,23 @@ def test_the_hop_cap_stops_a_loop():
     d.pump()
     ok &= check("a model that ignores tools-off is capped once anyway",
                 sum(1 for who, t in d.lines if who == "error" and "hop cap" in t) == 1)
-    ok &= check("and its later calls are dropped, not run",
-                sum(1 for m in d.messages if m["role"] == "tool") == S.MODEL_MAX_HOPS)
-    ok &= check("with the drop said out loud",
-                any("dropped" in t for who, t in d.lines if who == "error"))
+    ran = [m for m in d.messages
+           if m["role"] == "tool" and not m["content"].startswith("REFUSED")]
+    ok &= check("and its later calls are refused, not run",
+                len(ran) == S.MODEL_MAX_HOPS, f"{len(ran)} actually ran")
+    ok &= check("with the refusal said out loud",
+                any("refused" in t for who, t in d.lines if who == "error"))
+    # Watched 2026-08-26: one call refused per turn, eight turns running, and gemma
+    # was told none of them -- it asked and got silence. A call that vanishes leaves
+    # nothing to reason about, so the same call comes back.
+    ok &= check("and gemma is told, not just the pane",
+                any("REFUSED" in m.get("content", "") for m in d.messages))
+    # Every tool_call must have a result or the history dangles: `_settle` already
+    # appended the assistant turn carrying them.
+    asked = sum(len(m["tool_calls"]) for m in d.messages if m.get("tool_calls"))
+    answered = sum(1 for m in d.messages if m["role"] == "tool")
+    ok &= check("every call asked for has an answer", asked == answered,
+                f"{asked} asked, {answered} answered")
     return ok
 
 
