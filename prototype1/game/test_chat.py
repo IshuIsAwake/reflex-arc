@@ -248,6 +248,28 @@ def test_stream_settles():
     return ok
 
 
+def test_template_tokens_never_reach_the_context():
+    print("scaffolding")
+    w = World()
+    c, _ = rig(w)
+    c.busy = True
+    c.q.put(("say", "I am beside the shop.<channel|>"))
+    c.q.put(("done", ({"prompt_eval_count": 100, "eval_count": 5}, [])))
+    c.pump()
+    # Found by reading a tape, not by testing: eight of eight gemma turns ended
+    # `<channel|>`, and the reply becomes an assistant message, so the token went
+    # back into context every turn and into the transcript. It looks like nothing.
+    ok = check("stripped from what it said", ("gemma", "I am beside the shop.") in c.lines)
+    ok &= check("and from the context",
+                not any("channel" in m.get("content", "") for m in c.messages))
+    ok &= check("and counted, so a new one shows up", c.junk == 1)
+    # Explicit list, not a catch-all: eating anything in angle brackets would one day
+    # eat real content and never say so.
+    ok &= check("real angle brackets survive",
+                chat.clean("use <b>bold</b> and 3 < 4")[0] == "use <b>bold</b> and 3 < 4")
+    return ok
+
+
 def test_full_context_is_shouted():
     print("the 4096 trap")
     w = World()
@@ -304,6 +326,7 @@ if __name__ == "__main__":
                test_a_bad_call_is_counted_and_costs_nothing(),
                test_the_hop_cap_stops_a_loop(),
                test_human_turns_are_marked(), test_stream_settles(),
+               test_template_tokens_never_reach_the_context(),
                test_full_context_is_shouted(), test_error_does_not_wedge(),
                test_the_tape_keeps_the_view_the_pane_drops()]
     print(f"\n{sum(results)}/{len(results)} groups passed")

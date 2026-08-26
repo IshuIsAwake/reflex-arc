@@ -145,6 +145,29 @@ was mostly luck; the next run took it straight back. **Do not report a single ru
 what survived repetition was the structural stuff (the cap firing at most once, zero `bad_args`, the
 arithmetic on "go six blocks north" landing right three times out of three), not the totals.
 
+**Check the fact, not the label.** The "you have asked for this three times" nudge originally fired
+only on `DONE`, because `DONE(beside=..., steps=0)` was the loop being watched. A live tape then
+showed the identical loop wearing a different code: five consecutive `goto(0,5)` calls, five
+`UNREACHABLE(at=(13,5), steps=0)`, no nudge. The rule is now an invariant rather than a list —
+**a call that spends no steps cannot have changed the world, so an identical call after it is
+guaranteed the identical answer** — which covers arriving beside something solid, an unreachable
+target and pricing the same trip twice, all at once. A detector written around the case in front of
+you will keep missing the case that has not happened yet.
+
+**The template leaks into what the model "said."** Every one of eight gemma turns ended `<channel|>`,
+and because the reply becomes an assistant message, the token went back into context every turn and
+into the transcript. Found by reading a tape; no test would have caught it and nothing looked wrong
+on screen. `chat.clean()` strips a known list and counts what it strips — an explicit list rather
+than a catch-all `<...>` sweep, which would one day eat real content and never say so.
+
+**Raising the context window is not free, even locally.** `ollama ps` reports `gemma4:e4b` at 10.85
+GB total with **3.69 GB on the GPU** — the other 7.2 GB already runs on CPU, which is what the 20
+tok/s actually is. A larger `num_ctx` grows the KV cache and pushes more layers off the card, so it
+buys context by making every token slower. And it does not fix the cause: within one day, 40 tool
+calls appended 6–8k tokens of pure call history, so doubling the window buys one session. The
+nightly reset and the notes file are the design's own answer; `gemma4:e4b-it-qat` (6.1 GB) is the
+swap that would change the hardware picture.
+
 **What it does when it has nothing to do is wander.** Told *"go to the shop"*, it arrives in one
 call and then spends the remaining seven exploring at random, hitting the hop cap. Every turn binds
 against the cap for the same reason. This is not a loop bug and no wording fixes it: there is

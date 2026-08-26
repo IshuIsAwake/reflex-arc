@@ -46,28 +46,54 @@ def test_a_plain_goto_walks():
     return ok
 
 
+def _repeat(w, args, n=3, name="goto"):
+    history = []
+    for _ in range(n):
+        history.append(skills.call(w, name, args, history=history))
+    return history
+
+
 def test_going_nowhere_twice_is_said_out_loud():
     print("the same call, again")
     w = World()
     args = {"x": 3, "y": 8, "why": "the board"}
     skills.call(w, "goto", args)                       # walks there
-    history = []
-    for _ in range(3):
-        c = skills.call(w, "goto", args, history=history)
-        history.append(c)
+    history = _repeat(w, args)
     # Watched 2026-08-26: seven identical goto(3,8) calls, seven DONE(steps=0), and
     # gemma kept asking because a costless success gave it nothing to correct.
     ok = check("the first repeat is answered plainly", "asked for this" not in history[0].result)
     ok &= check("the third says it is going nowhere",
-                "nothing has changed" in history[-1].result, history[-1].result[-90:])
+                "nothing has changed" in history[-1].result, history[-1].result[-95:])
     ok &= check("still honest about arriving", history[-1].result.startswith("DONE"))
     ok &= check("and still free", all(h.steps == 0 for h in history))
-    # A call that actually did something is never nagged, however often it is made.
+
+    # The hole this had until 2026-08-26: the check read the code instead of the fact,
+    # so a live run looped five times on UNREACHABLE and was never told. The rule is
+    # now the invariant -- no steps spent means nothing changed means same answer.
     w2 = World()
-    moved = [skills.call(w2, "goto", {"x": 10, "y": 14, "why": "back"}),
-             skills.call(w2, "goto", {"x": 10, "y": 12, "why": "north"})]
-    again = skills.call(w2, "goto", {"x": 10, "y": 14, "why": "back"}, history=moved)
+    west = {"x": 0, "y": 5, "why": "west"}
+    skills.call(w2, "goto", west)      # this one walks part of the way and stops
+    far = _repeat(w2, west)
+    ok &= check("an UNREACHABLE loop is caught too",
+                far[-1].result.startswith("UNREACHABLE")
+                and "nothing has changed" in far[-1].result, far[-1].result[:60])
+    priced = _repeat(w2, {"x": 10, "y": 16, "why": "how far"}, name="distance")
+    ok &= check("so is pricing the same trip over and over",
+                "nothing has changed" in priced[-1].result)
+
+    # A call that actually did something ends the run, however often it is repeated.
+    w3 = World()
+    moved = [skills.call(w3, "goto", {"x": 10, "y": 14, "why": "back"}),
+             skills.call(w3, "goto", {"x": 10, "y": 12, "why": "north"})]
+    again = skills.call(w3, "goto", {"x": 10, "y": 14, "why": "back"}, history=moved)
     ok &= check("a call that moved is left alone", "nothing has changed" not in again.result)
+    # ...and it has to be a *consecutive* run: something else in between resets it.
+    w4 = World()
+    mixed = [skills.call(w4, "distance", {"x": 1, "y": 1, "why": "a"}),
+             skills.call(w4, "distance", {"x": 2, "y": 2, "why": "b"}),
+             skills.call(w4, "distance", {"x": 1, "y": 1, "why": "a"})]
+    last = skills.call(w4, "distance", {"x": 1, "y": 1, "why": "a"}, history=mixed)
+    ok &= check("a broken run is not counted", "nothing has changed" not in last.result)
     return ok
 
 

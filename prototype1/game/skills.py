@@ -176,25 +176,39 @@ class Call:
 
 
 def _stuck(c, history):
-    """Say so when the same call has come back doing nothing more than once.
+    """Say so when the same call is repeated with nothing happening in between.
 
-    Watched 2026-08-26: gemma asked for `goto(3,8)` seven times running and was told
-    `DONE(beside=(3,8), steps=0)` every time, which is true, costs nothing, and gets
-    it no further. A success that cannot advance anything is the polite cousin of a
-    lying success code -- the caller has no failure to reason about, so it repeats.
+    **The rule is an invariant, not a list of codes.** A call that spends no steps
+    cannot have changed the world, so an identical call after it is guaranteed the
+    identical answer. That covers every way of going nowhere at once: arriving beside
+    something solid, an UNREACHABLE, or pricing the same trip twice.
 
-    The real cause is that it wanted to *use* the board and `interact` does not exist
-    yet. This does not fix that and is not meant to; it just stops the world agreeing
-    pleasantly with a question that has already been answered.
+    It was written narrower and the narrowness showed. The first version only fired on
+    `DONE`, because that was the case being watched -- gemma asked for `goto(3,8)`
+    seven times and was told `DONE(beside=(3,8), steps=0)` every time. Reading a live
+    tape on 2026-08-26 turned up the same loop wearing a different code: five
+    consecutive `goto(0,5)` calls, five `UNREACHABLE(at=(13,5), steps=0)`, and no
+    nudge, because the detector was checking the label instead of the fact.
+
+    Only a *consecutive* run counts, and any call that spent a step ends it -- once
+    the world has moved, the same question may honestly have a different answer.
+
+    None of this fixes the cause. Gemma repeats because it wants to *use* what it has
+    reached and `interact` does not exist; this only stops the world agreeing
+    pleasantly with a question already answered.
     """
-    if c.steps or not c.result.startswith("DONE"):
+    if c.steps:
         return ""
-    same = sum(1 for p in history[-4:] if str(p) == str(c))
+    same = 0
+    for p in reversed(history):
+        if p.steps or str(p) != str(c):
+            break
+        same += 1
     if same < 2:
         return ""
-    return (f" You have now asked for this {same + 1} times and nothing has changed, "
-            f"because there is nothing left for it to do. Asking again will not "
-            f"help -- say what you want to happen instead.")
+    return (f" You have asked for this {same + 1} times in a row and spent no steps "
+            f"doing it, so nothing has changed and the answer cannot change either. "
+            f"Do something different, or say what you are trying to achieve.")
 
 
 def call(world, name, args, history=()):

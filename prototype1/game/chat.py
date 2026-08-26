@@ -25,6 +25,7 @@ talking, the same split `world.py` and `render.py` already have.
 
 import json
 import queue
+import re
 import threading
 import time
 import urllib.error
@@ -86,6 +87,24 @@ tomorrow you begin knowing nothing of it.
 WHO = ("status", "you", "gemma", "think", "error", "note", "view", "call", "result")
 
 
+# Control tokens the template leaks into `content`. Found 2026-08-26 by reading a
+# tape: every one of eight gemma turns ended `<channel|>`, and because the reply
+# becomes an assistant message, the token was being fed back into context every turn
+# and written into the transcript. It looks like nothing and it is the model reading
+# its own scaffolding as though it were something it had said.
+#
+# The list is explicit rather than a catch-all `<...>` sweep: silently eating anything
+# in angle brackets would one day eat real content and never say so.
+JUNK = re.compile(r"<\|?(?:channel|end_of_turn|start_of_turn|eot_id|im_end|im_start|"
+                  r"eos|bos|end_of_text)\|?>")
+
+
+def clean(text):
+    """Strip template scaffolding out of what gemma said. Returns (text, how_many)."""
+    out, n = JUNK.subn("", text)
+    return out.strip(), n
+
+
 def _args(a):
     """Ollama hands arguments back already parsed, but not always.
 
@@ -127,6 +146,7 @@ class Conversation:
         self.capped = False       # ...and whether this turn has already been stopped
         self.calls = []           # every skills.Call this day, for reading back
         self.bad_args = 0         # what the `why` requirement and the parser cost
+        self.junk = 0             # template tokens stripped out of what it said
         self._t0 = 0.0
 
     # --- what goes in ----------------------------------------------------
@@ -323,8 +343,9 @@ class Conversation:
         tool results that follow answer a question no message ever asked.
         """
         if self.think_buf.strip():
-            self.write("think", self.think_buf.strip())
-        said = self.say_buf.strip()
+            self.write("think", clean(self.think_buf)[0])
+        said, junk = clean(self.say_buf)
+        self.junk += junk
         if said:
             self.write("gemma", said)
         if said or wanted:
