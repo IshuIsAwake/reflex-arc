@@ -95,6 +95,14 @@ def test_the_prompt_promises_exactly_what_exists():
     # The two facts that decide whether a vague instruction lands on the right cell.
     ok &= check("says coordinates are absolute", "ABSOLUTE" in chat.SYSTEM)
     ok &= check("and that nothing has a facing", "facing" in chat.SYSTEM)
+    # Watched 2026-08-26: gemma ended a turn on "I will use distance first to confirm
+    # the cost", having made two of its eight calls. A reply with no call ends the
+    # turn, and it had never been told -- so it forfeited the turn by narrating it.
+    ok &= check("says a wordless turn is a spent one",
+                "ends your turn" in chat.SYSTEM)
+    # One goto came back having walked 35 cells and found six walls. Aiming far is
+    # the highest-yield thing it can do and it defaults to one cell at a time.
+    ok &= check("tells it to aim far", "Aim far" in chat.SYSTEM)
     return ok
 
 
