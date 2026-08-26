@@ -13,16 +13,15 @@ is also the reading order — ~2,600 lines of source, ~1,400 of tests:
 
 `settings.py` (knobs) → `config.py` (maps) → `world.py` (state) → `nav.py` (planner) → `sight.py`
 (the sense) → `skills.py` (the interface) → `chat.py` (the model loop) → `console.py` → `render.py`
-→ `main.py`. **Only the last two touch pygame**; everything else runs headless, which is why all
-five test files need no display.
+→ `main.py`. **Only the last two touch pygame**, which is why no test needs a display.
 
 Read [`FINDINGS.md`](FINDINGS.md) first — most odd-looking code is there because of something in it,
 and the comments name which. Then [`NAVIGATION.md`](NAVIGATION.md) beside `nav.py`,
 [`SIGHT.md`](SIGHT.md) beside `sight.py` and `skills.py`.
 
-**Check these three invariants really hold**, because all three fail silently: `nav.known()` is the
-only read of the grid anywhere (two tests count it); the view is never stored in `chat.messages`;
-every world change happens on the main thread inside `pump()`.
+**Check these three invariants really hold** — all fail silently: `nav.known()` is the only read of
+the grid anywhere (two tests count it); the view is never stored in `chat.messages`; every world
+change happens on the main thread in `pump()`.
 
 ## Where it stands
 
@@ -63,16 +62,16 @@ anything about whether gemma reasons about failure.
 
 ## The human-played runs, 2026-08-26
 
-Ishan plays it, Claude reads the tape afterwards — that is the order from here.
-**It works: 397 of the plaza's 399 cells mapped in eight turns**, off nudges rather than rules.
+Ishan plays it, Claude reads the tape afterwards — the order from here. **It works: 397 of the
+plaza's 399 cells mapped in eight turns**, off nudges rather than rules.
 
 **Telling it to aim far was the single biggest change.** Walks went from one cell at a time to 17,
 18, 21, 24 and 35 steps, one finding six walls. It extrapolates past the edge unprompted.
 
-**The 22% that is wasted has one cause.** 14 of 64 calls returned `steps=0`, nearly all aiming at the
-border wall — `goto(20,17)` four times running. The rim is `#` at x=0/20 and y=0/18, and a known wall
-is deliberately `UNREACHABLE`. Aiming far works and the far thing is usually the wall around the
-world. **Cheapest next fix: have `UNREACHABLE` on a known wall name the nearest reachable cell.**
+**The 22% that is wasted has one cause.** 14 of 64 calls returned `steps=0`, nearly all aimed at the
+border wall — `goto(20,17)` four times running — because the rim is `#` and a known wall is
+deliberately `UNREACHABLE`. Aiming far works; the far thing is usually the wall around the world.
+**Cheapest fix: have `UNREACHABLE` on a known wall name the nearest reachable cell instead.**
 
 **It re-walks corridors it has already mapped** — ~100 steps along plaza row 1 in one run. It knows
 the cells are there and has no record of having been down them. No prompt fixes this.
@@ -90,8 +89,8 @@ two questions FINDINGS answered; the step budget is still a guess. `M` revealing
 what all of this is for**: every route crosses pits, `avoid="auto"` is not offered, and gemma has to
 override a habit it spent days forming.
 
-**Never quote one run as a result.** The same script on the same build gave 31 calls, then 14, then
-32 — the 31 → 14 drop went into an earlier draft of this file as a win and was luck.
+**Never quote one run as a result**: the same script on the same build gave 31 calls, then 14, then
+32, and the 31 → 14 drop went into an earlier draft of this file as a win. It was luck.
 
 `economy.py` prints the ladder and shouts `INVERTED` if a change breaks it. **The 600-step day is
 not balance-neutral**: snake's edge over flappy went +3.7% → +17.6%, the vault chain 1.0 days of
