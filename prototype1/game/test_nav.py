@@ -339,7 +339,13 @@ def test_the_console_parses_what_a_human_would_type():
     assert console._parse("goto 15 10 avoid=(3,4),(5,6)")[2] == frozenset({(3, 4), (5, 6)})
 
     w = mapped()
-    assert "DONE" in console.run(w, "goto 10 16")[-1][0]
+    # Two lines now: the code form, then the clause that says landing beside a solid
+    # target is arriving. The human is shown the same words gemma is, laid out for a
+    # console that truncates at 88 characters -- so check both, not just the last.
+    shop = console.run(w, "goto 10 16")
+    assert "DONE" in shop[1][0], shop
+    assert "IS arriving" in shop[-1][0], shop
+    assert all(len(text) < 88 for text, _ in shop), "a truncated explanation is worse"
     assert console.run(w, "distance 19 13")[-1][0].startswith("distance to")
     assert w.steps == 1, "distance must not have cost anything"
     assert console.run(w, "fly 1 2")[-1][1] == "bad"

@@ -34,6 +34,8 @@ PATH = (74, 116, 186)   # the last route A* planned, drawn on the map view
 WALKED = (229, 212, 176)  # ...and the ground it actually covered, shaded under it
 GOOD = (60, 132, 74)
 BAD = (176, 60, 56)
+HUMAN = (74, 116, 186)    # your side of the conversation -- so a coached day shows
+THINK = (150, 147, 141)   # gemma's reasoning, quieter than what it chose to say
 
 DISPLAY_NAMES = {"plaza": "Plaza", "savana": "Savana", "savana2": "Savana 2"}
 

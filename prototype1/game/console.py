@@ -51,7 +51,12 @@ def run(world, text):
     if verb == "goto":
         result = nav.goto(world, x, y, avoid)
         world.say(str(result), result.tone)   # so the HUD carries it too
-        return echo + [(str(result), result.tone)]
+        # The code form on one line, the clause on its own underneath -- the same
+        # words gemma gets, laid out for a console that truncates at 88 characters.
+        out = [(str(result), result.tone)]
+        if result.advice:
+            out.append((f"   {result.advice}", result.tone))
+        return echo + out
 
     steps = nav.distance(world, x, y, avoid)
     if steps is None:

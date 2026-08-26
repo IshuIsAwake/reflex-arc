@@ -197,6 +197,37 @@ class Result:
             bits.append("antidotes=[" + ", ".join(_c(a) for a in self.antidotes) + "]")
         return f"{self.code}({', '.join(bits)})"
 
+    @property
+    def advice(self):
+        """The two answers a reader gets backwards, said again in words.
+
+        Kept off `__str__` so the code form stays one line: the HUD ticker does not
+        wrap and the console truncates at 88 characters, so folding this in would
+        overflow one surface and silently cut the other. Defined once here and laid
+        out by whoever is showing it -- `skills` appends it for gemma, the console
+        prints it underneath for the human. One wording, three places.
+
+        `beside=` was supposed to be enough on its own and is not. Watched on
+        2026-08-26: gemma walked to the shop, read `DONE(at=(10,15),
+        beside=(10,16))`, decided it had failed to reach (10,16), and spent the rest
+        of the run trying to step into a counter -- *"moving there has no apparent
+        effect."* Same failure FINDINGS records for 2026-08-25, one layer further in:
+        the field was added, and a field is not a sentence. A caller that cannot tell
+        arrival from failure has nothing to correct, which is the expensive kind of
+        wrong.
+
+        The zero-step case is the other half. `goto` to the cell you are standing on
+        succeeds, costs nothing, and reads as though something happened -- so a model
+        that has misread its position can bounce between two cells indefinitely and
+        never be told it is going nowhere.
+        """
+        if self.beside:
+            return (f"{_c(self.beside)} is solid, so stopping beside it IS "
+                    f"arriving. Do not ask again.")
+        if self.code == "DONE" and not self.steps:
+            return "you were already standing there. Nothing moved, nothing spent."
+        return ""
+
 
 def _log(world, area_name, start, goal, planned, result):
     """The gap between what the plan promised and what the walk cost is a direct

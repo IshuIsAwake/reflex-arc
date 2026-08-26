@@ -16,6 +16,28 @@ COUNTERS = {"S": "shop", "T": "tribe"}
 TERMINALS = {"C": "cartpole", "F": "flappy", "N": "snake"}
 NEEDS_KEY = {"F": "flappy_key", "D": "savana_key"}
 
+# What each tile is called out loud. Lives here rather than in render.py because the
+# renderer imports pygame and the model loop cannot: gemma reads these same words.
+# One wording for the screen and the view, the way Result.__str__ is one wording for
+# the console and the model.
+LABELS = {"B": "board", "S": "shop", "T": "tribe", "L": "lost bag", "$": "coins",
+          "*": "discover",  # the vault never says what is in it until you open it
+          "D": "east gate", "E": "west gate", "v": "south gate", "n": "north gate"}
+
+
+def label_for(w, ch):
+    """A terminal you have not walked up to reads 'discover'.
+
+    Names are earned. You find out what a game is by going to it, not by reading it
+    off the map from across the room -- and the vault is called `discover` too, so
+    there is no name gemma can pass to `play` for something it has not reached. That
+    is a naming rule doing a precondition's job, which is why it cannot be forgotten.
+    """
+    if ch in TERMINALS:
+        game = TERMINALS[ch]
+        return game if game in w.discovered else "discover"
+    return LABELS.get(ch)
+
 
 class Area:
     def __init__(self, name, rows):

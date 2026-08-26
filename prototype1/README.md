@@ -1,18 +1,23 @@
 # Prototype 1 — the world
 
-A top-down grid world you can play with the keyboard, and an A\* planner you can drive by typing at
-it. **No LLM and no RL yet.** The point is to have the world exist and be playable first; the model
-and the policies drop in behind it later.
+A top-down grid world you can play with the keyboard, an A\* planner you can drive by typing at it,
+and `gemma4:e4b` sitting beside it with eyes and one skill. **No RL yet** — the minigames are
+weighted coin flips, and real policies go in behind the same interface later.
 
 Why it is shaped the way it is: [`DESIGN.md`](DESIGN.md). How the planner works:
-[`NAVIGATION.md`](NAVIGATION.md). What happens next: [`HANDOFF.md`](HANDOFF.md).
+[`NAVIGATION.md`](NAVIGATION.md). What the model is told: [`SIGHT.md`](SIGHT.md). What went wrong
+already: [`FINDINGS.md`](FINDINGS.md). What happens next: [`HANDOFF.md`](HANDOFF.md).
 
 ## Run
 
 ```sh
 uv venv .venv && uv pip install --python .venv/bin/python pygame
-.venv/bin/python game/main.py
+.venv/bin/python game/main.py           # the human's game
+.venv/bin/python game/main.py --gemma   # ...steps instead of a clock, gemma in a pane
 ```
+
+Run the tests after touching anything: `test_world.py`, `test_nav.py`, `test_sight.py`,
+`test_skills.py`, `test_chat.py`. None of them needs Ollama running.
 
 ## Controls
 
@@ -26,6 +31,9 @@ uv venv .venv && uv pip install --python .venv/bin/python pygame
 | `X` | mark the cell you are standing on |
 | `T` | console — type `goto` and `distance` yourself |
 | `Q` | end the day early |
+
+Under `--gemma`, four more: `TAB` types to it, `V` prints the block it is actually being sent, `N`
+starts the next day once you have ended one, and the wheel scrolls the pane.
 
 Everything is interacted with by standing **next to** it and pressing `E`, gates included — walking
 into a shut gate never opens it. Snake pits are the only thing that triggers by stepping on them.

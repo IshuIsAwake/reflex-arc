@@ -1,21 +1,28 @@
 """All the pygame drawing. Paper-white daylight, black ink, one red blob."""
 
+import textwrap
+
 import pygame
 
 import config as C
 import settings as S
-from world import TERMINALS as TERMINAL_NAMES
+from world import label_for
 
 MARGIN = 15
-LABELS = {"B": "board", "S": "shop", "T": "tribe", "L": "lost bag", "$": "coins",
-          "*": "discover",  # the vault never says what is in it until you open it
-          "D": "east gate", "E": "west gate", "v": "south gate", "n": "north gate"}
 GOLDISH = set("L$*")
 GATES = "DEvn"
 
 
-def window_size():
+def game_size():
+    """The window the human's game has always had. Everything draws against this."""
     return C.VIEW_W * C.TILE + MARGIN * 2, C.VIEW_H * C.TILE + C.HUD_H + MARGIN * 2
+
+
+def window_size(chat=False):
+    """With the chat pane, the game keeps its old size and the pane is added beside
+    it -- so every overlay still fills exactly the half it was written for."""
+    gw, gh = game_size()
+    return (gw + S.CHAT_W, gh) if chat else (gw, gh)
 
 
 class Fonts:
@@ -24,6 +31,7 @@ class Fonts:
         self.tiny = pygame.font.SysFont("dejavusansmono,consolas,monospace", 10)
         self.hud = pygame.font.SysFont("dejavusansmono,consolas,monospace", 14)
         self.big = pygame.font.SysFont("dejavusansmono,consolas,monospace", 19, bold=True)
+        self.chat = pygame.font.SysFont("dejavusansmono,consolas,monospace", 13)
 
 
 def viewport(surf, area, pos):
@@ -57,14 +65,6 @@ def _rulers(surf, f, area, ox, oy, view):
         if view.top <= py <= view.bottom:
             t = f.tiny.render(str(y), True, (150, 147, 141))
             surf.blit(t, t.get_rect(midright=(view.left - 3, py)))
-
-
-def label_for(w, ch):
-    """A terminal you have not walked up to reads 'discover'."""
-    if ch in TERMINAL_NAMES:
-        game = TERMINAL_NAMES[ch]
-        return game if game in w.discovered else "discover"
-    return LABELS.get(ch)
 
 
 def draw_world(surf, w, f):
@@ -331,6 +331,95 @@ def draw_console(surf, w, f, line, history):
     pygame.draw.line(surf, C.FAINT, (box.left + 24, y - 6), (box.right - 24, y - 6))
     surf.blit(f.hud.render(f"> {line}_", True, C.INK), (box.left + 24, y))
     _foot(surf, f, box, "ENTER run   help for commands   T or ESC close")
+
+
+# --- the chat pane ---------------------------------------------------------
+# Everything gemma produces goes here and only here. It is not a demo aid: with no
+# skills wired up it is the entire interface, and the skills that come later get
+# added because talking to it without one was annoying.
+
+CHAT_PAD = 16
+CHAT_LINE_H = 17
+CHAT_INDENT = 12   # body sits under its heading, and the wrap has to pay for it
+# Headings rather than inline prefixes -- the pane is narrow, and a wrapped
+# paragraph that keeps its indent reads better than one carrying a tag on line one.
+HEADS = {"status": ("MORNING", C.GOOD), "you": ("YOU", C.HUMAN),
+         "gemma": ("GEMMA", C.INK), "think": ("GEMMA -- thinking", C.THINK),
+         "error": ("!! ", C.BAD), "note": ("", C.THINK),
+         # The view is summarised to a line here and written in full to the tape --
+         # the human has the real game on the left and does not need the ASCII.
+         "view": ("", C.THINK), "call": ("CALLS", C.HUMAN), "result": ("", C.INK)}
+
+
+def _blocks(conv, cols):
+    """Every line the pane could show, wrapped, as (text, colour, indent).
+
+    The two streaming buffers are appended live, so a reply appears as it arrives
+    rather than in one lump when it finishes.
+    """
+    out = []
+    live = ([("think", conv.think_buf)] if conv.think_buf.strip() else []) + \
+           ([("gemma", conv.say_buf)] if conv.say_buf.strip() else [])
+    for who, text in list(conv.lines) + live:
+        head, colour = HEADS.get(who, ("", C.INK))
+        if head:
+            out.append((head, colour, False))
+        for para in text.splitlines() or [""]:
+            for piece in (textwrap.wrap(para, cols) or [""]):
+                out.append((piece, colour, True))
+        out.append(("", colour, False))
+    return out
+
+
+def draw_chat(surf, conv, w, f, line, focused, scroll):
+    """The right-hand pane. Returns how far back it is still possible to scroll."""
+    surf.fill(C.PAPER)
+    pygame.draw.line(surf, C.INK, (0, 0), (0, surf.get_height()), 2)
+    W, H = surf.get_size()
+    x, inner = CHAT_PAD + 2, W - CHAT_PAD * 2 - 2
+    cols = max(24, (inner - CHAT_INDENT) // f.chat.size("M")[0])
+    head_h, foot_h = 62, 58
+
+    surf.blit(f.big.render(f"GEMMA   day {conv.day}", True, C.INK), (x, 12))
+    surf.blit(f.tiny.render(S.MODEL, True, C.THINK), (x, 38))
+
+    if conv.busy:
+        state, tone = ("thinking..." if not conv.say_buf else "answering..."), C.GOOD
+    elif w.day_over:
+        state, tone = f"DAY {w.day} OVER -- talk, then N for day {w.day + 1}", C.BAD
+    elif conv.last:
+        secs, pin, pout = conv.last
+        state, tone = f"{secs}s   {pin} tok in, {pout} out", C.THINK
+    else:
+        state, tone = "ready", C.THINK
+    t = f.tiny.render(state, True, tone)
+    surf.blit(t, t.get_rect(topright=(x + inner, 38)))
+
+    pygame.draw.line(surf, C.FAINT, (x, head_h - 6), (x + inner, head_h - 6))
+    pygame.draw.line(surf, C.FAINT, (x, H - foot_h), (x + inner, H - foot_h))
+
+    body_h = H - head_h - foot_h
+    rows = body_h // CHAT_LINE_H
+    lines = _blocks(conv, cols)
+    max_scroll = max(0, len(lines) - rows)
+    top = max(0, len(lines) - rows - min(scroll, max_scroll))
+    for i, (text, colour, indent) in enumerate(lines[top:top + rows]):
+        surf.blit(f.chat.render(text, True, colour),
+                  (x + (CHAT_INDENT if indent else 0), head_h + i * CHAT_LINE_H))
+
+    y = H - foot_h + 10
+    if focused:
+        shown = line[-(cols - 2):]
+        surf.blit(f.chat.render(f"> {shown}_", True, C.INK), (x, y))
+    else:
+        surf.blit(f.chat.render("TAB to type to it", True, C.FAINT), (x, y))
+    hint = ("ENTER send   ESC stop typing   /status resend the line"
+            if focused else "TAB talk   V what it sees   N next day   wheel scrolls")
+    surf.blit(f.tiny.render(hint, True, C.THINK), (x, H - 20))
+    if scroll:
+        s = f.tiny.render(f"scrolled back {scroll}", True, C.BAD)
+        surf.blit(s, s.get_rect(topright=(x + inner, H - 20)))
+    return max_scroll
 
 
 def draw_cooldowns(surf, w, f):

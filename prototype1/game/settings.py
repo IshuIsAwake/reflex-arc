@@ -9,12 +9,37 @@ not watched anything play.
 # "gemma" -- a day is DAY_STEPS actions and the clock becomes a stopwatch that only
 #            watches. A model's thinking time then costs it nothing, so the day is
 #            the same size on any machine and two runs actually compare.
+# `main.py --gemma` forces the second one, because a model that paid for thinking
+# would be a different experiment on every machine.
 DAY_MODE = "human"
 DAY_SECONDS = 300
-DAY_STEPS = 400         # one per tile walked, one per interact / play / buy
+DAY_STEPS = 600         # one per tile walked, one per interact / play / buy
 
 TIME_SCALE = 1.0        # 2.0 makes the day and every cooldown run twice as fast
 VISION_RADIUS = 3       # how far you see in an area whose map you do not have
+
+# --- the model -------------------------------------------------------------
+# Only read under --gemma. Measured on a 6 GB RTX 3050 laptop, 2026-08-26: about
+# 20 tokens a second, 3.6 GB of VRAM, and flat out to 16k of context. A reply is
+# ten to twenty seconds, and thinking roughly doubles it.
+MODEL = "gemma4:e4b"
+OLLAMA_HOST = "http://localhost:11434/api/chat"
+MODEL_CTX = 16384       # Ollama defaults to 4096 and truncates silently. Never unset.
+                        # Raised from 8192 on 2026-08-26: real runs already reached
+                        # 9,391 prompt tokens *before* a view block existed, so the
+                        # old value was overflowing and silently dropping the morning.
+                        # The model measured flat out to 16k on the 6 GB laptop.
+MODEL_THINK = False     # the reasoning trace: shown in the pane, kept out of context.
+                        # Measured 2026-08-26 -- on, a turn is ~46s; off, ~25s. Off by
+                        # default because a conversation you wait 46s for is not one.
+MODEL_KEEP_ALIVE = "30m"   # a reload costs five seconds and a day has many pauses
+MODEL_TIMEOUT = 600
+CHAT_W = 640            # pixel width of the pane gemma talks in
+
+# Tool calls gemma may make in one human turn before it is made to stop and speak.
+# Not tidiness: `distance` costs no steps, so a model looping on a misread position
+# would never be stopped by the day's budget. This is the only backstop.
+MODEL_MAX_HOPS = 8
 
 MOVE_DELAY_MS = 220     # hold a direction this long before it repeats
 MOVE_REPEAT_MS = 70     # then one step every this long

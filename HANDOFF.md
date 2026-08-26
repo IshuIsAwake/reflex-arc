@@ -17,64 +17,68 @@ already set), a rover for hackathons. Full plan in [`README.md`](README.md); rov
 
 ## Prototype 1: the world and the planner are built
 
-**Three areas, fog, mazes, snake pits, two counters, a vault, and A\* behind a console.** Playable by
-hand, no model in it. It is committed — `prototype1/` had never been in git until 2026-08-26, which
-is why there was nothing to step back to when the next part went wrong.
-
-Everything prototype-scoped is in [`prototype1/HANDOFF.md`](prototype1/HANDOFF.md). Read that before
-touching the code, and [`prototype1/NAVIGATION.md`](prototype1/NAVIGATION.md) before touching the
-planner.
+**Three areas, fog, mazes, snake pits, two counters, a vault, and A\* behind a console.** Read
+[`prototype1/HANDOFF.md`](prototype1/HANDOFF.md) before touching the code, and
+[`prototype1/NAVIGATION.md`](prototype1/NAVIGATION.md) before touching the planner.
 
 **A\* plans over what has been seen, not the true map**, which is what keeps maps worth buying. Fog
 is assumed empty, so a plan is a hypothesis and walking into an unseen wall is how the map fills in.
 `Area.at` returns ground truth at every fog setting, so `nav.known()` is the single gated door onto
-the grid and a test counts the reads to keep it that way. The map view draws the plan and the walk
-together for the same reason: the plan may cross walls, the walk cannot, and the gap between them is
-what the fog cost.
+the grid — two tests now count the reads, because the view went through it too.
 
-## Next conversation: rebuild the skill interface, one piece at a time
+## Gemma can see and walk
 
-**A spike built the whole gemma integration in one session on 2026-08-26 and it was reverted** —
-skill interface, Ollama loop, persistence, replay and a watch window, all at once, which is more
-than one gate's worth of work. It survives on `spike/gemma-integration` and it worked. **Rebuild it
-by hand anyway — do not cherry-pick from that branch.** Decided 2026-08-26: it is a record of what
-went wrong, not a patch to apply, and its four decisions stay settled rather than re-argued.
+**Built 2026-08-26.** `python game/main.py --gemma` puts the game on the left and gemma on the
+right, with a view block injected on every request and two tools, `goto` and `distance`. It reads
+its own coordinates and does the arithmetic: *"go 6 blocks north"* from (1,15) comes back
+`goto(1,9) → DONE(steps=6)`. The model's whole side is written up in
+[`prototype1/SIGHT.md`](prototype1/SIGHT.md); everything prototype-scoped is in
+[`prototype1/HANDOFF.md`](prototype1/HANDOFF.md).
 
-**Read [`prototype1/FINDINGS.md`](prototype1/FINDINGS.md) first.** It is what that spike cost to
-learn: six bugs and four decisions, most of them invisible to a code review because the tests were
-green throughout. It ends with the order to rebuild in. The single most useful line in it — *a lying
-success code is worse than any failure code* — came from a four-day model run that went nowhere
-because `goto` answered `DONE` for a move that never happened.
+**The two shapes stayed distinct and it was worth it.** `goto` is a tool gemma asks for; the view
+arrives unbidden and cannot be requested. There is no `look()` and never needs to be — with `goto`
+as its only tool, *"what is around you?"* drew a `goto` to the cell it already stood on, twice out
+of two. With the view injected, the same question now draws zero calls.
 
-Model is settled: `gemma4:e4b` via Ollama, confirmed installed. **Do not shop and do not benchmark
-alternatives.**
+**Next is `interact`, and five live runs decided it.** Told *"go to the shop"*, gemma arrives in one
+call and then wanders for seven more, because there is nothing to *do* at a shop and no reason to
+prefer any direction. Every turn binds against the tool-call cap for that reason. The three
+couplings in `world.py` that block `interact` are now on the critical path.
+
+**Read [`prototype1/FINDINGS.md`](prototype1/FINDINGS.md) first.** Six bugs and four decisions from
+the reverted `spike/gemma-integration` — rebuilt by hand rather than cherry-picked, and the four
+decisions held up — plus six more from these runs. Nearly all were invisible to a code review
+because the tests were green throughout. The oldest line in it, *a lying success code is worse than
+any failure code*, keeps earning its place: both new failures were successes that could not advance
+anything, and the sharpest new one is that **a field is not a sentence.**
+
+**Model is settled: `gemma4:e4b` via Ollama.** Measured 2026-08-26 on the 6 GB RTX 3050 laptop: ~20
+tok/s, 3.6 GB VRAM, flat out to 16k context; a turn is ~25s with thinking off. The 9.6 GB file is
+59% unquantised per-layer embeddings and ~0.9 GB of unused vision and audio towers, so
+`gemma4:e4b-it-qat` (6.1 GB) is the one swap worth trying. **Do not otherwise shop.** Native tool
+calls work and arrive already parsed. It reliably misreads a monospace grid, which is why the view
+names things rather than only drawing them.
 
 ## The live decision: which SIH track we build
 
-[`docs/sih-decision.md`](docs/sih-decision.md) (2026-08-24) is the full argument. In short:
-
-- **Student Innovation is not a separate track** — it is 34 of SIH 2026's 226 statements. The rover
-  files under Hardware / Space Technology. ISRO issued 11 statements and none is a rover.
-- **A second way in appeared.** PS 26167 (ISRO, *SatQuery AI*) fits GHOST, the hyperspectral
-  framework Ishan and Abhishek already shipped — honestly ~15–20% of that deliverable, with the
-  entire language half unbuilt.
-- **The asymmetry is the judges.** A ministry statement means the judge already believes the problem
-  matters. Student Innovation means carrying 100% of the explanation to people who did not ask — the
-  configuration that failed GHOST at a previous hackathon.
+**Still open, closes 6 Sept.** The whole argument is in
+[`docs/sih-decision.md`](docs/sih-decision.md) (2026-08-24) and has not moved: the rover under
+Student Innovation against PS 26167 (ISRO, *SatQuery AI*), which GHOST already half-answers. The
+asymmetry is the judges — a ministry statement means the judge already believes the problem matters.
 
 **A team may submit two ideas**, so what to *submit* and what to *build* are separate decisions.
 Undecided: which we build, what the other four do on a GHOST track, whether to submit both.
 **Prototype 1 does not depend on any of this** and can proceed regardless.
 
-## State as of 2026-08-26
+## State as of 2026-08-26 (evening)
 
 - **Registration closes 6 Sept.** Internal hackathon Sept–Oct, Grand Finale December. SIH is not the
   goal — it is development time with a deadline. Nothing depends on selection.
 - **Team: six confirmed.** Ishan (planner and interface, both tracks), Abhishek (game dev), Koushik
   (IoT), Nithin (hardware), and two more. The coursework track is separately staffed.
-- **The team ideation session has not happened** — called off 24 Aug for lack of availability. Roles
-  stay undivided and no work-division document should be written before it runs. The plan for it is
-  prepared and unused in [`docs/team-session.md`](docs/team-session.md); it is not re-derived here.
+- **The team ideation session has not happened** — called off 24 Aug. Roles stay undivided and no
+  work-division document should be written before it runs; the plan is in
+  [`docs/team-session.md`](docs/team-session.md).
 - **Mod layer is at zero and the gauge answers are still unwritten** — five questions in
   [`README.md`](README.md). Abhishek is the person for it and is idle for want of a spec.
 - **Headcount does not parallelize the rover** — arena waits on the terrain model, which waits on

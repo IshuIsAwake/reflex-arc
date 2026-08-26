@@ -93,6 +93,96 @@ gap at (15,11), five replans in. `world.last_walk` now records every cell actual
 map shades it. The walk can never cross a wall and the plan can, so where the two disagree is exactly
 where the fog lied.
 
+## What sight and `goto` cost to learn, 2026-08-26
+
+Four live runs, rebuilding the interface by hand. The build is written up in
+[`SIGHT.md`](SIGHT.md); this is what running it taught that speccing it did not.
+
+**A field is not a sentence.** The `beside=` field above was the fix for "arriving reads as not
+arriving", and it was not enough. Gemma read `DONE(at=(10,15), beside=(10,16))` as a failure to reach
+(10,16) and spent an entire run trying to step into a shop counter — *"moving there has no apparent
+effect."* The same failure as August, one layer further in. `Result.advice` now says it in words:
+*"(10,16) is solid, so stopping beside it IS arriving."* It is kept off `__str__` because the HUD
+does not wrap and the console truncates at 88 characters, so folding it in overflowed one surface
+and silently cut the other.
+
+**A costless success is the polite cousin of a lying one.** Seven identical `goto(3,8)` calls, seven
+honest `DONE(steps=0)` answers, and no reason to stop: a success that cannot advance anything leaves
+the caller nothing to correct. It repeats. `skills._stuck` says so from the third repeat. The real
+cause was that it wanted to *use* the board and `interact` does not exist — which is what put
+`interact` next.
+
+**A limit enforced by asking is not a limit.** The tool-call cap first appended *"stop and say what
+you have found"* and made an ordinary request; gemma called another tool and it fired four times in
+one turn. Withholding the tool schemas was still not enough — it fired **eight** times. Only a flag
+that drops later calls on the floor actually stopped it. Assume anything delegated to the model's
+cooperation, at any remove, will not hold.
+
+**Gemma cannot index a monospace grid, and will state wrong readings confidently.** At (10,15) it
+announced "clearly visible floor tiles" east and west, called `goto` on both, and got `UNREACHABLE`
+twice; both are walls and the planner was right every time. Its conclusion was that it was "stuck in
+a cycle of failure." The view now names the four adjacent cells in words, after which it read them
+back exactly. **Any coordinate the model has to count out of a grid is suspect** — give it the
+answer instead.
+
+**With one tool it uses that tool for everything.** Asked *"what is around you?"* with `goto` as its
+only skill, it called `goto` on the cell it was already standing on, two times out of two. That is
+the measurement behind injecting the view rather than offering a `look()`. Once the view was
+injected and a second skill existed, the same question drew **zero** tool calls.
+
+**An optional argument gets volunteered.** With `avoid` described merely as "optional", gemma passed
+`avoid="auto"` unasked, which would have returned `NOT_VISITED` for a reason it never intended.
+Describing it as *"omit it entirely unless you have a specific cell in mind"* fixed it three for
+three. Related to the `'<nil>'` note above and the same lesson: an argument the model does not need
+must be made actively unattractive, not merely not-required.
+
+**The cheap news.** `bad_args` was 0 across every run, 56 calls in total, so the required `why` and
+the tolerant parser cost nothing measurable.
+
+**Run-to-run variance is large, and an n=1 comparison here is worthless.** The same four-turn script
+on the same build gave 31 calls, then 14, then 32. A drop from 31 to 14 was written up as a win and
+was mostly luck; the next run took it straight back. **Do not report a single run as a result** —
+what survived repetition was the structural stuff (the cap firing at most once, zero `bad_args`, the
+arithmetic on "go six blocks north" landing right three times out of three), not the totals.
+
+**What it does when it has nothing to do is wander.** Told *"go to the shop"*, it arrives in one
+call and then spends the remaining seven exploring at random, hitting the hop cap. Every turn binds
+against the cap for the same reason. This is not a loop bug and no wording fixes it: there is
+nothing to *do* at a shop without `interact` and `buy`, and no reason to prefer one direction over
+another without a goal. It is the clearest argument in the file for what to build next.
+
+### Two things measured because they looked obvious and were not
+
+**Dropping the empty cells makes the view five times *bigger*.** The intuition is that feeding 400
+mostly-blank tiles every turn is wasteful, and it is wrong. Counted on `gemma4:e4b`, mapped plaza:
+
+| representation | tokens |
+|---|---|
+| ASCII grid with rulers | **196** |
+| rows as run-length spans (`15: wall 0, floor 1-7, ...`) | 598 |
+| only non-floor cells, as coordinate lists | 972 |
+
+A run of `#####` collapses to almost nothing, while `(3,4)` costs about six tokens *per cell*.
+Anything coordinate-shaped is expensive and anything repetitive is nearly free. The whole day-one
+view is 467 tokens against a fixed 1,028 for the system prompt and tool schemas together — **the map
+is not the expensive part of the request and never was.** Do not re-derive this by argument.
+
+**Thinking does not help it read the grid, and costs 187× the time.** Ten cells named by coordinate,
+answered against a fully mapped plaza:
+
+| | correct | wall clock | output tokens |
+|---|---|---|---|
+| `MODEL_THINK = False` | 5/10 | 3s | 20 |
+| `MODEL_THINK = True` | 5/10 | 562s | 12,006 |
+
+On one cell it spent 124 seconds and still answered "floor" where a coin bag is. **The real number
+is the 50%**, which holds either way: gemma cannot index a monospace grid and will state a wrong
+reading with complete confidence. That is not fixable by giving it more room to think, so the view
+pre-computes every exact fact — the four neighbours, how far each direction is open, and every thing
+with its coordinate — and the grid heading now tells it the picture is not a table. The prompt also
+tells it never to work out reachability itself: `distance` is exact, costs no steps, and was sitting
+there unused while gemma counted characters and got it wrong.
+
 ## The order to rebuild in
 
 One at a time, each landing with its own tests before the next starts.

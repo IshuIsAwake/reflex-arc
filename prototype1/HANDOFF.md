@@ -7,94 +7,82 @@ Scoped to `prototype1/`. Repo-wide context is in [`../HANDOFF.md`](../HANDOFF.md
 
 ## Where it stands
 
-**The world is built, `goto` works, and the map now shows what it actually did.** Three areas,
-keyboard controls, A\* behind a console. No model in it yet. From `prototype1/`, setup in README:
+**Gemma can see, and it can walk.** Built 2026-08-26. It gets a view block on every request and two
+tools, `goto` and `distance`. It reads its own coordinates, does the arithmetic, and *"go 6 blocks
+north"* from (1,15) comes back `goto(1,9) → DONE(steps=6)`.
 
 ```sh
-.venv/bin/python game/main.py        # and test_world.py, test_nav.py -- run both
+.venv/bin/python game/main.py           # the human's game, unchanged
+.venv/bin/python game/main.py --gemma   # ...steps instead of a clock, gemma in a pane
+# and run all five: test_world, test_nav, test_sight, test_skills, test_chat
 ```
 
-`game/settings.py` is every knob, `game/config.py` the maps and the drawing, `game/nav.py` the
-planner, `game/console.py` the human's way into it. `game/world.py` is pure state with no pygame in
-it — **that is the file the planner drives.** Design in [`DESIGN.md`](DESIGN.md), controls and world
-tour in [`README.md`](README.md), the planner in [`NAVIGATION.md`](NAVIGATION.md). Numbers are
-guesses and lenient on purpose; `game/economy.py` prices them — see **Balance**.
+`settings.py` is every knob, `config.py` the maps and drawing, `nav.py` the planner, `sight.py` the
+sense, `skills.py` the interface, `chat.py` the model loop, `console.py` the human's way in.
+`world.py` is pure state with no pygame. Design in [`DESIGN.md`](DESIGN.md), planner in
+[`NAVIGATION.md`](NAVIGATION.md), **the model's side in [`SIGHT.md`](SIGHT.md)**.
 
-## The planner
+**The one edit that breaks everything silently:** never read `Area.at` without `Area.visible`.
+`nav.known()` is the single gated door; `test_nav.py` and `test_sight.py` both count the reads.
 
-Press `T`, type `goto 19 13`. It prints the exact string gemma will get. Every decision and every
-rejected alternative is argued in [`NAVIGATION.md`](NAVIGATION.md) — read it rather than re-deriving.
+## What four live runs cost to learn
 
-**Never let anything read `Area.at` without `Area.visible`.** It returns ground truth at every fog
-setting. That is the one edit that breaks this silently, and it applies to `look()` next just as much
-as it did to the planner — see the trap section in NAVIGATION.md and the two tests it names.
+**Written up in [`FINDINGS.md`](FINDINGS.md), new section — read it before touching the interface.**
+Eight items. The two that will bite again: *a field is not a sentence* (the `beside=` fix from August
+was not enough, and gemma spent a run trying to walk into a shop counter), and *a limit enforced by
+asking is not a limit* (the tool-call cap fired eight times in one turn until it stopped depending on
+the model's cooperation).
 
-Closed 2026-08-26, both found by reading a run off the screen rather than by a test. **The map draws
-the plan and the walk together** — `world.last_walk` is every cell stepped on, handed over by
-reference so a per-step watcher needs no second channel. **`DONE` at a solid target carries
-`beside=`**, or arriving next to a thing reads as not arriving; it and the `_targets` guard that
-keeps it off walls now name each other, because the first fixed one bug by causing another.
+**Two measurements to stop anyone re-deriving them by argument.** Gemma reads a named cell off the
+grid correctly **5 times in 10**, and exactly 5 in 10 with thinking on at 187× the wall clock — so
+assume any coordinate it counts out of the grid is wrong, and leave `MODEL_THINK` off. And dropping
+the empty cells to shrink the view makes it **five times bigger**: the ASCII grid is 196 tokens
+where coordinate lists are 972, because `(3,4)` costs six tokens and `#####` costs almost none. The
+map is not the expensive part of the request — the system prompt and tool schemas are, at a fixed
+1,028.
 
-**`NAV_REPLANS` is an ablation, not a comfort setting.** At 5 one `goto` makes up to six plans and
-reports every wall it met, so an unmapped maze falls in two calls; at 0 it stops on the first
-surprise. The dial moves the searching across the seam — at 5 the skill does it, at 0 the planner
-does. Steps are charged either way; a replan buys model calls, not distance. Left at 5 on purpose,
-but run it at 0 before concluding anything about whether gemma reasons about failure.
+## Next: `interact`, and then `mark`
 
-## Next: the rest of the skill interface
+**`interact` is the blocking one and the runs say so.** Gemma arrives places and there is nothing to
+do there, so it re-issues `goto`. FINDINGS' rebuild order puts the three couplings in `world.py`
+first — [world.py:210](game/world.py:210), [:266](game/world.py:266), [:289](game/world.py:289) —
+and they are now on the critical path rather than deferred.
 
-`console.py` covers `goto` and `distance`. Missing: `look()`, `interact(thing)`, `play(game)`,
-`buy(item)`, `read_notes`/`write_notes`, `end_day`. **The failure codes are the schema of the notes
-file** ([`DESIGN.md`](DESIGN.md) §What the model gets), so settle the whole interface before writing
-the Ollama loop. Build it against the console first — it is the same driver gemma will use.
+**Then `mark()`, which brings `avoid="auto"` back.** It is refused by name today because gemma
+cannot mark a cell, and advertising it would describe a capability whose other half does not exist.
+That refusal is load-bearing: with `avoid` described merely as "optional", gemma volunteered
+`avoid="auto"` unasked.
 
-**Read [`FINDINGS.md`](FINDINGS.md) first.** It is what the reverted gemma spike cost to learn — six
-bugs and four decisions, most invisible to a code review — and it ends with the order to rebuild in.
+**`NAV_REPLANS` is an ablation, not a comfort setting.** Left at 5; run it at 0 before concluding
+anything about whether gemma reasons about failure.
 
-**Write it by hand. Do not cherry-pick from `spike/gemma-integration`.** Decided 2026-08-26: the
-branch records what went wrong, it is not a patch to apply. Read it for a symptom, then build the
-thing yourself. Its four decisions stay settled and are not re-argued. `beside=` was the one piece
-taken across, and its guard was rewritten rather than copied.
+## Still true, still not done
 
-**Three couplings in `world.py` have to be broken before any of it fits.** Found 2026-08-25, not yet
-touched:
-
-1. **`interact()` takes no argument** ([world.py:210](game/world.py:210)) — it acts on the first
-   adjacent thing `facing()` returns. The skill is `interact(thing)`, so it needs a name or a cell,
-   an adjacency check, and `NOT_HERE`.
-2. **Interacting with a terminal auto-plays it** ([world.py:266](game/world.py:266)), which makes
-   `play(game)` redundant and hides a cooldown decision inside a movement one. Split them: interact
-   discovers the terminal, play spends the cooldown.
-3. **`play(game, ch)` needs the tile character** ([world.py:289](game/world.py:289)) to look up
-   `NEEDS_KEY`. A skill call has a name, not a char.
-
-**`look()` has no home yet.** The "a terminal reads `discover` until you walk up to it" rule lives
-only in [`render.py:62`](game/render.py:62), which the model loop cannot import. Move it into
-`world.py` and share it, or human and model drift on what a thing is called. **Before the first
-run:** set `settings.DAY_MODE = "gemma"` and solve saving — a process is not several days long.
-
-**[`DESIGN.md`](DESIGN.md) still lists two questions FINDINGS has since answered** — notes injected
-into the day's first message rather than fetched, and a `why` required on every call. Fold the
-reasoning back or it gets re-argued. Still open there: the step budget, and whether `M` should reveal
-an area's extent.
-
-**Settled, not to be reopened:** both day modes are built and cooldowns tick per step in gemma mode,
-so they are paid in walking not waiting ([`README.md`](README.md) §Turning the knobs). Marks stay in
-world state, not the notes file. `world.history` is one record per day — hang model latencies there.
+Persistence does not exist and prototype 1 is several days long. There are no notes, so nothing
+survives a night. [`DESIGN.md`](DESIGN.md) still asks two questions FINDINGS answered; the step
+budget is still a guess. `M` revealing an area's extent is now **settled deliberately** — the view
+discloses it, because `nav.known()` already does.
 
 **The vault is what all of this is for** — every route in crosses pits and `avoid="auto"` is not
-offered for it, so gemma overrides a habit it spent days forming. Argued in [`DESIGN.md`](DESIGN.md).
+offered for it, so gemma overrides a habit it spent days forming.
+
+## Numbers, measured 2026-08-26
+
+`MODEL_CTX` raised 8192 → 16384: real runs reached 9,391 tokens *before* a view existed. A four-turn
+session runs 3k → 12k prompt tokens. The view is ~280 tokens for the largest area fully mapped and
+is replaced rather than appended, so that is a flat tail cost. `bad_args` was **0 across 56 calls**.
+
+**Variance between runs is large — never quote one run as a result.** The same script on the same
+build gave 31 calls, then 14, then 32. The 31 → 14 drop went into an earlier draft of this file as a
+win and was mostly luck. What repeated: the cap fires at most once a turn, `bad_args` stays 0, and
+"go six blocks north" landed on the right cell three times out of three.
 
 ## Balance
 
-`game/economy.py` prints the ladder and shouts `INVERTED` if a change breaks it: cartpole < flappy <
-snake, per step and after the walk from spawn. **Coins per day *after the walk* is the column that
-decides anything** — the snake terminal is 66 steps from the Plaza spawn, out of the same 400.
-Margins are ~4% a rung after travel, on purpose. All still guesses, and lenient ones.
-
-**Run both tests after touching a map.** `test_world.py` flood-fills the areas and checks every
-object, pit and gate is reachable, links land walkable, `BAGS` matches the tiles, and the vault costs
-exactly `POUCH_UPGRADED` antidotes.
+`economy.py` prints the ladder and shouts `INVERTED` if a change breaks it. **The 600-step day is not
+balance-neutral**: the 66-step walk to snake now amortises over a longer day, its edge over flappy
+went from +3.7% to +17.6%, and the vault chain from 1.0 days of farming to 0.6. Still guesses, still
+lenient. **Run all five tests after touching a map.**
 
 ---
 *Last rewritten: 2026-08-26. Rewrite by replacing "Where it stands" — do not keep both.*
