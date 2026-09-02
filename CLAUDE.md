@@ -18,6 +18,8 @@ using the best available method.
 README.md                        the idea and the current phase — read this first
 ROVER.md                         the hardware implementation — the hackathon track
 prototype1/                      the experiments lab — code, DESIGN.md, its own HANDOFF.md
+prototype2/                      the rover arena, and the demo build — results.md is what it closed
+prototype3/                      the active work — the map encoding and the missing skills
 docs/hollow-knight.md            the coursework implementation — design and experiments
 docs/technicalities.md           design decisions, constraints, deferred list
 docs/sih-decision.md             which SIH entry to make — open, closes 6 Sept

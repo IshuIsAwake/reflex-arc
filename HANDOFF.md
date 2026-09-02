@@ -8,91 +8,84 @@ this file are in [`CLAUDE.md`](CLAUDE.md).
 ## The project
 
 **Reflex Arc.** A language model issuing goals to frozen, learned control policies. The model has
-knowledge and no hands; the policies have hands and no knowledge. Named 2026-08-23 — it was "Brain
-and Spine" before, and the name has not gone outside the repo.
+knowledge and no hands; the policies have hands and no knowledge. Two implementations behind **one
+skill interface**: Hollow Knight for coursework (separate team, already set), a rover for
+hackathons. Full plan in [`README.md`](README.md); rover design in [`ROVER.md`](ROVER.md).
 
-Two implementations behind **one skill interface**: Hollow Knight for coursework (separate team,
-already set), a rover for hackathons. Full plan in [`README.md`](README.md); rover design in
-[`ROVER.md`](ROVER.md).
+## Prototype 3 is the active work
 
-## Prototype 1: the world and the planner are built
+**Start at [`prototype3/HANDOFF.md`](prototype3/HANDOFF.md).** It carries the plan in order — RLE
+encoding, `end()`, `fog()`, the scratchpad, the prompt rewrite — with the reasoning attached and a
+list of things already rejected, so none of it gets re-derived.
 
-**Three areas, fog, mazes, snake pits, two counters, a vault, and A\* behind a console.** Read
-[`prototype1/HANDOFF.md`](prototype1/HANDOFF.md) before touching the code, and
-[`prototype1/NAVIGATION.md`](prototype1/NAVIGATION.md) before touching the planner.
+Code is a fork of prototype 2. **Prototype 2 stays the demo build** and is pushed to main, so the
+encoding work cannot destabilise what five people watch.
 
-**A\* plans over what has been seen, not the true map**, which is what keeps maps worth buying. Fog
-is assumed empty, so a plan is a hypothesis and walking into an unseen wall is how the map fills in.
-`Area.at` returns ground truth at every fog setting, so `nav.known()` is the single gated door onto
-the grid — two tests now count the reads, because the view went through it too.
+## What prototype 2 settled
 
-## Gemma can see and walk
+[`prototype2/results.md`](prototype2/results.md), and it is two findings.
 
-**Built 2026-08-26.** `python game/main.py --gemma` puts the game on the left and gemma on the
-right, with a view block injected on every request and two tools, `goto` and `distance`. It reads
-its own coordinates and does the arithmetic: *"go 6 blocks north"* from (1,15) comes back
-`goto(1,9) → DONE(steps=6)`. The model's whole side is written up in
-[`prototype1/SIGHT.md`](prototype1/SIGHT.md); everything prototype-scoped is in
-[`prototype1/HANDOFF.md`](prototype1/HANDOFF.md).
+**`why` is optional now**, which took `BAD_ARGS` from 16 of 21 calls to 0 of 13.
 
-**The two shapes stayed distinct and it was worth it.** `goto` is a tool gemma asks for; the view
-arrives unbidden and cannot be requested. There is no `look()` and never needs to be — with `goto`
-as its only tool, *"what is around you?"* drew a `goto` to the cell it already stood on, twice out
-of two. With the view injected, the same question now draws zero calls.
+**gemma cannot count into the rendered grid and gemini can** — 0% at 4B *and* at 31B on counting a
+box or a row, correct for gemini on the first try. So it is a gemma limitation rather than an LLM
+one, the map is in the wrong channel for the model we ship, and the fix is the encoding. The
+remaining probe questions are a good hand-off to someone on the team; free tier is 20 requests per
+day per model, and failed requests count.
 
-**Next is `interact`, and five live runs decided it.** Told *"go to the shop"*, gemma arrives in one
-call and then wanders for seven more, because there is nothing to *do* at a shop and no reason to
-prefer any direction. Every turn binds against the tool-call cap for that reason. The three
-couplings in `world.py` that block `interact` are now on the critical path.
+`prototype2/HANDOFF.md` and `prototype2/MAP-READING.md` were deleted as stale on 2026-09-03. They
+are in history at `408e378` if the reasoning is ever wanted.
 
-**Read [`prototype1/FINDINGS.md`](prototype1/FINDINGS.md) first.** Six bugs and four decisions from
-the reverted `spike/gemma-integration` — rebuilt by hand rather than cherry-picked, and the four
-decisions held up — plus six more from these runs. Nearly all were invisible to a code review
-because the tests were green throughout. The oldest line in it, *a lying success code is worse than
-any failure code*, keeps earning its place: both new failures were successes that could not advance
-anything, and the sharpest new one is that **a field is not a sentence.**
+## Prototype 1 is paused, not finished
 
-**Model is settled: `gemma4:e4b` via Ollama.** Measured 2026-08-26 on the 6 GB RTX 3050 laptop: ~20
-tok/s, 3.6 GB VRAM, flat out to 16k context; a turn is ~25s with thinking off. The 9.6 GB file is
-59% unquantised per-layer embeddings and ~0.9 GB of unused vision and audio towers, so
-`gemma4:e4b-it-qat` (6.1 GB) is the one swap worth trying. **Do not otherwise shop.** Native tool
-calls work and arrive already parsed. It reliably misreads a monospace grid, which is why the view
-names things rather than only drawing them.
+**Three areas, fog, mazes, a vault, A\* behind a console, gemma seeing and walking.** Still runs;
+the reference for the coursework track. `interact(x, y, why)` is specified and unbuilt — spec in
+[`prototype1/HANDOFF.md`](prototype1/HANDOFF.md); [`AUDIT.md`](prototype1/AUDIT.md) explains it on
+paper for a judge.
 
-## The live decision: which SIH track we build
+**Read [`prototype1/FINDINGS.md`](prototype1/FINDINGS.md) before touching any prototype.** Twelve
+items, nearly all invisible to a code review because the tests were green throughout. Three recur:
+*a lying success code is worse than any failure code*, *a field is not a sentence*, and *check the
+fact, not the label*. **Never quote one run as a result** — the same script gave 31, then 14, then
+32 calls.
 
-**Still open, closes 6 Sept.** The whole argument is in
+**Local model is settled: `gemma4:e4b` via Ollama** — ~20 tok/s, 3.6 GB VRAM, flat to 16k on the
+6 GB RTX 3050. **Do not shop locally.** Hosted models are a diagnostic and are not constrained by
+VRAM; `gemma-4-31b-it` is the controlled scaling arm, same family and tokenizer at ~8× the size.
+
+## The live decision: which SIH track we submit
+
+**Still open, closes 6 Sept** — three days. The argument is in
 [`docs/sih-decision.md`](docs/sih-decision.md) (2026-08-24) and has not moved: the rover under
 Student Innovation against PS 26167 (ISRO, *SatQuery AI*), which GHOST already half-answers. The
 asymmetry is the judges — a ministry statement means the judge already believes the problem matters.
 
 **A team may submit two ideas**, so what to *submit* and what to *build* are separate decisions.
-Undecided: which we build, what the other four do on a GHOST track, whether to submit both.
-**Prototype 1 does not depend on any of this** and can proceed regardless.
+Undecided: which we build, what the other four do on GHOST, whether to submit both. **Neither
+prototype depends on any of it.**
 
-## State as of 2026-08-26 (evening)
+## State as of 2026-09-03
 
-- **Registration closes 6 Sept.** Internal hackathon Sept–Oct, Grand Finale December. SIH is not the
-  goal — it is development time with a deadline. Nothing depends on selection.
+- **Internal hackathon 4–5 Sept — tomorrow.** Registration closes 6 Sept. Grand Finale December.
+  SIH is development time with a deadline; nothing depends on selection.
 - **Team: six confirmed.** Ishan (planner and interface, both tracks), Abhishek (game dev), Koushik
   (IoT), Nithin (hardware), and two more. The coursework track is separately staffed.
 - **The team ideation session has not happened** — called off 24 Aug. Roles stay undivided and no
-  work-division document should be written before it runs; the plan is in
-  [`docs/team-session.md`](docs/team-session.md).
+  work-division document should be written before it runs; plan in
+  [`docs/team-session.md`](docs/team-session.md). **Prototype 2 is what it will be run against.**
 - **Mod layer is at zero and the gauge answers are still unwritten** — five questions in
   [`README.md`](README.md). Abhishek is the person for it and is idle for want of a spec.
-- **Headcount does not parallelize the rover** — arena waits on the terrain model, which waits on
-  measuring the real rover. Extra people need work off that chain.
-- **The rover's "surprise" hazard family is held out from training from day one.** Let one member
-  leak into the training distribution and the test is gone.
+- **Headcount does not parallelize the rover** — the arena waits on the terrain model, which waits
+  on measuring the real rover.
+- **The rover's "surprise" hazard family is held out from training from day one.**
 
 ## Novelty, unchanged
 
-Five published instantiations of LLM-over-RL-skills
-([`docs/02-critique-response.md`](docs/02-critique-response.md) §1). What is unoccupied is the
-*regime* — on the rover track specifically the latency argument, since terrain does not fight back.
-Live risk: being no better than a hardcoded table (Hösch: 46.4% vs 51.5%, p = 0.103). Prototype 1 is
-the cheapest available read on that risk.
+Five published instantiations ([`docs/02-critique-response.md`](docs/02-critique-response.md) §1);
+what is unoccupied is the *regime* — on the rover track, latency. Live risk: no better than a
+hardcoded table (Hösch: 46.4% vs 51.5%, p = 0.103), still unmeasurable. **Priority-weighted
+objectives are what would make it measurable** — with region size as the only axis, "go to the
+biggest blob" is the whole optimal policy and a lookup table ties by construction.
 
 ---
-*Last rewritten: 2026-08-26. Rewrite by replacing "State as of" — do not keep both.*
+*Last rewritten: 2026-09-03. Rewrite by replacing "State as of" — do not keep both.*
