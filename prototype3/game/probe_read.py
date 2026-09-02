@@ -1,14 +1,11 @@
 """Read a `probe_map.py` tape back and score it. No model, no GPU -- just the numbers.
 
-Kept separate from the probe so the run can be scored again, differently, without
-paying for it again. Everything here is computed from the tape; nothing is remembered
-from the run.
+Separate from the probe so a run can be scored again without paying for it again.
 
-**Baselines are the point.** A forced-choice question answered right is not evidence
-until it beats guessing, and "she named four fog regions and all four were real" is the
-kind of claim that dissolves when the baseline is computed. So every qualitative
-question carries the probability that a coin would have got it, and the exact binomial
-tail is printed beside the score.
+Baselines are the point: an answer is not evidence until it beats guessing, and "she
+named four fog regions and all four were real" dissolves once the baseline is computed.
+Every qualitative question carries the probability a coin would have got it, with the
+exact binomial tail printed beside the score.
 
 Usage: `.venv/bin/python game/probe_read.py runs/probe-<stamp>/probe.jsonl`
 """

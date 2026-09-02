@@ -162,16 +162,10 @@ def test_the_view_stays_affordable():
     ok = check("a fully surveyed arena fits a sane budget", worst < 7000,
                f"{worst} chars")
 
-    # **Measured here, because the intuition is wrong.** A sol-one view is not smaller
-    # than a fully-surveyed one -- it is very slightly *larger*. The grid is one
-    # character per cell whatever the cell holds, so 2,500 '?' costs exactly what 2,500
-    # mixed tiles cost, and the only difference is a few words in the neighbour lines.
-    # In *characters* the view is flat from the first request.
-    #
-    # Tokens are the other story and this test cannot see them: a run of fifty '?'
-    # merges into far fewer tokens than a mixed row of '.' and '#', so the real cost
-    # does climb as the arena fills, and how much is unknown. **Nobody has counted
-    # these with a tokenizer yet.** Do that before trusting any number here.
+    # The intuition is wrong: a sol-one view is not smaller than a surveyed one, since
+    # the grid is one character per cell whatever it holds. In *characters* the view is
+    # flat from the first request. Tokens are another story this test cannot see -- a run
+    # of fifty '?' merges into far fewer tokens than a mixed row.
     ok &= check("the character cost is flat, not growing",
                 abs(worst - day_one) < worst * 0.05,
                 f"sol 1 {day_one} chars, surveyed {worst} -- the grid is one char a "

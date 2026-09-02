@@ -1,27 +1,18 @@
-"""The run directory: two streams, written as they happen, kept or thrown away at quit.
+"""The run directory: two streams, written as they happen, kept or discarded at quit.
 
-**Write first, decide afterwards.** Asking at quit whether to keep the logs is the
-feature; buffering them in memory until the answer arrives is not the way to build it,
-because then a crash loses the run and says nothing. So a run streams to
-`runs/pending-<stamp>/` from the first frame, and quitting only chooses what happens to
-a directory that already exists:
+Write first, decide afterwards -- buffering until the answer arrives would lose a crashed
+run silently. A run streams to `runs/pending-<stamp>/` from the first frame:
 
     keep     ->  renamed to  runs/<stamp>/
     discard  ->  deleted
     crash    ->  left as     runs/pending-<stamp>/
 
-A leftover `pending-` directory is therefore not an error. It is a run nobody answered
-for, and it still holds everything.
+A leftover `pending-` directory is a run nobody answered for, not an error.
 
-Two streams, because they answer different questions:
-
-    chat.jsonl   what gemma was told and what it said. `chat.Tape` writes it, and
-                 every view goes in **in full**, because context holds only the newest
-                 one and the tape is the only place a finished run can be read back
-                 from. Reading one back is how prototype 1's worst bug was found.
-    game.jsonl   what happened to the world -- days opening and closing, every HUD
-                 message, every drive with what it planned against what it cost.
-                 Fed by `World.recorder`, so `world.py` still does no I/O of its own.
+    chat.jsonl   what gemma was told and said. Every view goes in full, because context
+                 holds only the newest and the tape is the only way to read a run back.
+    game.jsonl   what happened to the world, fed by `World.recorder` so `world.py` does
+                 no I/O of its own.
 
 No pygame in here, so the tests can drive the whole thing.
 """

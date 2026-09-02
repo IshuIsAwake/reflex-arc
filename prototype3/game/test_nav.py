@@ -236,12 +236,9 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
 
     # ...while a plan, made through fog, is still allowed to be wrong.
     #
-    # **Ask the reel, not `last_path`.** This checked `last_path` until 2026-08-29 and
-    # was red at the shipped NAV_REPLANS=8: that field holds only the newest hypothesis,
-    # so a drive that replans its way through to DONE leaves behind the one plan that
-    # turned out to be right, drawn over ground surveyed on the way. The test was
-    # asserting on the value its own docstring calls thrown away. Every plan the drive
-    # actually laid is in the reel, which is the record that exists for this.
+    # Ask the reel, not `last_path`: that field holds only the newest hypothesis, so a
+    # drive that replans through to DONE leaves behind the one plan that turned out
+    # right. Every plan the drive actually laid is in the reel.
     plans = [cells for kind, cells in w.reel[-1] if kind == "plan"]
     assert plans, "a drive lays at least one plan"
     assert any(C.ARENA[y][x] == "#" for cells in plans for x, y in cells), \

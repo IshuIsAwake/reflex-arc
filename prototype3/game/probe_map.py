@@ -1,42 +1,26 @@
 """Can gemma read the map she is sent? Measured, both arms, at two temperatures.
 
-**Why this exists.** `MAP-READING.md` scored her 0 of 3 on direct questions about named
-regions of a map she was holding, and recorded her saying she was not allowed to answer
-without driving there. What that document did not weigh is that the prompt told her so:
-three separate lines she reads every turn forbade counting cells off the grid. So the
-0/3 is confounded between *cannot* and *was told not to*, and n=3 is under this repo's
-own bar for quoting a rate at all.
+Answered: she cannot count cells off the picture, and gemini can. The table is in
+`../prototype2/results.md`.
 
-This runs both prompts over the same questions and scores every answer against the view
-block she was actually shown -- never against the true arena, which she cannot see.
+Every answer is scored against the view block she was actually shown, never against the
+true arena, which she cannot see.
 
-**Two axes, because the failure could be either.**
-
+Two axes:
   * *quantitative* -- name the cell at (x,y), count the classes in a box, list the rock
-    on a row. Every one of these needs indexing: turning a coordinate into a position in
-    a 50-character row. This is what she failed.
+    on a row. All of these need indexing a coordinate into a 50-character row.
   * *qualitative* -- which quadrant holds the most fog, where is the biggest unexplored
-    region, is there rock near the rover. None of these need counting; they are texture
-    reads. This is what she appeared to pass in the four sols of 2026-08-30, and the
-    open question is whether those were guesses. **Every qualitative question here is
-    forced-choice with a baseline computed in code**, so "lucky" is a number rather than
-    a worry.
+    region. No counting, just texture. Each is forced-choice with a baseline computed in
+    code, so "lucky" is a number rather than a worry.
 
-**Temperature is a variable and not a setting.** At `MODEL_TEMP = 0.0` one ask is one
-sample and re-asking proves nothing, which is why `MAP-READING.md` could not be repeated.
-Here temp 0 is run once as the deterministic reference and the model's own defaults are
-run N times for a distribution. The two are never averaged together.
+Two prompts: the live one, and the same with the two sentences restored that forbade
+counting cells off the grid. Temp 0 runs once as the deterministic reference and the
+model's own defaults run N times for a distribution; the two are never averaged.
 
-No tools are sent. She physically cannot drive, so the turn has to end in words, and a
-refusal is a refusal rather than a preference for acting.
+No tools are sent, so the turn has to end in words and a refusal is a refusal.
 
-**A second model is a third axis, added 2026-09-01.** Nothing measured so far separates
-*"the view is unreadable"* from *"a 4B model cannot read any view"*, and those two
-prescribe opposite work: the first says redesign the view, the second says the view was
-never the variable. `--backend gemini` puts the identical system prompt, view block and
-questions in front of a hosted model. Only the transport differs -- same `make_questions`,
-same views, same `score` -- because anything else that varied would make the comparison
-worthless. The hosted arm runs unblocked only; see the comment on `arms` in `main`.
+`--backend gemini` puts the identical prompt, view and questions in front of a hosted
+model -- only the transport differs. The hosted arm runs unblocked only.
 
 Run:
     .venv/bin/python game/probe_map.py --pilot                 # six calls, to time it
@@ -143,7 +127,7 @@ ROW = re.compile(r"^\s*(\d{1,2})  (.{50})$", re.M)
 def audit(w):
     """Check `cls` against the grid actually rendered, and die if they disagree.
 
-    MAP-READING is emphatic that an answer is scored against the block she was handed
+    An answer is scored against the block she was handed
     and never against the true arena, because the two differ everywhere she has not
     driven. `cls` reads `nav.known`, which is one layer below the renderer -- close
     enough to be right and close enough to drift. So the rendered rows are parsed back
@@ -225,7 +209,7 @@ def make_questions(worlds, seed=7):
                 truth=kind, extra={"cell": [x, y]}))
 
         # Two boxes: one mixed, and one with no fog in it at all. The second is probe 3
-        # from MAP-READING -- the region she refused to describe was fully revealed.
+        # the region she refused to describe was fully revealed.
         picked = []
         for want_clear in (False, True):
             for _ in range(400):
@@ -383,7 +367,7 @@ def score(q, said):
 def uniform_fill(q, parsed):
     """Did she answer a 30-cell box as though every cell were the same thing?
 
-    The signature failure in MAP-READING: not an off-by-one, a whole box reported as
+    The signature failure: not an off-by-one, a whole box reported as
     one class. Worth counting separately, because it is the shape of an answer produced
     without looking rather than a misread.
     """
@@ -465,13 +449,8 @@ def _post(url, payload, key):
             # opposite case and is the one thing here worth waiting out.
             if e.code != 429 and e.code < 500:
                 raise err from None
-            # **Not every 429 is a rate limit.** Measured 2026-09-02: gemma-4-31b-it
-            # refuses on `input_token_count, limit: 16000`, which is per minute and
-            # which pacing fixes -- it finished 210/210. gemini-3.5-flash refuses on
-            # `requests, limit: 20` after 21 calls at three a minute, which is a *daily*
-            # allowance that no backoff recovers. Waiting on the second is 42 seconds
-            # spent proving the quota is still spent, so the server's own retryDelay
-            # decides: anything longer than the ladder means stop and say which quota.
+            # Not every 429 is a rate limit. `input_token_count` is per minute and
+            # pacing fixes it; `requests` is a daily allowance no backoff recovers.
             wait = 2 ** attempt * 2
             if e.code == 429:
                 asked = re.search(r"retry[_ ]?delay\"?[:\s\"]+(\d+)", text, re.I)
@@ -479,12 +458,9 @@ def _post(url, payload, key):
                     wait = max(wait, int(asked.group(1)))
                 metric = re.search(r"metric:\s*\S*?/(\w+)", text)
                 name = metric.group(1) if metric else ""
-                # **The metric name decides, not the delay.** The measured 2026-09-02
-                # gemini-3.5-flash body carries no retryDelay at all, so the backoff test
-                # alone never fired and three more requests went into a wall that resets
-                # at midnight Pacific. A *requests* quota is the daily allowance and no
-                # sleep recovers it; `input_token_count` is per minute, which is the one
-                # pacing already fixes -- gemma-4-31b-it hit it and still finished 210/210.
+                # KNOWN WRONG -- see prototype3/HANDOFF.md. The regex above misses the
+                # server's actual wording ("Please retry in 58.5s"), so this aborts runs
+                # that had quota left and should have waited.
                 spent = name.endswith("_requests") or "per_day" in name
                 if spent or wait > S.GEMINI_MAX_BACKOFF:
                     raise urllib.error.HTTPError(
@@ -629,11 +605,8 @@ def main():
     views = {(wi, b): view_for(worlds[wi], b)
              for wi in range(len(worlds)) for b in (False, True)}
 
-    # **The hosted arm runs unblocked only, and that is not a shortcut.** The blocked
-    # paragraph is an artefact of the prompt gemma was given; the question this arm
-    # exists to answer is whether a larger model can read *the view we ship*, and the
-    # view we ship is the unblocked one. Running both would double a 15-per-minute
-    # budget to measure a sentence we already deleted.
+    # Unblocked only for the hosted arm: the question is whether a bigger model can read
+    # the view we actually ship, and running both would double a scarce request budget.
     arms = (("unblocked", live),) if hosted else \
            (("unblocked", live), ("blocked", blocked))
     runs = []
@@ -674,12 +647,9 @@ def main():
             else:
                 run_of_errors = 0
             ok, parsed = score(q, said) if not err else (None, None)
-            # Watched in the pilot: asked what sits at (12,35), the blocked arm replied
-            # `goto(1, 1, "To begin mapping the far northwest corner...")` -- the
-            # narrated call from FINDINGS, arriving in answer to a question about the
-            # map. No tools were sent, so it could not have driven even had it meant to.
-            # Counted rather than binned, because "answers a map question by trying to
-            # move" is the behaviour MAP-READING described in prose.
+            # Asked what sits at (12,35), the blocked arm once replied with a `goto`
+            # call. No tools were sent, so it could not have driven. Counted rather than
+            # binned: answering a map question by trying to move is the behaviour.
             rec = {"i": i, "world": q["world"], "axis": q["axis"], "kind": q["kind"],
                    "arm": arm, "temp": temp, "sample": s, "q": q["q"],
                    "truth": q["truth"], "extra": q["extra"], "said": said,
@@ -692,11 +662,8 @@ def main():
                    # its directory name is a tape that gets compared to the wrong one.
                    "model": model,
                    "thinking": S.GEMINI_THINKING if hosted else False,
-                   # **And which prompt asked it.** Two tapes were compared on
-                   # 2026-09-02 as though they were replications; `chat.SYSTEM` had been
-                   # edited between them and nothing on either tape said so. The
-                   # difference had to be recovered from file timestamps, which is not
-                   # evidence. A hash is eight characters and settles it.
+                   # Which prompt asked it. Two tapes were once compared as replications
+                   # when `chat.SYSTEM` had changed between them and nothing said so.
                    "system_sha": hashlib.sha256(system.encode()).hexdigest()[:8]}
             f.write(json.dumps(rec, ensure_ascii=False, default=list) + "\n")
             f.flush()

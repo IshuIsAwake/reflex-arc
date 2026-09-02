@@ -61,14 +61,9 @@ def viewport(surf, area, pos):
 # Scatter, from a hash of the cell. Deterministic, so the grit never crawls between
 # frames and the arena looks the same on every run and in every screenshot.
 #
-# **This is decoration and it is not a tile.** `sight.py` must never learn about it --
-# a pebble the human can see and gemma cannot is fine as long as it means nothing, and
-# it stops meaning nothing the moment anything reads it. A test in test_sight.py holds
-# that line.
-#
-# The rule that keeps decoration honest: grit is small, low-contrast and never fills a
-# cell; rock is large, high-contrast and always fills it. Nothing on this screen should
-# ever make you wonder whether it is passable.
+# Decoration, not a tile. `sight.py` must never learn about it -- a pebble the human
+# sees and gemma does not is fine only while it means nothing. test_sight.py holds that
+# line. Grit is small and never fills a cell; rock is large and always does.
 def _grit(x, y):
     """0-3 pebbles for this cell, as (dx, dy, radius, lighter) at tile scale."""
     h = (x * 73856093) ^ (y * 19349663)

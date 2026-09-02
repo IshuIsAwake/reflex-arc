@@ -1,27 +1,17 @@
 """Gemma, in the window, with one sense and one pair of hands.
 
-The model side, copied from prototype 1. Two things live here and they are
-deliberately different shapes:
+`goto` and `distance` are tools -- gemma asks, the world answers; `skills.py` owns them.
+The view is injected rather than fetched: `sight.view(world)` is appended to every
+request and stored nowhere, so context holds exactly one view and it is the current one.
 
-  * **`goto` and `distance` are tools.** Gemma asks; the world answers. `skills.py`
-    owns what they accept and what comes back.
-  * **The view is injected and never fetched.** `sight.view(world)` is appended to
-    every request and stored nowhere, so context holds exactly one view and it is
-    always the current one. There is no `look()` and there never needs to be.
+The system prompt promises exactly what is wired up, and a test holds it to the two
+skills. Describing a skill that does not exist invents a world the model reasons about
+and cannot reach.
 
-**The system prompt promises exactly what is wired up.** A prompt describing skills
-that do not exist is the same failure as a success code for a move that never
-happened: it invents a world the model then reasons about and cannot reach. A test
-holds it to the two. That is why the prompt below says nothing about the base being
-somewhere it must return to, nothing about storms, and nothing about samples --
-those are items 2, 3 and 6, and they are not built.
+Every world change happens on the main thread inside `pump()`. The model call is a
+socket on a background thread and produces only text and requests.
 
-**Every world change happens on the main thread, inside `pump()`.** The model call is
-a socket on a background thread and produces nothing but text and requests; the tool
-that drives the rover runs a frame later, where the renderer is.
-
-No pygame in here. `render.draw_chat` does the drawing and this file does the talking,
-the same split `world.py` and `render.py` already have.
+No pygame in here -- `render.draw_chat` draws, this file talks.
 """
 
 import json
@@ -37,72 +27,6 @@ import sight
 import skills
 from sight import status_line   # one wording for the morning and the view
 
-# What gemma is told. Every paragraph corresponds to something that exists.
-original_SYSTEM = """\
-You are the planner for a solar rover on Mars. You are not on Mars -- you are the team
-that decides where it goes. The rover has the wheels and no judgement; you have the
-judgement and no wheels. A person at the screen can see everything you can and is
-watching. 
-
-At the end of every message you are sent there is a block headed WHAT YOU CAN SEE
-RIGHT NOW. It is rebuilt from scratch each time and is always current. You never have
-to ask for it and there is no way to request it -- it simply arrives. It holds where
-the rover is, the map of everything it has seen so far, and a list of the landmarks
-found, each with its coordinates. Only one copy exists: the newest. If something
-mattered, say it out loud, because the older blocks are gone.
-
-You have two skills and no others:
-
-  goto(x, y, why)       drive there. One call drives the whole way.
-  distance(x, y, why)   what that drive would cost. Spends nothing.
-
-Both take ABSOLUTE coordinates -- a cell on the map in your view, never an offset from
-where the rover stands. If it is at (25,25) and you want it ten cells south, work out
-that this is (25,35) and pass that. Nothing here has a facing, so "forward" and "back"
-mean nothing on their own; if someone asks for one, pick a compass direction, say which
-you picked, and go.
-
-Every call needs a `why`: one line on what you expect from it, written before you find
-out. It changes nothing and nobody argues with it. It is there so that later it is
-possible to tell what you predicted from what you would say afterwards.
-
-A day is a fixed number of steps and driving spends one per tile. Talking and thinking
-cost nothing at all, so there is no hurry. You cannot end a day and you cannot start
-one -- only the person can.
-
-**Answering without calling a skill ends your turn.** You get up to eight calls in a
-row, and you keep them only for as long as you keep calling. The moment you reply with
-words alone, control goes back to the person and you do not act again until they speak.
-So never announce what you are about to do -- do it, and describe it afterwards. "I
-will check the distance next" spends your turn on a sentence.
-
-**Aim far.** `goto` drives the whole way in one call and reports every outcrop it
-meets, so a long shot into unknown ground is the single most productive thing you can
-do. Ground never seen is marked ? and a route through it is a guess -- `goto` assumes
-it is clear and drives until something refuses it. Being stopped by rock you could not
-have known about is not a mistake, it is how the map fills in, and a blocked drive
-teaches you more than a cautious one. Aim at far corners and distant edges rather than
-one cell at a time. **The arena has no wall around it.** The outer rows and columns are
-ordinary ground the rover can stand on, so aiming at the far edge is a real journey and
-not a mistake. Some of it is rock, like anywhere else, and you find that out by going.
-
-**Never work out for yourself whether the rover can reach something.** The picture of
-the map is the shape of the place, not a table, and you will misread it if you count
-cells off it. Everything exact -- what is beside the rover, how far each way is open,
-where each landmark is -- is written out underneath the picture. Read it there.
-
-Use `distance` only to compare journeys you are undecided about. Do not use it to check
-something you have already decided to do: `goto` tells you what it cost when it is
-finished, and asking twice for the same number wastes a call you could have spent
-driving.
-
-Nothing is scattered out there to collect yet and nothing is asked of you by the
-mission. Exploring the area, and being able to say what is where, is the whole job for
-now.
-
-You do not keep this conversation. When the day ends it is thrown away, and tomorrow
-you begin knowing nothing of it.
-"""
 
 SYSTEM = """\
 Congratulations on being the first LLM deployed directly to the surface of Mars. 
@@ -201,14 +125,9 @@ you begin knowing nothing of it.
 WHO = ("status", "you", "gemma", "think", "error", "note", "view", "call", "result")
 
 
-# Control tokens the template leaks into `content`. Found 2026-08-26 by reading a tape:
-# every one of eight gemma turns ended `<channel|>`, and because the reply becomes an
-# assistant message, the token was being fed back into context every turn and written
-# into the transcript. It looks like nothing and it is the model reading its own
-# scaffolding as though it were something it had said.
-#
-# The list is explicit rather than a catch-all `<...>` sweep: silently eating anything
-# in angle brackets would one day eat real content and never say so.
+# Control tokens the template leaks into `content`. Every one of eight gemma turns ended
+# `<channel|>`, which then fed back into context as something she had said.
+# Explicit rather than a catch-all `<...>` sweep, which would one day eat real content.
 JUNK = re.compile(r"<\|?(?:channel|end_of_turn|start_of_turn|eot_id|im_end|im_start|"
                   r"eos|bos|end_of_text)\|?>")
 
@@ -229,16 +148,11 @@ def cut_fabrication(text):
 
     Returns (kept, characters_dropped).
 
-    Found by reading `runs/20260829-134215/`: gemma answered with one sentence, a call
-    typed out as text, and then **four thousand characters of invented view** -- a full
-    grid, `399 steps left`, a position of (31,25) it had never occupied. It had slipped
-    out of answering and into completing the whole dialogue.
-
-    Left alone that becomes an assistant message, so from the next turn on the model is
-    reasoning over a map it made up, and the transcript shows the game printing its own
-    prompt. This is the same family as the `<channel|>` leak `clean()` handles -- the
-    template's shape reaching content -- one floor further up: there it was a stray
-    token, here it is the entire other speaker.
+    Gemma once answered with a sentence, a call typed as text, then four thousand
+    characters of invented view -- a full grid, a step count, a position it had never
+    occupied. Left alone that becomes an assistant message and she spends the next turn
+    reasoning over a map she made up. Same family as the `<channel|>` leak `clean()`
+    handles, one floor up: there a stray token, here the entire other speaker.
     """
     m = FABRICATED.search(text or "")
     if not m:
@@ -249,42 +163,19 @@ def cut_fabrication(text):
 def without_why(fn):
     """The call as history should carry it: everything except the rationale.
 
-    **A5, and it is an experiment rather than a tidy-up.** Its whole job is to sit on
-    the tape with a timestamp earlier than the result, so a reason given before an
-    outcome cannot be rewritten into a story told after one -- and that job is untouched
-    here. What it was *also* doing was riding back into context inside every assistant
-    turn.
+    `why` stays on the tape, timestamped before its result, but is kept out of context.
+    In the unattended stretches it was 51% and 47% of durable history -- more than
+    gemma's prose, the results and the map together -- and almost all of it a variation
+    on one sentence she was copying back off herself.
 
-    **A5 held, and the requirement it was paired with did not.** Stripping the field
-    from history also removed every example gemma had of a call carrying one, and she
-    duly stopped sending it -- 0 of 79 calls missing it before, 22 of 52 after, 16 of 21
-    in `runs/20260901-000753/`. Each omission was a `BAD_ARGS` that still cost a hop, so
-    the turn hit the cap having driven five times out of twenty-one. **The stripping was
-    not the mistake; requiring what had been stripped was.** `skills._why` made the
-    field optional on 2026-09-01 and this function is unchanged, which is the pairing
-    that was intended: out of context, still on the tape, never punished when absent.
+    Stripping it also removed every example of a call carrying one, so she stopped
+    sending it: 0 of 79 calls missing before, 16 of 21 after. That was fixed by making
+    the field optional in `skills._why`, not by putting it back in context.
 
-    Measured over the two unattended stretches on 2026-08-30 -- the ones that look like
-    the demo, where nobody is typing -- `why` was **51% and 47% of durable history**, more
-    than gemma's own prose, the results and the map put together. Twenty-eight strings,
-    mean 196 characters, nearly all a variation of *"I will drive south ... to maximize
-    sensor coverage"*. The model is reading its own habits back and copying them, and a
-    loop that survived five consecutive `_stuck` warnings is what that looks like from
-    outside.
-
-    **The 200-character cap in `skills._why` never touched this.** It trims `Call.why`,
-    which is what reaches the tape; the raw arguments went to the model whole. So the cap
-    was shortening the record and nothing else, and 26 of 28 strings hit it exactly.
-
-    **The copy is not optional.** `_settle` runs before `_run`, so `fn` here is the same
-    dict `skills.call` is about to read. Stripping in place would take the field out from
-    under it and every call would come back BAD_ARGS for want of the argument it had just
-    lost -- a parser bug wearing a model's face, which is the failure `skills` opens by
-    warning about.
-
-    Arguments that arrive as an unparsed string are left alone. `_args` would have to
-    guess at them, and guessing here would change what the model is shown for reasons
-    having nothing to do with `why`.
+    The copy is not optional: `_settle` runs before `_run`, so `fn` is the same dict
+    `skills.call` is about to read, and stripping in place would make every call come
+    back BAD_ARGS for want of the argument it just lost. Unparsed string arguments are
+    left alone rather than guessed at.
     """
     out = dict(fn)
     args = out.get("arguments")
@@ -330,15 +221,9 @@ class Conversation:
         self.last = None          # (seconds, prompt_tokens, output_tokens)
         self.tape = tape
         self.q = queue.Queue()
-        # **The planner waits for the rover.** `ready()` is asked before every request
-        # goes out; `main.py` points it at the animation so the next call cannot be
-        # made until the drive it follows has finished on screen.
-        #
-        # Decided 2026-08-29, and it costs wall clock on purpose. The alternative --
-        # thinking through the drive -- hides the round trip that is the entire
-        # architectural claim: a planner that is seconds away from the body it is
-        # driving. Watching gemma sit still while the rover crosses the arena is the
-        # demo, not an accident of the demo.
+        # The planner waits for the rover: `ready()` is asked before every request, and
+        # `main.py` points it at the animation. Thinking through the drive would hide the
+        # round trip that is the architectural claim.
         self.ready = lambda: True
         self.pending = None       # a request wanted but not yet allowed out
         self.hops = 0             # tool calls so far this human turn
@@ -395,22 +280,17 @@ class Conversation:
     def _go(self, use_tools=True):
         """One request. The view is built now, sent, and thrown away.
 
-        **Built at the moment it is sent, not the moment it was wanted.** With the
-        planner held until the drive finishes, those are different instants, and the
-        view has to describe the world the rover is actually in by then.
+        Built when it is sent, not when it was wanted: the planner is held until the
+        drive finishes, so those are different instants.
 
-        `use_tools=False` sends the schemas nowhere, so gemma physically cannot ask for
-        anything and the turn has to end in words. That is the only hard stop in the
-        loop -- see `_run`.
+        `use_tools=False` sends no schemas, so gemma cannot ask for anything and the turn
+        has to end in words. That is the only hard stop in the loop.
 
-        `messages` is the durable history and the view is never in it. Appending it
-        would leave gemma reasoning over a pile of stale maps and would eat MODEL_CTX in
-        a morning; rebuilding it here means the block is current even in the middle of a
-        tool chain, where the rover has just moved and its old position is a lie.
-
-        It goes at the *end* for a second reason: Ollama caches the prompt prefix, so a
-        block that changes every turn is free where it is and would invalidate the whole
-        conversation if it sat at the front.
+        `messages` is durable history and the view is never in it -- rebuilding it here
+        keeps it current mid-tool-chain, where the rover has just moved and its old
+        position is a lie. It goes at the *end* because Ollama caches the prompt prefix,
+        so a block that changes every turn is free there and would invalidate the whole
+        conversation at the front.
         """
         block = sight.view(self.world)
         self.write("view", sight.one_line(self.world), full=block)
@@ -422,21 +302,14 @@ class Conversation:
     def write(self, who, text, full=None, pane=True, **data):
         """The pane gets `text`; the tape gets `full` when the two differ.
 
-        That gap exists for exactly one record type. Context holds only the newest view,
-        so unless every view is written down as it was, a finished run cannot be read
-        back at all -- and reading one back, not testing, is how the rock bug was found.
-        The pane gets a one-liner instead because fifty rows of grid a turn would bury
-        the conversation it sits beside.
+        The gap exists for views: context holds only the newest, so a finished run can
+        only be read back if every one was written down as it was. The pane gets a
+        one-liner, since fifty rows of grid a turn would bury the conversation.
 
-        `data` rides on the tape record and never on the pane. It is for rows whose
-        point is a number rather than a sentence, because a figure that has to be
-        parsed back out of prose is a worse record than a field.
-
-        `pane=False` is the other half of the same idea: a row the tape wants and the
-        conversation does not. The cost line is the only one so far -- the footer
-        already draws it live from `self.last`, and a copy per response would push the
-        conversation off its own pane. Still one door onto the tape, so nothing can
-        write a record that forgets the day or the timestamp.
+        `data` rides on the tape and never on the pane -- a figure parsed back out of
+        prose is a worse record than a field. `pane=False` is the same idea: a row the
+        tape wants and the conversation does not. One door onto the tape either way, so
+        nothing can write a record that forgets the day or the timestamp.
         """
         if pane:
             self.lines.append((who, text))
@@ -453,13 +326,9 @@ class Conversation:
         can hold, and it drops the oldest messages without saying so. A day would
         quietly lose its own morning and gemma would read as forgetful.
         """
-        # **`MODEL_TEMP = None` means send no sampler at all**, which is not the same as
-        # sending a number and is the whole point of the setting. Ollama then falls back
-        # to the model's own Modelfile parameters -- for `gemma4:e4b`, temperature 1,
-        # top_k 64, top_p 0.95 -- rather than to a default we picked. Pinning temperature
-        # to 0 while leaving top_k and top_p at the model's values is a mixture nobody
-        # ever measured; omitting the key is the only way to say "the defaults" and mean
-        # every one of them. `--think` is what sets this, and `settings.py` says why.
+        # `MODEL_TEMP = None` omits the key entirely, which is the only way to say "the
+        # model's own defaults" and mean all of them. Pinning temperature while leaving
+        # top_k and top_p at the model's values is a mixture nobody measured.
         options = {"num_ctx": S.MODEL_CTX}
         if S.MODEL_TEMP is not None:
             options["temperature"] = S.MODEL_TEMP
@@ -526,16 +395,9 @@ class Conversation:
         d, wanted = payload
         used = d.get("prompt_eval_count", 0)
         self.last = (round(time.monotonic() - self._t0, 1), used, d.get("eval_count", 0))
-        # **What the request actually cost, on the tape and not only in the pane.**
-        # Every claim about what the view and the system prompt cost is a count of
-        # characters -- `test_sight.py` says so in as many words and has since it was
-        # written. This is the tokenizer, and it is Ollama's own: `prompt_eval_count`
-        # is what the model was really charged for the request we really sent.
-        #
-        # `hops` is the calls already run this turn, so the row says how deep in a turn
-        # the request was -- a tenth-hop prompt carries nine results the first did not.
-        # `tools` is here because a capped turn is sent without the schemas, and its
-        # prompt count drops for a reason that is nothing to do with the map.
+        # The real token count, not a character estimate. `hops` says how deep in a turn
+        # the request was; `tools` is here because a capped turn is sent without the
+        # schemas, so its prompt count drops for reasons unrelated to the map.
         secs, tin, tout = self.last
         self.write("cost", f"{secs}s   {tin} tok in, {tout} out", pane=False,
                    seconds=secs, tokens_in=tin, tokens_out=tout,
@@ -545,11 +407,8 @@ class Conversation:
             self.faked += 1
             self.write("error", f"cut {faked} chars of view block it wrote for itself")
 
-        # **Recovery happens before `_settle`, not after, and that ordering is the
-        # whole trick.** `_settle` is what appends the assistant turn, so the call has
-        # to be in `wanted` by then or it rides on no message at all -- and a tool
-        # result answering a question no assistant turn asked is the dangling history
-        # `_refuse` already exists to avoid.
+        # Recovery happens before `_settle`, which is what appends the assistant turn:
+        # the call must be in `wanted` by then or its result dangles off no message.
         if not wanted and not self.capped:
             got = skills.written_call(said)
             if got:
@@ -574,13 +433,12 @@ class Conversation:
         Watched live on 2026-08-29: asked to explore, gemma replied *"I will drive north
         ... goto(25, 15, "Driving north to explore the unknown area ahead")"* with no
         tool call attached. Nothing ran. On screen that is a confident sentence and an
-        arena that never moves, and there is nothing in it for the model to correct --
-        **the vanishing call, one more time.**
+        arena that never moves, and nothing in it for the model to correct.
 
         `MODEL_TEMP` is the fix and this is the backstop, so it fires at most once per
-        human turn. A second narrated reply in the same turn is left alone: at that point
-        it is not sampling noise, it is the model choosing prose, and re-asking forever
-        is the same mistake as a cap that asks nicely.
+        human turn. A second narrated reply is left alone -- by then it is the model
+        choosing prose, not sampling noise, and re-asking forever is the same mistake as
+        a cap that asks nicely.
         """
         self.nudged = True
         self.narrated += 1
@@ -597,18 +455,13 @@ class Conversation:
         This is on the main thread: `pump()` is called once a frame from the game loop,
         so a drive that moves the rover cannot land halfway through a redraw.
 
-        The hop cap is not tidiness. A model that has misread its own position can
-        reissue the same call forever, and `distance` costs no steps, so the day's
-        budget is not a backstop against it -- only this is.
+        The hop cap is not tidiness: `distance` costs no steps, so a model looping on a
+        misread position would never be stopped by the day's budget.
 
-        **The cap has to take the tools away, not ask nicely.** The first version
-        appended "stop and say what you have found" and then made an ordinary request:
-        gemma called another tool, the cap fired again, and on 2026-08-26 that ran four
-        times in a single turn. **And withholding the schemas is still not enough** --
-        the cap fired eight times in one turn even with `tools` left out. A limit that
-        depends on the model's cooperation, at any remove, is not one. `capped` is the
-        actual stop: once a turn has been cut short, further calls are dropped on the
-        floor rather than run, whatever comes back.
+        The cap has to take the tools away, not ask nicely -- asking ran it four times
+        in one turn, and withholding the schemas still let it fire eight. A limit that
+        depends on the model's cooperation is not one. `capped` is the actual stop:
+        further calls are dropped on the floor rather than run.
         """
         if self.hops >= S.MODEL_MAX_HOPS:
             first, self.capped = not self.capped, True
@@ -628,22 +481,14 @@ class Conversation:
     def _refuse(self, wanted):
         """Turn down calls that arrive after the cap, out loud and in the context.
 
-        Writing this to the pane alone left gemma asking for something and getting
-        silence -- eight turns running on 2026-08-26, one refused call in every one of
-        them and not a word about any. **A call that vanishes is the lying success code
-        inverted**: no outcome, nothing to reason about, so the same call comes back.
+        Writing it to the pane alone left gemma asking and getting silence for eight
+        turns running. A call that vanishes is the lying success code inverted: no
+        outcome, nothing to reason about, so the same call comes back.
 
-        It also keeps the history well formed. `_settle` has already appended the
-        assistant turn carrying these `tool_calls`, so a call with no answer dangles,
-        and a conversation where a call has no answer is one no template was written
-        for. Both refusal paths go through here so neither can forget.
-
-        **And it goes on the tape by name.** Reading back the 2026-08-29 run, the
-        transcript said `refused 1 call(s)` and nothing else: not which skill, not with
-        what arguments, not what gemma was told in reply. The model knew -- it gets the
-        REFUSED message below -- but the record did not, so the one question worth
-        asking of that run ("what did it keep trying to do?") could not be answered.
-        A call that vanishes from the log is the same failure one level up.
+        It also keeps history well formed -- `_settle` has already appended the assistant
+        turn carrying these `tool_calls`, so a call with no answer dangles. Both refusal
+        paths go through here. It goes on the tape by name, because `refused 1 call(s)`
+        cannot answer what it kept trying to do.
         """
         if not wanted:
             return
@@ -679,13 +524,12 @@ class Conversation:
         is the largest thing gemma produces, and what has to survive is the part it
         chose to say out loud.
 
-        An assistant turn that asked for tools has to go into the history carrying them,
-        even when it said nothing alongside -- drop the `tool_calls` and the tool
-        results that follow answer a question no message ever asked. It carries the
-        arguments without `why`; `without_why` says why, and it is the A5 experiment.
+        An assistant turn that asked for tools carries them into history even when it
+        said nothing alongside -- drop them and the results answer a question no message
+        asked. Arguments go in without `why`; `without_why` says why.
 
-        Returns what it actually said, which `_done` needs to tell a reply apart from a
-        call written out as one.
+        Returns what it actually said, which `_done` needs to tell a reply from a call
+        written out as one.
         """
         if self.think_buf.strip():
             self.write("think", clean(self.think_buf)[0])

@@ -1,13 +1,7 @@
 """World state. No pygame in here -- this is the part the planner drives.
 
-Prototype 1's world had coins, a shop, a tribe, three minigame terminals, keys,
-antidotes, cooldowns, snake pits and gates between three areas. All of it is gone:
-ROVER.md cut the minigames outright ("added to prove there was RL in the project,
-which terrain now does"), and the rest hung off them. What is left is an arena, fog,
-a rover, a day and a step budget.
-
-Result strings stay the failure codes prototype 1 arrived at, and the human sees the
-same strings the model does. That is the point of putting them in the HUD.
+An arena, fog, a rover, a day and a step budget. Result strings are the failure codes
+prototype 1 arrived at, and the human sees the same strings the model does.
 """
 
 import config as C
@@ -26,18 +20,14 @@ LABELS = {"H": "base pad"}
 def components(w, h, member):
     """The connected groups of cells `member(x, y)` accepts. Four-connected.
 
-    **One flood fill, two questions.** The rock in this arena is not uniform texture --
-    it is twelve boulders and a few long ridges -- and telling those apart is asking
-    which cells hang together. So is naming the unexplored regions, which is the next
-    thing this file is asked for. Same walk, different predicate, and writing it twice
-    is how the two answers drift apart.
+    One flood fill, two questions: which rock cells hang together, and -- with a
+    different predicate -- which unexplored ones do. `fog()` is the second caller.
+    Writing it twice is how the two answers drift apart.
 
-    Returns a list of sets, biggest first, so a caller that wants "the largest" does not
-    have to sort and a caller that wants all of them does not care.
+    Returns a list of sets, biggest first.
 
-    Four-connected on purpose. Eight would join two boulders that merely touch at a
-    corner, and on a grid the rover drives in four directions, a diagonal touch is not a
-    connection to anything that matters.
+    Four-connected on purpose: eight would join boulders that merely touch at a corner,
+    and the rover drives in four directions.
     """
     seen, out = set(), []
     for sy in range(h):

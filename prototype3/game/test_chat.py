@@ -565,14 +565,12 @@ def test_the_tape_keeps_the_view_the_pane_drops():
 def test_the_tape_says_what_each_response_cost():
     """Ollama's own count of what the request we really sent really cost.
 
-    Every figure this repo has for the view and the system prompt is a count of
-    *characters* -- `test_sight.py` says so in as many words and has since it was
-    written. Nothing can be compared across a change until this row exists, so it
-    lands before anything that would move it.
+    Every other figure here is a count of characters, so nothing can be compared across
+    a change until this row exists.
 
-    Fields rather than a sentence, because the row is read back by a script. And
-    `tools` is one of them: a capped turn goes out with no schemas, so its prompt is
-    cheaper for a reason that has nothing to do with the map, and a row that did not
+    Fields rather than a sentence, because a script reads the row back. `tools` is one of
+    them: a capped turn goes out with no schemas, so its prompt is cheaper for a reason
+    that has nothing to do with the map, and a row that did not
     say so would look like the view got smaller.
     """
     print("cost")

@@ -47,18 +47,13 @@ def _targets(area, goal, avoid):
     A solid *thing* -- today only the base pad -- means "get next to it", or
     `goto(25, 26)` at the pad would be UNREACHABLE taken literally.
 
-    **A known rock is not a thing and gets none of this.** It is `THINGS`, not
-    `SOLID`. Asking to drive into an outcrop you can already see is a mistake, and
-    the honest answer is UNREACHABLE. Answering `DONE(beside=...)` says you arrived
-    somewhere you never went, and a caller that believes it has moved has nothing to
-    correct: on 2026-08-26 the model spent four days stood beside a shop re-issuing a
-    move it had been told succeeded. Widening this back to `SOLID` is all it takes to
-    bring that back, and two tests in `test_nav.py` are the whole of what stands in
-    the way.
+    A known rock is not a thing and gets none of this -- it is `THINGS`, not `SOLID`.
+    Driving into an outcrop you can see is a mistake and UNREACHABLE is the honest
+    answer; `DONE(beside=...)` would say you arrived somewhere you never went, and the
+    model once spent four days re-issuing a move it had been told succeeded.
 
-    A **fogged** cell that turns out to be rock is the opposite case and stays
-    exactly as it was -- that one is a hypothesis, and driving into it is how the map
-    fills in. Only rock already seen is refused.
+    A fogged cell that turns out to be rock is the opposite case: that one is a
+    hypothesis and driving into it is how the map fills in. Only seen rock is refused.
     """
     ch = known(area, *goal)
     if ch is None or ch not in THINGS:
@@ -144,30 +139,22 @@ def _c(cell):
 class Result:
     """What a goto comes back with.
 
-    `str()` is exactly the line gemma reads and exactly the line the console prints,
-    so there is one wording rather than two. `at` is what the call is about -- where
-    you ended up, or the rock you hit. `stopped` appears only when those differ.
-    Every result carries `steps`, because the day is made of them.
+    `str()` is the line gemma reads and the line the console prints -- one wording, not
+    two. `at` is where you ended up or the rock you hit; `stopped` appears only when
+    those differ. Every result carries `steps`.
 
-    `beside` says the target was solid and this is as close as anyone gets. Without
-    it, arriving at the pad reads as `DONE(at=(25,25))` for a `goto(25,26)`, and a
-    model reasonably concludes it has not arrived and asks again -- watched gemma do
-    exactly that three times on 2026-08-25. It is set for things, never for rock, and
-    `_targets` is what guarantees that.
+    `beside` says the target was solid and this is as close as anyone gets. Without it,
+    `goto(25,26)` at the pad reads as `DONE(at=(25,25))` and the model concludes it has
+    not arrived. Set for things, never for rock.
 
-    **`new` is how much map the drive bought**, and the number that was missing. Read
-    back the sol of 2026-08-29: gemma swept the perimeter in fourteen drives and then
-    spent 439 steps, 358 of which revealed nothing at all, ping-ponging between three
-    corners while a five-hundred-cell blob sat unexplored. Every one of those answers
-    was `DONE(at=..., steps=49)` -- the same sentence the fourteen useful drives got.
-    A caller told only that it arrived and what it spent has no way to tell a drive
-    that mapped three hundred cells from one that mapped none, and so nothing to
-    correct. The count already existed: `world.revealed` is set on every move and was
-    read only by the fog animation.
+    `new` is how much map the drive bought. Without it gemma spent 439 steps, 358 of
+    them revealing nothing, and every answer was the same `DONE(at=..., steps=49)` the
+    useful drives got -- nothing to tell a drive that mapped three hundred cells from
+    one that mapped none.
 
-    It is `None` for a call that never drove, which is why it prints conditionally --
-    `distance` builds a Result purely to log, and "revealed nothing" would be a claim
-    about a trip nobody took.
+    `None` for a call that never drove, so it prints conditionally: `distance` builds a
+    Result purely to log, and "revealed nothing" would be a claim about a trip nobody
+    took.
     """
 
     GOOD = {"DONE"}
@@ -208,23 +195,16 @@ class Result:
     def advice(self):
         """The two answers a reader gets backwards, said again in words.
 
-        Kept off `__str__` so the code form stays one line: the HUD ticker does not
-        wrap and the console truncates, so folding this in would overflow one surface
-        and silently cut the other. Defined once here and laid out by whoever is
-        showing it -- `skills` appends it for gemma, the console prints it underneath
-        for the human. One wording, three places.
+        Kept off `__str__` so the code form stays one line -- the HUD ticker does not
+        wrap and the console truncates. `skills` appends it for gemma, the console
+        prints it for the human. One wording, three places.
 
-        `beside=` was supposed to be enough on its own and is not. Watched on
-        2026-08-26: gemma read `DONE(at=(10,15), beside=(10,16))`, decided it had
-        failed to reach (10,16), and spent the rest of the run trying to drive into a
-        counter -- *"moving there has no apparent effect."* **A field is not a
-        sentence.** A caller that cannot tell arrival from failure has nothing to
-        correct, which is the expensive kind of wrong.
+        `beside=` alone was not enough: gemma read `DONE(at=(10,15), beside=(10,16))`
+        as a failure to reach (10,16) and spent the run driving into a counter. A field
+        is not a sentence.
 
-        The zero-step case is the other half. `goto` to the cell you are standing on
-        succeeds, costs nothing, and reads as though something happened -- so a model
-        that has misread its position can bounce between two cells indefinitely and
-        never be told it is going nowhere.
+        The zero-step case is the other half -- `goto` to the cell you are standing on
+        succeeds, costs nothing, and reads as though something happened.
         """
         if self.beside:
             return (f"{_c(self.beside)} is solid, so stopping beside it IS "
@@ -356,28 +336,15 @@ def goto(world, x, y, avoid=None):
 def price(world, x, y, avoid=None):
     """What a trip would cost and what it might buy: `(steps, reveals)`.
 
-    **`steps` alone answers the wrong question for an exploration mission.** "Thirty
-    against fifty" says which journey is shorter and nothing about which is worth
-    taking, and on 2026-08-29 gemma did not call this skill once in twenty-seven calls.
-    `reveals` is the other half: walk the planned route, union what the rover would see
-    from each cell of it, and subtract what it has already seen.
+    `steps` alone answers the wrong question on an exploration mission -- which journey
+    is shorter says nothing about which is worth taking. `reveals` walks the planned
+    route, unions what the rover would see from each cell, and subtracts what it knows.
 
-    **The two numbers do not point the same way, and calling them both `optimistic` was
-    wrong.** The route is planned over fog assumed clear, so `steps` is a floor: a drive
-    that completes takes this long or longer. `reveals` was described the same way and is
-    not bounded at all. The reason is the mechanism already named above -- the drive
-    replans around rock the straight route assumed away, and the detour sweeps ground the
-    straight route would never have passed.
-
-    Measured 2026-08-30, thirty-eight trips priced and then driven from the same state:
-    nine revealed **more** than promised, worst case 68 against an actual 112. The run in
-    `runs/20260830-102123/` is the one that caught it -- priced `steps=53, reveals~299`,
-    drove it and got `steps=69, new=315`. So `reveals` is an estimate either way, and the
-    result string now says which number is a floor and which is a guess. **A field that
-    promises a direction it does not hold is the lying success code wearing a number.**
-
-    (Drives that stop early read shorter than priced, and all five of those in the sweep
-    were `BLOCKED`. The code carries that; `steps` is a floor for a trip that arrives.)
+    The two numbers do not point the same way. `steps` is a floor for a trip that
+    arrives, since the route is planned over fog assumed clear. `reveals` is not bounded
+    at all: replanning round rock sweeps ground the straight route never passed, and in
+    38 priced-then-driven trips nine revealed *more* than promised, worst 68 against an
+    actual 112. So the result string says which is a floor and which is a guess.
 
     `(None, 0)` if there is no route at all. Costs nothing and moves nothing.
     `avoid="auto"` is accepted even for somewhere the rover has never stood: the visited

@@ -1,39 +1,21 @@
 """What gemma sees. Injected at the end of every request, never fetched.
 
-**This is not a tool and there is no `look()`.** Position and the map arrive unbidden
-on every single call. What this prototype is trying to watch is what gemma *does* with
-what it sees, not whether it remembers to go and look -- a forgotten `look()` costs a
-whole day and teaches nobody anything. Measured on 2026-08-26: asked "what is around
-you?" with only `goto` wired up, gemma called `goto` on the cell it was already
-standing on, twice out of two. Given one tool it will use that tool for everything, so
-the sense has to be free.
+The sense is free rather than a tool: position and the map arrive on every call. Given
+only `goto`, gemma answered "what is around you?" by driving to the cell it was already
+standing on, twice out of two.
 
-**Live means replaced, not appended.** `chat.py` builds each request as
-`messages + [view(world)]` and never stores the result, so context holds exactly one
-view and it is always the current one. Appending would accumulate stale maps to reason
-off and eat MODEL_CTX in a morning. The trap that follows: the transcript is then the
-only record of what gemma was actually told, so the tape writes every view as it was.
-Reading a run back is how the rock bug was found.
+Replaced, not appended -- `chat.py` builds each request as `messages + [view(world)]`
+and never stores it, so context holds exactly one view and it is the current one. The
+tape therefore writes every view as it was, since the transcript is the only record of
+what gemma was told.
 
-**It shows the accumulated known map, not the sighted disc.** `nav.known()` returns "#"
-off the edge of the arena, so the planner already reasons over the whole seen-set *and*
-the arena's extent. Show gemma only the radius-3 disc and it cannot explain its own
-UNREACHABLE, cannot price a trip, and cannot tell rock it has met from rock it has
-merely guessed at.
+Shows the accumulated known map rather than the sighted disc, so gemma can explain its
+own UNREACHABLE and tell rock it has met from rock it has guessed at.
 
-**Ingenuity is item 5 and is not here.** When it lands it reveals a patch the rover has
-not driven through, which is a write into `Area.seen` -- this file needs no change for
-it, and that is the point of the sense being one function.
-
-No pygame in here, and **no read of `Area.at`.** `nav.known()` is the one gated door
-onto the grid and this file is the second thing through it. `test_sight.py` counts the
-reads exactly the way `test_nav.py` does, because `Area.at` returns ground truth at
-every fog setting and one missing `visible()` check hands gemma the whole map with
-nothing ever looking wrong.
-
-**And no read of the decoration.** The pebbles `render.py` scatters are texture, not
-tiles. If this file ever grows a reference to them, something the human can see and
-gemma cannot has become something both can, and the arena has quietly changed shape.
+No pygame, no read of `Area.at`, and no read of the pebbles `render.py` scatters.
+`nav.known()` is the one gated door onto the grid; `test_sight.py` counts the reads,
+because `Area.at` returns ground truth at every fog setting and one missing `visible()`
+check hands gemma the whole map with nothing looking wrong.
 """
 
 import nav
@@ -43,25 +25,14 @@ from world import label_for
 FOG = "?"
 YOU = "@"
 
-# Spelled out because this block is read cold, every turn, by a model that cannot see
-# the screen. FINDINGS: `antidotes 0/1` in an old status line was read as "1 antidote
-# available" with none in the bag, and went into the notes as a fact. Anything repeated
-# after every single call is worth spending six words on.
+# Spelled out because this is read cold every turn by a model that cannot see the screen.
+# An old status line reading `antidotes 0/1` was taken to mean "1 available".
 AXES = ("x grows to the east (right), y grows to the south (down). "
         "North is y-1, south is y+1, west is x-1, east is x+1.")
 
-# Measured 2026-08-26: asked what character sits at a named cell of this grid, gemma
-# answered correctly about half the time, with thinking on and with it off. The reading
-# taken from that was that the grid is a picture and not a lookup table, and the heading
-# said so -- *do not count cells off it* -- because the expensive failure was gemma
-# deciding a route was blocked when `distance` would have answered for nothing.
-#
-# **That heading is now a suspect rather than a safeguard, 2026-08-31.** Asked three
-# direct questions about named regions of a map she was holding, gemma got 0 of 3 and
-# said she was not allowed to answer without driving there (`MAP-READING.md`). We had
-# told her not to read the grid, here and in two other places she reads every turn, and
-# then measured that she would not read the grid. The prohibition is withdrawn and the
-# heading now says how to index the thing instead. `blocked_GRID_HEADING` is the control.
+# The heading used to say *do not count cells off it*. Withdrawn: we told her not to read
+# the grid in three places she reads every turn, then measured that she would not read it.
+# It now says how to index it instead. `blocked_GRID_HEADING` is the control.
 GRID_HEADING = ("THE MAP OF THIS PLACE -- read it. The number down the left is the row "
                 "(y) and the ruler across the top marks every fifth column (x). Cell "
                 "(x,y) is the xth character of row y. Exact answers to the questions "
@@ -70,25 +41,18 @@ GRID_HEADING = ("THE MAP OF THIS PLACE -- read it. The number down the left is t
 blocked_GRID_HEADING = ("THE SHAPE OF THIS PLACE (a picture, not a table -- do not count "
                         "cells off it; every exact fact is listed underneath)")
 
-# The sentence gemma quoted back as a rule about what she was *permitted to know*.
-# `sight.py` meant it as a rule about what lifts fog: no orbital imagery, no radio, you
-# drive or you stay ignorant. She read it as "I only reveal information by driving" and
-# refused to describe a region that was fully revealed and sitting in front of her.
-# Both halves are now said separately, because it was the collision of the two that did
-# the damage. `blocked_REVEAL_RULE` is the control.
+# Meant as a rule about what lifts fog. Gemma read it as a rule about what she was
+# permitted to know, and refused to describe a region already revealed in front of her.
+# The two halves are now said separately. `blocked_REVEAL_RULE` is the control.
 REVEAL_RULE = ("Driving is the only thing that lifts fog -- there is no orbital "
                "imagery and nothing else to ask. But every cell already on the map "
                "below is yours to read at any time, for free, without going anywhere.")
 
 blocked_REVEAL_RULE = "Nothing else reveals ground."
 
-# Lines that only ever appear in a view *we* wrote. If one of them turns up in what the
-# model said, the model is writing the environment's half of the conversation.
-#
-# Watched 2026-08-29: asked to explore, gemma replied with a sentence, a call typed out
-# as text, and then four thousand characters of invented view block -- a grid, a step
-# count of 399, a position of (31,25) it had never been to. All of it became an
-# assistant message. `chat.cut_fabrication` reads this list to cut it off.
+# Lines that only appear in a view *we* wrote, so one of them in gemma's reply means she
+# is writing the environment's half. She once invented four thousand characters of view
+# block, grid and all. `chat.cut_fabrication` reads this list to cut it off.
 HALLMARKS = ("WHAT YOU CAN SEE RIGHT NOW",
              "THE SHAPE OF THIS PLACE",
              "IMMEDIATELY AROUND YOU",
@@ -146,32 +110,17 @@ def grid(w):
 
 
 def things(w):
-    """Everything named on the known map, with its coordinate.
+    """Everything named on the known map, with its coordinate already computed.
 
-    The grid carries shape; this carries fact. Reading a letter out of a 50-column row
-    and recovering its x is exactly the arithmetic a 4B model gets quietly wrong, and a
-    wrong coordinate here becomes a wrong `goto` and then a wrong note. So the
-    coordinates are handed over already computed.
+    The grid carries shape; this carries fact. Recovering an x by counting into a
+    50-column row is the arithmetic gemma gets wrong, and a wrong coordinate here
+    becomes a wrong `goto`.
 
-    **Rock is not listed, and since 2026-08-29 that is an experiment rather than an
-    economy.** The old reason was cost: 450 scattered outcrops, and naming each would
-    bury the one thing that matters in a wall of coordinates, which FINDINGS measured
-    as the most expensive way there is to describe a map (972 tokens against 196 for
-    the picture). The arena now holds thirty boulders and nothing else, and naming them
-    would be affordable -- a line each is a few hundred characters.
+    Rock is deliberately not listed -- whether gemma can pick the boulders out of the
+    picture unaided is the open question the arena exists to answer.
 
-    It is still not done, because what the rebuilt arena is *for* is finding out
-    whether gemma can pick the boulders out of the picture on its own. FINDINGS
-    measured it failing to **index** a grid -- naming the cell at a given coordinate,
-    five times in ten. Counting compact lumps and saying roughly where they are is a
-    different skill and has never been measured here. If it cannot, the names come back
-    and this docstring gets rewritten again; if it can, the picture was carrying more
-    than anybody credited. Either answer is worth more than the line it would save.
-
-    **Cells with the same name are collapsed into one entry.** The pad is six tiles,
-    and six consecutive lines all reading `base pad at ...` is the wall-of-coordinates
-    failure in miniature: the thing that matters is *where the base is*, said once.
-    Every cell is still named, because `goto` at any of them arrives.
+    Cells with the same name collapse into one entry: what matters is where the base is,
+    said once. `goto` at any of its cells still arrives.
     """
     a = w.here
     found = {}
@@ -197,14 +146,9 @@ def things(w):
 def neighbours(w):
     """The four cells you could drive into, named, without reading the grid.
 
-    Added 2026-08-26 after watching the failure it prevents. Gemma announced it had
-    "clearly visible floor tiles" east and west and called `goto` on both; both were
-    walls, both came back UNREACHABLE, and it concluded it was "stuck in a cycle of
-    failure." The planner was right every time. What was wrong was counting eleven
-    characters into a monospace row.
-
-    Four cells is nothing to inject and it is the cheapest arithmetic to stop asking a
-    4B model to do.
+    Gemma once announced "clearly visible floor tiles" east and west, drove into both,
+    got UNREACHABLE twice and concluded it was stuck in a cycle of failure. Both were
+    walls. What was wrong was counting eleven characters into a monospace row.
     """
     x, y = w.pos
     out = []
@@ -227,18 +171,10 @@ def neighbours(w):
 def _sightline(w, x, y, dx, dy):
     """How far you can drive this way, given as the furthest cell you can stand on.
 
-    The neighbour alone answers "can I go there" and leaves "which way is worth going"
-    to be counted off the grid, which is the arithmetic gemma gets wrong half the time.
-    Walking the ray here costs nothing and hands over the answer.
-
-    **The coordinate offered is the last drivable cell, never the thing that stops
-    you.** The first version read "open for 3 cells, then a wall at (14,5)", and on
-    2026-08-26 gemma standing at (18,5) called `goto(14,5)` twice and got UNREACHABLE
-    both times. It read correctly and acted on the only number in the sentence -- which
-    was the one coordinate `goto` is guaranteed to refuse, because known rock is
-    deliberately not a destination. A line read before every call must put the useful
-    number where the model will reach for it, and must not make a trap the most
-    salient thing in it.
+    The coordinate offered is the last drivable cell, never the thing that stops you.
+    An earlier version read "open for 3 cells, then a wall at (14,5)" and gemma drove at
+    (14,5) twice -- the one coordinate `goto` is guaranteed to refuse. A line read before
+    every call must not make a trap the most salient number in it.
     """
     n = 0
     while True:

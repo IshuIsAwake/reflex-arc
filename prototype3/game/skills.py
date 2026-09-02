@@ -1,36 +1,21 @@
-"""The skill interface: what gemma is allowed to ask for, and what it gets back.
+"""The skill interface: what gemma may ask for, and what it gets back.
 
-The blocking artifact of the whole project, in miniature. Schemas, argument coercion,
-dispatch, and the one string that comes back. `chat.py` knows nothing about `nav` and
-`nav` knows nothing about the model; this is the seam, and it is the file the rover
-implementation swaps while everything either side of it stays put.
-
-Two skills this slice, and the system prompt promises exactly these two:
+The seam. `chat.py` knows nothing about `nav`, `nav` knows nothing about the model, and
+this is the file the rover implementation swaps while both sides stay put.
 
     goto(x, y, why, avoid=...)       drive there. Costs a step a tile
     distance(x, y, why, avoid=...)   what it would cost. Costs nothing
 
-Copied from prototype 1 essentially unchanged. Every sentence in `TOOLS` below was
-paid for by a live run; the edits here are the nouns, not the rules.
+`avoid="auto"` is not offered: it skips cells gemma has marked, and there is no way to
+mark one until `mark()` lands. Described loosely as "optional", she volunteered it
+unasked and would have got NOT_VISITED for a reason she never intended.
 
-`avoid="auto"` is deliberately **not** offered yet. It skips every cell gemma has
-marked, and gemma has no way to mark a cell until `mark()` lands -- so advertising it
-would describe a capability whose other half does not exist, which is the same failure
-as a success code for a move that never happened. Measured 2026-08-26: with `avoid`
-described loosely as "optional", gemma volunteered `avoid="auto"` unasked, which would
-have come back NOT_VISITED for a reason it never intended. The description below earns
-its length.
+Arguments are coerced generously and rejected noisily. An `avoid` list that quietly
+parses to "avoid nothing" walks gemma through the cell she asked to dodge and never
+says why. She emits the literal `'<nil>'` for an argument she means to omit, so that
+string must never reach a `frozenset()`.
 
-## Tolerant, and still loud
-
-Every argument is coerced generously and rejected noisily. The failure this guards
-against is specific: an `avoid` list that quietly parses to "avoid nothing" walks gemma
-through the exact cell it asked to dodge, never says why, and the notes file takes the
-blame for a parser bug. Gemma emits the literal string `'<nil>'` for an argument it
-means to omit, so that string in particular must never reach a `frozenset()`.
-
-`BAD_ARGS` spends no steps. A malformed call is a mistake, not an action, and charging
-the day for it would make the parser part of the difficulty.
+`BAD_ARGS` spends no steps -- a malformed call is a mistake, not an action.
 """
 
 import re
@@ -65,23 +50,14 @@ def _int(name, v):
 def _why(v):
     """One line if it is offered, and None if it is not.
 
-    Settled in FINDINGS and unchanged: a rationale recorded *before* the outcome is a
-    prediction; one offered afterwards is a story. The world never reads it and it
-    changes nothing -- its whole job is to be on the tape with a timestamp earlier than
-    the result, and it still does that whenever it arrives.
+    A rationale recorded before the outcome is a prediction; one offered afterwards is a
+    story. The world never reads it -- its job is to sit on the tape with a timestamp
+    earlier than the result.
 
-    **It stopped being required on 2026-09-01, because requiring it broke the turn.**
-    A5 took `why` out of the assistant turns that re-enter history (`chat.without_why`),
-    which was right for its own reasons -- but it also removed every example gemma had
-    of a call that carried one. She stopped sending the field: **0 of 79 calls missing
-    it before A5, 22 of 52 after, and 16 of 21 in `runs/20260901-000753/`**, six times
-    in a row on one turn, with the error text failing to recover her every time. Each
-    refusal also cost a hop (`chat.py:652` counts before the call runs), so the turn
-    died to the cap without the rover moving.
-
-    The requirement was never what made the field useful; the tape was. So the field
-    stays, the record stays, and omission stops being punished. What the requirement
-    actually bought is now measurable as the rate at which she supplies it unasked.
+    Not required. `chat.without_why` keeps it out of history, which also removed every
+    example gemma had of a call carrying one, so she stopped sending it: 0 of 79 calls
+    missing before, 16 of 21 after, each refusal costing a hop. The tape was what made
+    the field useful, not the requirement.
     """
     if not isinstance(v, str) or v.strip().lower() in NIL:
         return None
@@ -121,14 +97,9 @@ def _avoid(v):
     raise BadArgs(f"avoid must be cells like (3,4),(5,6), got {v!r}")
 
 
-# Sent to Ollama as `tools`. Every sentence here was paid for.
-#
-# "walks the whole way" is in the description because it was in neither prompt nor
-# schema on 2026-08-26 and gemma stepped one tile per call for a whole run -- free to
-# fix, and it changes the shape of everything after it.
-#
-# "absolute" is there because the only way "go ten blocks north" works is if gemma
-# does the arithmetic itself and passes the answer. Six for six on the probe.
+# Sent to Ollama as `tools`. Every sentence here was paid for: without "walks the whole
+# way" gemma stepped one tile per call for a run, and without "absolute" it cannot turn
+# "go ten north" into a coordinate.
 TOOLS = [
     {"type": "function", "function": {
         "name": "goto",
@@ -171,22 +142,11 @@ TOOLS = [
 
 NAMES = [t["function"]["name"] for t in TOOLS]
 
-# A call the model *wrote out* instead of making. Built from NAMES so a skill added
-# later cannot be forgotten here.
-#
-# Measured 2026-08-29: with `temperature` left to Ollama's default, 3 of 12 turns came
-# back with `goto(25, 15, "Driving north...")` sitting in the reply text and no
-# tool_calls at all. Nothing runs, nothing moves, and the pane shows a confident
-# sentence -- which is **the vanishing call again**, the shape FINDINGS keeps recording:
-# an answer with no outcome leaves the caller nothing to correct.
-#
-# `MODEL_TEMP` is the actual fix and this is the backstop. It is deliberately a
-# *detector*, not a parser: executing a call the model only narrated would be inventing
-# intent, and a tolerant-but-silent path is the exact failure this file exists to avoid.
-# Telling it the call did not run costs one turn and is honest.
-#
-# The digit requirement keeps it off ordinary prose -- "goto is the right tool here" is
-# a sentence about a skill, not a call.
+# A call the model wrote out instead of making. Built from NAMES so a skill added later
+# cannot be forgotten. At Ollama's default temperature 3 of 12 turns came back with the
+# call sitting in the reply text and no tool_calls at all -- nothing runs, nothing moves,
+# and the pane shows a confident sentence. `MODEL_TEMP` is the fix; this is the backstop.
+# The digit requirement keeps it off prose like "goto is the right tool here".
 CALL_SHAPED = re.compile(r"\b(" + "|".join(NAMES) + r")\s*\(\s*[^)]*\d")
 
 
@@ -225,30 +185,18 @@ def _unquote(v):
 def written_call(text):
     """A complete call the model typed instead of making. Returns (name, args) or None.
 
-    **This runs it rather than refusing it, and that is a deliberate reversal.** The
-    first version detected a written call and told the model off, on the grounds that
-    executing one would be inventing intent. Measured 2026-08-29 across five prompts at
-    two temperatures: about **7 turns in 10** emit a real tool call and the rest type it
-    out, and neither the prompt nor the sampler moves that number. Refusing costs a
-    whole round trip and, measured, often produces the same reply again.
+    This runs it rather than refusing it. About 7 turns in 10 emit a real tool call and
+    the rest type it out, and neither the prompt nor the sampler moves that number.
+    There is nothing to invent: a written call names the skill and its arguments, so it
+    is a decision the model made and Ollama failed to encode.
 
-    There is nothing to invent. `goto(35, 25, "to explore the terrain east")` names the
-    skill and every required argument; it is a decision the model made and Ollama failed
-    to encode. Reading it is not guessing. **Only a complete call qualifies**, and
-    `skills.call` still validates every one of them, so a malformed recovery comes back
-    BAD_ARGS like any other. Everything recovered this way is counted and labelled in
-    the pane and on the tape, because a call that arrived by an unusual road is exactly
-    the kind of thing a later run needs to be able to see.
+    `skills.call` still validates it, so a malformed recovery comes back BAD_ARGS like
+    any other, and everything recovered this way is counted on the tape.
 
-    **Complete now means x and y**, following `_why` on 2026-09-01. It used to mean all
-    three, on the reasoning that a call with no stated reason is not a decision anybody
-    can act on -- but that was the schema's rule leaking into the reader. A written
-    `goto(25, 15)` is exactly as complete as a tool call carrying the same two
-    arguments, and refusing one while running the other would make the recovery path
-    stricter than the real one.
+    Complete means x and y. A written `goto(25, 15)` is as complete as a tool call
+    carrying the same two, and the recovery path must not be stricter than the real one.
 
-    Accepts both shapes the model uses: `goto(35, 25, "why")` and
-    `goto(x=35, y=25, why="...")`.
+    Accepts `goto(35, 25, "why")` and `goto(x=35, y=25, why="...")`.
     """
     for m in WRITTEN.finditer(text or ""):
         args, positional = {}, []
@@ -289,32 +237,13 @@ class Call:
 def _stuck(c, history):
     """Say so when a run of calls has told the caller nothing it did not already know.
 
-    **The rule is an invariant, and this is the third time it has had to be widened.**
-    Each version was written around the failure in front of it and missed the next one:
+    The invariant is `gained == 0`, and it has been widened three times -- each earlier
+    version checked a label rather than the fact. Firing only on `DONE` missed the same
+    loop wearing `UNREACHABLE`; "spent no steps" missed 439 steps that revealed nothing.
 
-    1. Fired only on `DONE`, because `DONE(beside=(3,8), steps=0)` seven times running
-       was the loop being watched. A live tape then showed the same loop wearing a
-       different code -- five `goto(0,5)`, five `UNREACHABLE(at=(13,5), steps=0)`, no
-       nudge -- because it was checking the label instead of the fact.
-    2. So it became *spent no steps*: a call that costs nothing cannot have changed the
-       world, so an identical call after it is guaranteed the identical answer. That
-       covered arriving beside something solid, an unreachable target and pricing the
-       same trip twice, all at once.
-    3. And it could not fire at all on 2026-08-29, when gemma spent 439 steps learning
-       nothing. **Every one of those drives spent forty-nine.** Costing something is
-       not the same as achieving something, and "spent no steps" was the label a second
-       time over.
-
-    So the invariant is now *this call told you nothing you did not already know* --
-    `gained` is nought -- which subsumes "spent nothing", since a call that never moved
-    can never have revealed anything.
-
-    **And it no longer requires the calls to be identical**, which is the other half of
-    what made version 3 blind. The loop measured was (0,49) to (0,10) and back, six
-    times: alternating, so a run of *identical* calls never forms, and no test of what
-    each call gained would have helped. What the caller needs telling is that the last
-    few calls between them bought nothing -- the targets being different is exactly the
-    point, because it means casting about at random is not working either.
+    It does not require the calls to be identical. The loop measured was (0,49) to
+    (0,10) and back, six times, so a run of identical calls never forms. That the
+    targets differ is the point: casting about at random is not working either.
 
     Only a consecutive run counts, and any call that gained something ends it. That
     matters more than it looks: driving home to the pad is a gainless drive on purpose,
@@ -395,16 +324,11 @@ def call(world, name, args, history=()):
         # counter. A field is not a sentence.
         c.result = f"{r} -- {r.advice}" if r.advice else str(r)
     else:
-        # What it would cost *and* what it might be worth. Ordering journeys by length
-        # answers the wrong question on an exploration mission, which is the likeliest
-        # reason this skill went unused for a whole sol.
-        #
-        # **The two numbers are not the same kind of number, and one word covering both
-        # was a lie.** `optimistic` used to sit here claiming the drive could only come
-        # out longer and the reveal only smaller. The first half holds; the second was
-        # false nine times in thirty-eight measured trips, because replanning round rock
-        # sweeps ground the straight route never passed. See `nav.price`. So say which is
-        # a floor and which is a guess, in words, because a field is not a sentence.
+        # What it would cost and what it might be worth -- ordering journeys by length
+        # answers the wrong question on an exploration mission. The two numbers are not
+        # the same kind: steps is a floor, reveals is a guess that was low 9 times in 38
+        # measured trips, because replanning round rock sweeps ground the straight route
+        # never passed. Say which is which in words; a field is not a sentence.
         steps, reveals = nav.price(world, x, y, avoid)
         c.result = (f"UNREACHABLE(to=({x},{y})) -- no route even assuming every "
                     f"unseen cell is clear" if steps is None else

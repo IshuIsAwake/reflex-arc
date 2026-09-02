@@ -4,17 +4,10 @@ WASD drive (hold to keep going)   M map   X mark   T console
 TAB talk to the planner   V what it sees   H hide/show its reasoning
 N next sol (once one has ended)   Q end the sol   ESC quit
 
-Prototype 2: the arena the hackathon build mimics. One 50x50 Martian plain, fog you
-can only clear by driving through it, a landing pad at the centre, and gemma in the
-pane on the right with `goto` and `distance`.
+One 50x50 Martian plain, fog you can only clear by driving through it, a landing pad at
+the centre, and gemma in the pane on the right with `goto` and `distance`.
 
-There is no `--gemma` flag. Prototype 1 had one because the model was an addition to a
-game that already worked; here the planner is the point and a human-only mode would be
-a rover with nobody to drive it.
-
-**Not built yet, in the order they are coming:** returning to base before dark, ridges
-and dust storms and quakes, the day/night clock, Ingenuity, `interact`, notes carried
-between sols. The prompt says nothing about any of them, deliberately.
+No human-only mode: the planner is the point.
 """
 
 import pathlib
@@ -40,16 +33,9 @@ DIRS = {pygame.K_w: (0, -1), pygame.K_s: (0, 1), pygame.K_a: (-1, 0), pygame.K_d
 def read_flags(argv):
     """`--think`, and nothing else yet. Mutates `settings` before anything reads it.
 
-    **Thinking and greedy decoding do not go together, so one flag sets both.** A
-    reasoning trace that starts repeating itself at temperature 0 has no noise available
-    to climb out, and `MODEL_TEMP = 0.0` is otherwise pinned deliberately -- see the
-    comment there, which also records what unpinning it costs. Leaving the two as
-    separate switches guarantees somebody eventually runs thinking greedily and reads the
-    loop as a fact about the model.
-
-    `None` rather than a number of our choosing: it makes `chat._stream` omit the option,
-    so top_k and top_p come from the model's Modelfile alongside temperature instead of
-    half the sampler being ours and half being gemma's.
+    One flag sets both, because a reasoning trace that starts repeating at temperature
+    0 has no noise to climb out with. `None` rather than a number of our choosing, so
+    `chat._stream` omits the option and the whole sampler comes from the model.
 
     Returns the flags it did not recognise, so a typo is loud rather than ignored.
     """
@@ -207,24 +193,10 @@ def main():
                     conv = chat.Conversation(w, tape)
                     conv.open_day(w)
                     scroll = 0
-                # V shows the view block over the pane, and V again puts it away. Gemma
-                # is normally sent a block the pane only summarises, and being able to
-                # read exactly what it was told -- rather than inferring it from the
-                # answer -- is what makes a disagreement with the screen diagnosable.
-                #
-                # **It used to append the block to the conversation, and that was the
-                # wrong shape for it.** Fifty lines land at the bottom of a transcript
-                # that only scrolls by wheel; pressing V again -- which is what anyone
-                # does when a key does not appear to have toggled anything -- appends
-                # fifty more. `runs/20260830-100921/` has twenty-two copies of the same
-                # four thousand characters, over half that tape, and no way back to the
-                # conversation short of a thousand lines of scrolling. A thing you open
-                # to look at is a mode, not a message.
-                #
-                # Nothing is written down here now. Every view gemma was actually sent is
-                # already on the tape as a `view` row, which is the copy that matters for
-                # diagnosing a disagreement; a human glancing at the current one between
-                # calls is not part of the record.
+                # V overlays the view block; V again puts it away. A thing you open to
+                # look at is a mode, not a message -- appending it instead once put
+                # twenty-two copies of four thousand characters into one tape. Nothing is
+                # written down here: every view gemma was sent is already a `view` row.
                 elif e.key == pygame.K_v:
                     mode, scroll = "view", 0
                 elif e.key == pygame.K_ESCAPE:

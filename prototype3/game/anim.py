@@ -1,26 +1,17 @@
 """Replaying a drive that has already happened, one cell at a time.
 
-**Nothing here slows the rover down.** `nav.goto` finishes in one go and must -- the
-model has to be handed the true outcome in the same breath as the call, and a skill
-that returned before it knew its own answer would be the lying success code again. So
-the world jumps, `nav` writes down what it did as a list of `(kind, payload)`, and this
-plays that back afterwards. The screen lags the world on purpose.
-
-FINDINGS put it plainly: *a `goto` executes atomically, and through fog that reads as
-teleporting*. This is the fix, and it is a display fix, which is why it lives in its own
-file with no pygame in it and no reach into `nav`.
-
-What gets drawn out of a drive:
+Nothing here slows the rover down. `nav.goto` finishes in one go and must -- the model
+has to be handed the true outcome in the same breath as the call. So the world jumps,
+`nav` writes down what it did as `(kind, payload)`, and this plays it back afterwards.
+Otherwise a goto through fog reads as teleporting.
 
     plan     the route A* believed in, in yellow, drawn cell by cell
-    step     the rover moving, one cell at a time, fog opening as it goes
+    step     the rover moving, fog opening as it goes
     block    the cell that refused -- flashed, then the yellow is torn up
     probe    `distance` only, in blue: priced, never driven
 
-The interesting frame is the one after `block`. The yellow ran straight through an
-outcrop nobody had seen, and it disappears and comes back a different shape. That is
-the fog lying, made visible, and it is the same thing the map view draws after the
-fact by shading the drive under the plan.
+The frame after `block` is the interesting one: the yellow ran through an outcrop nobody
+had seen, and it comes back a different shape. That is the fog lying, made visible.
 """
 
 import settings as S

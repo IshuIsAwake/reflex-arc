@@ -1,28 +1,18 @@
 """The arena and the palette. Tunable numbers live in settings.py.
 
-Legend -- deliberately three characters, because the system prompt is only allowed to
-promise what is actually wired up:
-
     .  regolith, walkable      #  rock outcrop, impassable
     H  base pad, solid         @  where the rover lands (becomes '.' on load)
 
-Ridges, craters, dust storms, quakes, sample sites and Ingenuity are **not here yet**.
-Adding a tile gemma can see and cannot use is the failure prototype 1 measured: told to
-go to the shop, it arrived in one call and spent the next seven wandering, because
-there was nothing to *do* there. A bare arena is the honest version of this pass.
+Nothing else is wired up, and the prompt may only promise what is.
 
-**There is no rim wall, and that is deliberate.** Prototype 1 walled its areas and
-22% of gemma's calls were wasted on it -- `goto` is told to aim far, the far thing was
-the border, and a known wall is deliberately UNREACHABLE. Off the grid already reads as
-"#" through `nav.known`, so the boundary needs no tiles and the edge cells stay
-walkable. Aiming at the far edge is a real journey rather than a guaranteed refusal --
-though individual edge cells are still rock here and there, the way anywhere is.
+No rim wall, deliberately: off the grid already reads as "#" through `nav.known`, so the
+edge cells stay walkable and aiming at the far edge is a journey rather than a refusal.
+Prototype 1 walled its areas and lost 22% of gemma's calls to the border.
 """
 
 # --- display ---------------------------------------------------------------
-# 50 x 50 at 17px is 850px of arena, so the whole thing is on screen at once and
-# nothing scrolls. `render.viewport` still centres a small area and follows a big
-# one, so raising TILE just starts it scrolling -- there is nothing to rewrite.
+# 50 x 50 at 17px fits on screen without scrolling. `render.viewport` centres a small
+# area and follows a big one, so raising TILE just starts it scrolling.
 TILE = 17
 VIEW_W = 50
 VIEW_H = 50
@@ -33,11 +23,9 @@ FPS = 60
 VOID = (8, 7, 7)           # behind everything
 REGOLITH = (124, 70, 49)      # ground you are standing near
 REGOLITH_DIM = (79, 45, 32)   # ...ground you have seen and walked away from
-# Rock is dark, but it must never be as dark as fog. The first pass had outcrop at
-# (30,22,19) against fog at (13,11,11) and on screen they were the same black: you
-# could not tell "there is a rock there" from "I have never been there", which is the
-# one distinction this whole prototype is about. Stone reads as stone; absence is
-# reserved for the fog.
+# Rock must never be as dark as fog. "There is a rock there" and "I have never been
+# there" are the one distinction this prototype is about, and at (30,22,19) against
+# (13,11,11) they were the same black on screen.
 ROCK = (74, 55, 48)        # outcrop, lit
 ROCK_DIM = (52, 38, 33)    # outcrop, remembered
 FOG = (12, 10, 11)         # never seen. Effectively the void, and nothing else is
@@ -76,42 +64,18 @@ CHAT_BAD = (234, 112, 96)
 ARENA_NAME = "Jezero flats"
 
 # --- the arena -------------------------------------------------------------
-# **410 rock of 2500 cells (16.4%), 2084 walkable, one connected region. A boulder
-# field, and nothing else.** Twenty large boulders of sixteen cells and ten medium of
-# nine, none of them touching. Rewritten 2026-08-30; reproducible at generator seed 78.
+# 410 rock of 2500 (16.4%), one connected region. Twenty boulders of sixteen cells and
+# ten of nine, none touching, at least two clear cells apart so the flood fill can tell
+# them apart and so can an eye. Generator seed 78.
 #
-# **Two arenas have been thrown away here, and both for the same reason.** The first
-# was 517 rock of uniform texture, whose comment in this spot claimed boulder fields
-# thickening toward the rim -- measured, 21% in the outer ring against 20% in the core.
-# The second put twelve boulders among five long ridges at 9.6%. Looked at on screen
-# the ridges read as drawn lines rather than geology, and the four-cell boulders read
-# as specks. Neither is a thing worth asking a model to recognise, which is what the
-# arena is now for.
+# Boulders are allowed on the outer ring: keeping them off left a clear lap round the
+# arena, and gemma ping-ponged along that free perimeter for 439 steps.
 #
-# **Nothing names a boulder for gemma.** `sight.things()` reports only the landing pad.
-# Whether a 4B model can pick a compact lump out of the grid, count the lumps and say
-# roughly where they are is the open question; FINDINGS measured it failing to *index*
-# a grid, and recognising a shape is a different skill nobody has tested. So the shapes
-# have to be honest: bounding-box fill between 0.45 and 0.75, which rules out both a
-# straggle and the filled rectangle a generator reaches for.
+# Identity is recovered by flood fill, not written down, so every component must be
+# exactly nine or sixteen -- a merge or a split fails outright.
 #
-# **Two clear cells between any two boulders, in Chebyshev.** One is enough for the
-# flood fill to separate them and not enough for a human eye: at a single cell gap a
-# run of boulders reads as one amorphous mass, which is the whole recognition question
-# begged. Two costs nothing -- thirty boulders at this size pack comfortably.
-#
-# **Boulders are allowed on the outer ring.** Keeping them off left a clear lap all the
-# way round the arena, and a free perimeter is exactly the highway gemma ping-ponged
-# along for 439 steps on 2026-08-29. There is no rim wall here and no rim road either.
-#
-# **Identity is recovered, not written down** -- flood-fill the rock, read the sizes.
-# With no ridges there is no size band and nothing that is terrain-rather-than-boulder,
-# so every component must be exactly nine or sixteen and a merge (25) or a split fails
-# outright. `test_world.py` asserts all thirty, by size and by a cell each contains.
-#
-# Run test_world.py after editing this. It flood-fills from the pad and fails on a
-# sealed pocket -- prototype 1's version caught two of those, and a sealed pocket is
-# invisible until somebody has wasted a day walking to it.
+# Run test_world.py after editing. It also fails on a sealed pocket, which is invisible
+# until someone has wasted a day walking to it.
 ARENA = [
     ".........................................###......",
     "...................##...................###.......",
