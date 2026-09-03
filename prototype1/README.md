@@ -6,7 +6,8 @@ weighted coin flips, and real policies go in behind the same interface later.
 
 Why it is shaped the way it is: [`DESIGN.md`](DESIGN.md). How the planner works:
 [`NAVIGATION.md`](NAVIGATION.md). What the model is told: [`SIGHT.md`](SIGHT.md). What went wrong
-already: [`FINDINGS.md`](FINDINGS.md). What happens next: [`HANDOFF.md`](HANDOFF.md).
+already: [`FINDINGS.md`](FINDINGS.md). How to explain the whole thing on paper:
+[`AUDIT.md`](AUDIT.md).
 
 ## Run
 

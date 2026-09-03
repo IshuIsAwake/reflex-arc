@@ -1,14 +1,14 @@
 # What the gemma spike cost to learn
 
 On 2026-08-26 the whole gemma integration was built in one session — skill interface, Ollama loop,
-persistence, transcript replay and a watch window — and then reverted. The code is on the
-`spike/gemma-integration` branch and works; it was taken off main because it landed in one go
-instead of a feature at a time, which is not how this repo is meant to be built.
+persistence, transcript replay and a watch window — and then reverted, because it landed in one go
+instead of a feature at a time. The branch it lived on is gone. **This file is what it produced, and
+it is why the revert was not a loss.**
 
-**This file is why the revert is not a loss.** Every item below was paid for by running the thing,
-and most of them are invisible to a code review: the tests were green through all of them. Read it
-before rebuilding any part of the interface. Where a decision was taken, the reasoning is here so it
-is not re-argued; where a bug was found, the symptom is here because the symptom is the hard part.
+Every item below was paid for by running the thing, and most are invisible to a code review — the
+tests were green through all of them. Read it before touching any prototype. Where a decision was
+taken the reasoning is here so it is not re-argued; where a bug was found the symptom is here,
+because the symptom is the hard part.
 
 ## The three that cost the most
 
@@ -256,18 +256,19 @@ fabrication cut are worth porting before the next real run here.
 Caveat: `temperature = 0` is *near*-deterministic, not exactly so — identical requests still
 diverge, because Ollama is not bit-exact across a GPU/CPU layer split.
 
-## The order to rebuild in
+## Where this went, and the one thing the order got wrong
 
-One at a time, each landing with its own tests before the next starts.
+The rebuild happened one feature at a time, but not in the order this file originally proposed. It
+had put the window last, as "a demo aid, not part of the experiment." What actually worked was
+putting gemma in the window **talking, with no skills at all**, and adding each capability after
+working without it became annoying.
 
-1. **Break the three couplings in `world.py`** and move the naming rule out of `render.py`. No new
-   files. The handoff lists all four.
-2. **`look()`**, fog-gated. It is the second place after the planner where one missing `visible()`
-   check hands over the whole map, so it wants the same "count the reads" test `nav.py` has.
-3. **The rest of the skills** behind the console, typed by hand. A skill that is awkward to type is
-   a skill that is awkward to call, and this is where that gets noticed for free.
-4. **Persistence**, before any model loop. Prototype 1 is several days long and a process is not.
-5. **The Ollama loop** — and nothing else in the same step.
-6. **Reading runs back.** Worth its own tool early; the transcript is the actual output of this
-   prototype, and the wall bug above was found by reading one, not by testing.
-7. **A window to watch it in**, last. It is a demo aid, not part of the experiment.
+That inversion was right, and it is the most useful process lesson here. A skill you have watched
+somebody talk to is a different thing from a skill you specced. Building against real annoyance is
+evidence; building against a plan is guesswork.
+
+This file also proposed a fog-gated `look()`, which the findings above then killed — given one tool,
+the model uses that tool for everything, so the view is injected on every request instead.
+
+The line continues in `prototype2/` and then `prototype3/`. Prototype 1 still runs and is the
+reference for the coursework track.

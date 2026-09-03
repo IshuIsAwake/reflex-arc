@@ -20,7 +20,7 @@ ROVER.md                         the hardware implementation — the hackathon t
 ARCHITECTURE.md                  the three layers and how a decision reaches the motors
 work_division.md                 who owns what — questions, not task lists
 repo_rules.md                    the rules everyone shares — git, context, writing things down
-prototype1/                      the experiments lab — code, DESIGN.md, its own HANDOFF.md
+prototype1/                      the experiments lab — code, DESIGN.md, FINDINGS.md, AUDIT.md
 prototype2/                      the rover arena, and the demo build — results.md is what it closed
 prototype3/                      the active work — the map encoding and the missing skills
 docs/course.md                   the coursework track — design, experiments, constraints
