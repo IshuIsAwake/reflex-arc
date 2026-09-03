@@ -1,14 +1,10 @@
-"""Run me:  python prototype1/game/main.py           the human's game
+"""Run:  python prototype1/game/main.py           the human's game
         or:  python prototype1/game/main.py --gemma   ...with gemma beside it
 
 WASD move (hold to keep going)   E interact   M map   X mark   Q end day
 
 Under --gemma the day is measured in steps rather than seconds, the window gains a
-pane on the right, and gemma is in it. It has no skills yet: it cannot see the
-world and cannot act on it, so the only thing it can do is talk to whoever is at
-the keyboard. You end the day, you start the next one, and the conversation is
-thrown away in between -- which is the architecture, not a limitation of the
-harness.
+pane on the right, and gemma is in it.
 """
 
 import argparse

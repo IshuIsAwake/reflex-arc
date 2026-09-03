@@ -69,7 +69,7 @@ journey.
 
 **Fog is the only difficulty there is right now.** You see three cells as you drive and a cell stays
 known once seen; the landing site starts revealed to a radius of six. There is no map to buy and no
-way to reveal ground except by going there — which is item 5, Ingenuity, when it lands.
+way to reveal ground except by going there.
 
 ## What gemma gets
 
@@ -190,18 +190,11 @@ that test caught two.
 
 ## What is not built
 
-In the order it is coming, and **the prompt deliberately mentions none of it**:
+The arena is bare. Nothing is scattered in it to collect and the mission asks the planner for
+nothing. That is on purpose: prototype 1 measured what happens when gemma can see something it
+cannot use — told to go to the shop, it arrived in one call and spent the next seven wandering. A
+bare arena is the honest version of this pass.
 
-1. ~~one large explored map~~ — done
-2. **the base** — returning to it before dark, and what it costs not to
-3. **Martian features** — ridges, dust storms on a forecast, surprise quakes
-4. **the timer** — a wall clock the planner has to reason about, so that thinking costs daylight
-5. **Ingenuity** — flying ahead to reveal ground the rover has not driven
-6. **`interact`** — specified in [`../prototype1/HANDOFF.md`](../prototype1/HANDOFF.md)
-7. **notes** — carried across sols, so a new conversation each morning is not a reset
-8. tests — landing with each of the above rather than after all of them
-
-There is nothing scattered in the arena to collect and nothing asked of the planner by the mission.
-That is on purpose: prototype 1 measured what happens when gemma can see something it cannot use —
-told to go to the shop, it arrived in one call and spent the next seven wandering. A bare arena is
-the honest version of this pass.
+What goes into it next is the team's to decide. Two rules hold whatever that turns out to be: **the
+prompt mentions none of it**, because a capability the model is told about proves nothing about
+whether it would have found it; and tests land with each addition rather than after all of them.

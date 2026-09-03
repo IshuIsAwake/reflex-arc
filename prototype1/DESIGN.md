@@ -6,7 +6,7 @@ The point is not the game. It is to watch `gemma4:e4b` decide, on a laptop, with
 trained policies in the way. Gemma has knowledge and no hands. The minigame policies have hands and
 no knowledge. Everything interesting happens in the gap.
 
-This is the door game from [`../docs/technicalities.md`](../docs/technicalities.md) §12, grown a map.
+This is the door game from [`../docs/course.md`](../docs/course.md) §14, grown a map.
 It is a lab, not a deliverable.
 
 ## The question it asks

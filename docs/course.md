@@ -1,11 +1,16 @@
-# Hollow Knight — the coursework implementation
+# Hollow Knight — the coursework track
 
-The design and the experiments. The idea itself is in [`../README.md`](../README.md), the
-implementation-level half in [`technicalities.md`](technicalities.md), and the raw ideation of
-2026-08-17 and 2026-08-18 in [`00-raw-transcript.md`](00-raw-transcript.md). Rejected ideas keep
+The design, the experiments, and what it takes to implement them. This is the whole coursework
+track in one file; the rover track is separate and reads on its own in
+[`../ROVER.md`](../ROVER.md).
+
+Deliverable is PRJ-1, submitted as [`phase1-problem-statement.md`](phase1-problem-statement.md).
+Separately staffed from the hackathon team, and retrieval is covered. The raw ideation of
+2026-08-17 and 2026-08-18 is in [`00-raw-transcript.md`](00-raw-transcript.md). Rejected ideas keep
 their reasoning so they don't get rediscovered.
 
-Section numbers run continuously into `technicalities.md`, which starts at §9.
+**The reactive-opponent claim lives here and nowhere else.** Terrain does not fight back, so the
+rover cannot make it; this track is the only place it can be measured.
 
 ---
 
@@ -29,7 +34,9 @@ The architecture was diagnosed, not designed. Show this rather than argue it.
 ## 2. What we are claiming
 
 The architecture is not the contribution; the regime is — precision timing, a reactive opponent,
-hours of unbroken execution ([`02-critique-response.md`](02-critique-response.md) §1).
+hours of unbroken execution ([`02-critique-response.md`](02-critique-response.md) §1). Every
+comparable system in the literature runs for minutes, or for short episodes with resets between.
+Completing this game takes hours in which one mistimed input ends the attempt.
 
 **Recovery beats perfection in a demo.** A system that misjudges a jump, dies, walks back,
 retrieves its shade and re-plans is more convincing than one that never slips — and much harder to
@@ -181,7 +188,7 @@ reactive control is physically impossible — the reflex arc forced by the speed
 Perseverance already runs AutoNav onboard, so the spine is flight-proven and the brain is missing.
 In space you also cannot learn on hardware: one rover, billions of dollars, cannot fall in a pit
 twice. Train in sim, freeze, deploy, adapt at runtime without gradients is the only admissible
-architecture there. *Now built — [`ROVER.md`](../ROVER.md).*
+architecture there. *Now built — [`../ROVER.md`](../ROVER.md).*
 
 **Surgery, rejected as execution.** ❌ Surgical execution has no reward function — "dealt damage" is
 measurable, "made a good incision" is not, which is why da Vinci is teleoperation. ✅ The salvageable
@@ -210,9 +217,130 @@ perception constant to isolate the composition layer, then show graceful degrada
 ablation. *"You can die ten million times"* — that is the definition of a simulator, and the real
 question is whether it is a good one. *"It's a game"* — framing, not substance.
 
----
+## 9. The mod layer — at zero, and the critical path
 
-**That is the design.** Design decisions and their reasoning, engineering constraints, process, the
-deferred list, failure modes, open questions and vocabulary are in
-[`technicalities.md`](technicalities.md). Read that when you are implementing, not when you are
-trying to understand what this is.
+Nothing downstream starts until these are answered. Five questions, in order of how badly a "no"
+hurts:
+
+1. Can we read game state — position, velocity, health, enemy state?
+2. Can we inject inputs through the game's own input handling?
+3. Can we reset a fight quickly? Without this there is no training budget.
+4. Can we run faster than real time, and does behaviour change when we do?
+5. Can we run more than one instance at once?
+
+A "no" on 1 or 2 means Hollow Knight is not the training environment this window. On 3, training is
+slow but possible. On 4 or 5, survivable — OC-STORM ran this game at 9 FPS control, clearing several
+bosses on ~100k samples (~3.1 hours of gameplay). Compute was never the constraint.
+
+**Write the answers down, including the ugly ones.** Not done yet.
+
+## 10. Scope for this window
+
+**Worth building whatever else changes.** The skill interface first and blocking — its failure codes
+are the schema of the experience log. Then scripted stubs: a `goto()` that cheats and a `kill()` that
+runs a dumb attack loop, so the planner gets built alongside training rather than after it. And
+**the Any% route** — which bosses, what order, which abilities — because it defines the demo
+boundary.
+
+**Not in this window.** Path of Pain, White Palace, the Pantheons, any hard boss; procgen rooms; the
+competence table; the style dial and reward-weight knobs; charm selection; Silksong; retrieval over
+the full wiki.
+
+## 11. Design decisions and corrections
+
+| | decision | why |
+|---|---|---|
+| ❌ | Don't inherit combat weights into traversal | A boss policy learned "stay near boss, dodge, attack" — a bad prior for goal-seeking, and it has no goal input to condition on. Demoted to an ablation. |
+| ❌ | Don't reward pogo-ing | Reward a skill and the agent does it when it shouldn't. Shape the *task distribution* instead — rooms where pogo is the only solution — and keep reward goal-based. |
+| ❌ | Don't use Euclidean distance-to-goal | Platformer geometry is non-convex; the goal is often straight up and the route is down and sideways. Distance reward punishes the correct action and the agent jitters at the nearest point below the goal. Use sparse reached-goal + HER, or geodesic distance over a tile graph. |
+| ⚠️ | Infinite HP creates a degenerate optimum | Hits grant iframes, so with free damage the optimal traversal is walking through spikes. Keep a damage penalty. |
+| ✅ | No Eyes chase is a debugging harness, not a curriculum | One room, low goal diversity. Once the tile graph exists, sampling random reachable points is ~50 lines and covers far more. |
+| ✅ | Abs Rad climb is a test case, not a training env | One authored sequence memorises. Excellent held-out eval. |
+| ⚠️ | Ability loadout is environment config | A policy with Wings + Claw is a different agent. Version it from day one or runs become incomparable. |
+| ⚠️ | Module handoff during committed actions | Switching mid-swing hands traversal a state it never trained on. Switch at neutral states, or train with random animation-recovery starts. Put the choice in the skill API. |
+| ✅ | The planner needs a model of its own body | Human folklore is miscalibrated for these actuators. Measure a **competence table** — style × boss, win rate and clear time — and put it in context. SayCan's affordance function, arrived at independently. |
+| ✅ | Precompute Pantheon plans | Boss order is known, so plan offline and invoke the LLM only for replanning. Latency stops mattering. |
+
+**Corrections to earlier assumptions.** RL here is not easier than TrackMania — the reward is easier
+to *specify* but credit assignment is harder, since TrackMania has a dense per-frame progress signal
+and HK's is spiky and delayed. Healing is a 0.85 s uninterrupted hold, a temporally-extended action
+that flat action spaces handle badly. Don't start with pixels; a structured state vector trains 1–2
+orders of magnitude faster, and pixels become an ablation.
+
+## 12. Engineering constraints
+
+- **Throughput is the spine of the project.** 4 conditions × 3 seeds × 10M steps ≈ 550 hours serial
+  at 60 Hz. That budget does not exist. Use `Time.timeScale` acceleration **and scale the fixed
+  timestep**; run N instances under Xvfb; **design experiments around 2–5M steps**.
+- **Inject inputs by patching InControl / hero action polling, not xdotool.** OS-level key events
+  are laggy, nondeterministic and do not survive multi-instance.
+- **Buy the GOG DRM-free build.** Steam wants a client, an auth and effectively one session. GOG is
+  a binary you can copy into a container N times. This one decision saves weeks.
+- **The H200s are mostly the wrong resource.** This workload is wall-clock-bound by game simulation
+  and CPU-bound by instance count; a small MLP leaves 8× H200 at single-digit utilisation. What we
+  need from the college is cores and the ability to run a graphical Unity binary.
+- **Observation design.** Structured state vector, framestacked: knight (position, velocity, HP,
+  soul, grounded, iframes, action state, cooldowns), target (position, velocity, HP, FSM one-hot,
+  time-in-state), hazards (nearest-K fixed size, or a small set-transformer). Iframes and cooldowns
+  are hidden state, so including them is a design choice worth ablating.
+
+## 13. Process
+
+- **Freeze the skill API before either ML team starts.** Signatures, preconditions, return values,
+  failure codes. The single most important artifact in the project. At six-plus people across three
+  layers, integration is the dominant risk.
+- **Stub both modules immediately.** A scripted `goto()` that cheats and a `kill()` that runs a dumb
+  attack loop. Build the planning layer against the stubs while RL trains, or the planner team is
+  blocked for a semester and discovers in month five that the interface was wrong.
+- Point the Unity-fluent friend at **ILSpy/dnSpy on `Assembly-CSharp.dll`** in week one. FSM state
+  names and hitbox layout are sitting right there.
+
+## 14. Deferred, not dropped
+
+**The door game.** A matrix of doors, some leading to a puddle (restart) and some to a minigame;
+beat it and advance a row. The whole architecture in miniature, on a laptop. Read-only RAG should be
+flat — attempt 50 looks like attempt 1 — while RAG with write access should improve monotonically,
+because the LLM eliminates a door in *one* observation where tabular Q-learning needs many visits.
+Give the executors hidden, uneven reliabilities and it also measures whether self-competence
+grounding is worth building. *Largely absorbed by the rover simulator.*
+
+**Silksong.** Three genuinely distinct build optima with rock-paper-scissors matchups, so build
+selection becomes a real decision problem. Stronger than it looks — the game is new enough that the
+model's training data on it is thin, so success cannot be memorisation. ⚠️ The risk is the modding
+layer, not the ML.
+
+**Ability progression.** A per-ability availability flag with input blocked when off. Deferred
+because real robots launch with a fixed toolset.
+
+**Knobs.** A dial is for what the planner knows and the policy cannot see, not for what the policy
+has not learned yet. That collapses four proposed axes to roughly two, and it is what a per-boss
+lookup table cannot replicate.
+
+## 15. Failure modes to watch
+
+- **Under-specified memory entries** poison the log and make the system dumber than no memory.
+- **Over-generalisation from two samples.** LLMs do this readily.
+- **Log growth → context bloat → retrieval degradation.**
+- **The flat-but-impressive first run.** A read-only system demos well and never improves. Always
+  measure across repeated attempts.
+
+## 16. Open questions
+
+- [ ] Does the LLM beat condition **D**, the hard-coded lookup table? *Highest priority.*
+- [ ] What state must accompany every experience-log entry?
+- [ ] How does the log stay small enough to retrieve well over a 3-hour run?
+- [ ] Combat observations need local room geometry, which the current design lacks.
+- [ ] What decision frequency is actually needed? OC-STORM used 9 FPS, so "60 Hz reflexes" is a
+      claim to test rather than assume.
+- [ ] Skill API contract — the actual signatures. **Blocking everything else.**
+- [ ] Do DebugMod savestates work inside Godhome? Unlocks mid-fight phase curricula.
+- [ ] Measured `Time.timeScale` ceiling before physics or FSM behaviour drifts.
+- [ ] Concurrent-instance licensing for the GOG build.
+
+## 17. Vocabulary
+
+Terms that give the work a home in existing literature: mixture of experts / learned gating ·
+goal-conditioned RL, UVFA, Hindsight Experience Replay · hierarchical RL / options ·
+potential-based reward shaping (Ng et al. 1999) · preference-conditioned RL · affordance grounding
+(SayCan) · LLM-designed reward functions (Eureka) · procedural generation / domain randomisation ·
+zero-shot compositional generalisation.

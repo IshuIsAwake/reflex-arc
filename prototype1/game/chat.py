@@ -135,7 +135,7 @@ def _args(a):
 
 
 class Conversation:
-    """One day's talk. Thrown away at nightfall, which is the whole architecture.
+    """One day's talk. Thrown away at nightfall.
 
     The model call runs on a thread and streams back through a queue, so the game
     keeps drawing at sixty frames a second while gemma is thinking. `pump()` drains

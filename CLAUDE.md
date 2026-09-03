@@ -17,11 +17,13 @@ using the best available method.
 ```
 README.md                        the idea and the current phase — read this first
 ROVER.md                         the hardware implementation — the hackathon track
+ARCHITECTURE.md                  the three layers and how a decision reaches the motors
+work_division.md                 who owns what — questions, not task lists
+repo_rules.md                    the rules everyone shares — git, context, writing things down
 prototype1/                      the experiments lab — code, DESIGN.md, its own HANDOFF.md
 prototype2/                      the rover arena, and the demo build — results.md is what it closed
 prototype3/                      the active work — the map encoding and the missing skills
-docs/hollow-knight.md            the coursework implementation — design and experiments
-docs/technicalities.md           design decisions, constraints, deferred list
+docs/course.md                   the coursework track — design, experiments, constraints
 docs/sih-decision.md             which SIH entry to make — open, closes 6 Sept
 docs/team-session.md             the team ideation session plan — prepared, not yet run
 docs/02-critique-response.md     prior art and novelty, checked against primary sources

@@ -206,6 +206,56 @@ with its coordinate — and the grid heading now tells it the picture is not a t
 tells it never to work out reachability itself: `distance` is exact, costs no steps, and was sitting
 there unused while gemma counted characters and got it wrong.
 
+## The model types the call out instead of making it, 2026-08-29
+
+**About one turn in ten, `gemma4:e4b` writes `goto(25, 15, "…")` into its reply as text with no
+`tool_calls` attached.** Nothing runs, nothing moves, and the pane shows a confident sentence beside
+a rover that never went anywhere. **It is the vanishing call again** — the third variant in this
+file after the lying success code and the refused call nobody was told about — and someone watching
+reasonably concludes the skill is broken.
+
+Measured against a live model on the exact request the game builds, five prompts, ten samples per
+cell. Both prototypes ship without `temperature`, so Ollama uses the model's own ~0.8:
+
+| | `temperature` 0 | ~0.8 (unset) |
+|---|---|---|
+| streamed — what the game does | **9 / 10** | 7 / 10 |
+| non-streamed | 9 / 10 | 8 / 10 |
+
+**Three warnings, each of which cost a wrong answer on the way to that table.**
+
+*The prompt is not the problem.* Swapping in a different system prompt, and stripping the map out of
+the view entirely, both changed nothing. Do not go rewriting prompt paragraphs at this symptom.
+
+*Do not report a rate off four samples.* The number was first given as 9/12, then as "temperature
+does not help at all", before forty samples settled it at roughly 1 in 10 with temperature pinned
+and 2–3 in 10 without. Both earlier figures were noise, and this file's own **never quote one run as
+a result** applies just as hard to ten.
+
+*A backstop that re-asks is not a fix.* Told it had typed the call out and given another turn, the
+model typed it out again. The retry is worth having because it makes the failure visible; it does
+not recover it.
+
+**What actually works is reading the call and running it.** A written `goto(35, 25, "why")` names
+the skill and every required argument — it is a decision the model made and Ollama failed to encode,
+so parsing it is reading intent, not inventing it. Prototype 2 does this in `skills.written_call`,
+accepts only a *complete* call, validates it like any other, and labels every recovery in the pane
+and on the tape. Incomplete ones still get refused.
+
+**And the worse half: the model writes our side of the conversation too.** In the failing turns it
+frequently keeps going past the typed call and produces **four thousand characters of invented view
+block** — a full grid, a step count, a position it has never occupied. Left alone that becomes an
+assistant message and every later turn reasons over a map it made up. It is the `<channel|>` leak
+one floor up: there a stray token, here the entire other speaker. `chat.cut_fabrication` cuts at the
+view's own headings.
+
+**Prototype 1 has all of this, unfixed**, and the code is byte-identical. `MODEL_TEMP = 0.0` in
+`settings.py` plus sending it at [chat.py:233](game/chat.py:233) is two lines; the recovery and the
+fabrication cut are worth porting before the next real run here.
+
+Caveat: `temperature = 0` is *near*-deterministic, not exactly so — identical requests still
+diverge, because Ollama is not bit-exact across a GPU/CPU layer split.
+
 ## The order to rebuild in
 
 One at a time, each landing with its own tests before the next starts.
