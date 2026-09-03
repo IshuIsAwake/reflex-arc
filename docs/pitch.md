@@ -1,8 +1,8 @@
-# The team ideation session
+# The pitch, in eight beats
 
-Prepared 2026-08-24 for a session that was called off the same day and never ran. Kept because the
-running order is the best version of the pitch we have — it works for a judge as well as a
-teammate.
+How to bring somebody into this from nothing — a judge, a teammate, anyone who was not in the room.
+Written 2026-08-24 for an ideation session that never ran, and kept because the running order is
+still the best version of the pitch we have.
 
 **People who shape a thing do not need to be assigned to it.** Ownership in
 [`../work_division.md`](../work_division.md) is a starting point, and this is how someone gets

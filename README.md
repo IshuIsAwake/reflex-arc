@@ -50,7 +50,8 @@ schedule.
 | [`repo_rules.md`](repo_rules.md) | git, context budget, and how ideas get written down |
 | [`docs/course.md`](docs/course.md) | the Hollow Knight implementation — the coursework track |
 | [`docs/sih-decision.md`](docs/sih-decision.md) | which SIH entry to make — open, closes 6 Sept |
-| [`docs/02-critique-response.md`](docs/02-critique-response.md) | prior art and novelty, verified against primary sources |
+| [`docs/novelty.md`](docs/novelty.md) | is this actually new — prior art, verified against primary sources |
+| [`docs/pitch.md`](docs/pitch.md) | how to explain the project to someone from nothing |
 | [`docs/literature.md`](docs/literature.md) | reading list with links |
 | [`docs/00-raw-transcript.md`](docs/00-raw-transcript.md) | original ideation, verbatim |
 

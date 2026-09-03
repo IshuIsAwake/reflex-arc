@@ -3,7 +3,7 @@
 **Temporary.** A place to keep papers so nobody hunts for the same link twice. Grouped by why
 you would read it, not by topic. This is not a literature review and makes no argument — for
 what we actually concluded about prior art, read
-[`02-critique-response.md`](02-critique-response.md).
+[`novelty.md`](novelty.md).
 
 **Verification.** Every link below was opened and the title checked against the source. Where a
 paper has no stable link yet, that is stated rather than guessed at — see
@@ -73,7 +73,7 @@ wheeled-robot transfer. Search rather than guess, and add the link once opened.
 ## 6. Checked, and does not say what it was claimed to say
 
 Kept so the same wrong citation does not come back. Full reasoning in
-[`02-critique-response.md` §3](02-critique-response.md).
+[`novelty.md` §3](novelty.md).
 
 | paper | the claim it was cited for | what it actually is |
 |---|---|---|

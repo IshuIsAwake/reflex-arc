@@ -34,7 +34,7 @@ The architecture was diagnosed, not designed. Show this rather than argue it.
 ## 2. What we are claiming
 
 The architecture is not the contribution; the regime is — precision timing, a reactive opponent,
-hours of unbroken execution ([`02-critique-response.md`](02-critique-response.md) §1). Every
+hours of unbroken execution ([`novelty.md`](novelty.md) §1). Every
 comparable system in the literature runs for minutes, or for short episodes with resets between.
 Completing this game takes hours in which one mistimed input ends the attempt.
 
@@ -193,7 +193,7 @@ architecture there. *Now built — [`../ROVER.md`](../ROVER.md).*
 **Surgery, rejected as execution.** ❌ Surgical execution has no reward function — "dealt damage" is
 measurable, "made a good incision" is not, which is why da Vinci is teleoperation. ✅ The salvageable
 version was **approach planning**: `goto(x,y,z)` with a hazard map. *Since dropped entirely —
-[`02-critique-response.md`](02-critique-response.md) §7.*
+[`novelty.md`](novelty.md) §7.*
 
 **Pitch discipline.**
 

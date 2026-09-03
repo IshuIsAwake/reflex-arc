@@ -1,16 +1,15 @@
-# Critique response — prior art and novelty
+# Is this actually new?
 
-Response to two Gemini deep-research critiques of 2026-08-18, held locally in
-[`critique/`](critique/) and not tracked in git.
+Somebody will ask — a judge, a reviewer, one of us at 2am. The honest answer has two halves. **The
+architecture is not new and we do not claim it.** **The regime is.** Both halves are worked out here
+against the primary sources, so nobody has to improvise an answer in a room.
 
-**Idea-level only.** Both critiques spent most of their length on execution and methodology
-(throughput, CPU vs GPU, Xvfb, IPC, handoff mechanics), which belongs to scope, not to the idea.
-What is kept here is prior art, novelty, and the claims that determine whether the idea is worth
-doing at all.
+Every citation below was opened and checked. Where a claim failed verification it is recorded as
+failed rather than deleted, because wrong claims come back. The material started as two deliberately
+harsh Gemini deep-research critiques, kept locally in [`critique/`](critique/) and not tracked; what
+they said about throughput and tooling belonged to scope and is not here.
 
-Every citation below was checked against the primary source. Claims that failed verification are
-recorded as such, because the same critique will be regenerated later and the same errors will come
-back.
+**If you read one section, read §2.** It is a bigger risk to this project than the novelty question.
 
 ---
 

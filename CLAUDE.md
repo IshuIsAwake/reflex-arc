@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Repo-scoped instructions. These are standing rules; anything true only *right now* belongs in
-[`HANDOFF.md`](HANDOFF.md) instead.
+your own `HANDOFF.md` instead — untracked, one per person.
 
 ## The project
 
@@ -25,8 +25,8 @@ prototype2/                      the rover arena, and the demo build — results
 prototype3/                      the active work — the map encoding and the missing skills
 docs/course.md                   the coursework track — design, experiments, constraints
 docs/sih-decision.md             which SIH entry to make — open, closes 6 Sept
-docs/team-session.md             the team ideation session plan — prepared, not yet run
-docs/02-critique-response.md     prior art and novelty, checked against primary sources
+docs/pitch.md                    how to explain this to someone from nothing, in eight beats
+docs/novelty.md                  is this actually new — prior art, checked against primary sources
 docs/literature.md               reading list, every link opened and verified
 docs/phase1-problem-statement.md coursework deliverable
 docs/00-raw-transcript.md        original ideation, verbatim

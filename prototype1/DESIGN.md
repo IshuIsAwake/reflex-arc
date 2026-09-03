@@ -84,7 +84,7 @@ schema of the notes file** — they are what gemma has to write down and reason 
 look()                     contents and coordinates of the current area, fog-filtered
 goto(x, y, avoid=[...])    A* over the map as gemma knows it; pits trigger on contact
 goto(x, y, avoid="auto")   ...avoiding every cell gemma has marked. Visited targets only
-interact(thing)            gates, terminals, bags, counters
+interact(x, y, why)        gates, terminals, bags, counters -- specified below, not built
 play(game)                 run the policy -> coins, or not
 buy(item)                  at a counter only
 read_notes() write_notes() the file
@@ -94,7 +94,7 @@ end_day()
 | call | returns |
 |---|---|
 | `goto` | `DONE` · `TRAPPED(at)` · `BLOCKED(at, stopped, walls)` · `LEFT_AREA(area, at)` · `UNREACHABLE` · `UNREACHABLE(avoid)` · `NOT_VISITED` · `OUT_OF_STEPS` |
-| `interact` | `DONE` · `LOCKED(needs: item)` · `ALREADY_DONE` · `NOT_HERE` |
+| `interact` | `DONE` · `LOCKED(needs: item)` · `ALREADY_DONE` · `NOT_HERE` · `NOT_ADJACENT` |
 | `play` | `WON(coins)` · `LOST` · `ON_COOLDOWN(seconds)` · `LOCKED(needs: item)` |
 | `buy` | `DONE` · `INSUFFICIENT_COINS` · `NOT_STOCKED` |
 
@@ -117,6 +117,42 @@ jobs rather than one shadowing the other.
 Gates open by interacting and never by walking into them, so opening one stays a visible decision
 rather than a side effect of moving. `buy()` stays separate because it is the only action that
 spends the scarce resource, and it should stand out in the transcript.
+
+### `interact`, specified and unbuilt
+
+**The signature is `interact(x, y, why)`** — absolute coordinates, the shape `goto` already has.
+Today `World.interact()` walks `facing()` in compass order N, S, W, E and takes the first thing that
+answers, so standing between a shop counter and a coin bag it picks by an order gemma cannot see.
+That is the `beside=` bug again: the world does something reasonable and the model has no way to know
+what. A target cell costs gemma nothing it is not already doing, and buys a real `NOT_ADJACENT`. The
+human keyboard keeps its forgiving no-argument form.
+
+**Three couplings block it, and they are one defect at three sites: the outcome is a HUD string, not
+a return value.** `_use` returns a bool meaning *was something here*, and what actually happened goes
+to `world.say()` ([world.py:121](game/world.py:121)), a six-entry ring buffer that then drops it. A
+terminal that WON(40), LOST, was ON_COOLDOWN or was LOCKED returns `True` all four ways
+([world.py:289](game/world.py:289)); a lost bag's map and free antidote live only in the message
+([world.py:266](game/world.py:266)); a pit takes coins and teleports you just as quietly
+([world.py:210](game/world.py:210)). Wire `interact` onto that and every one of them reads `DONE` —
+the lying success code from [`FINDINGS.md`](FINDINGS.md), built in on purpose this time.
+
+**The fix is additive and the vocabulary already exists.** Of 26 `say()` sites most are already
+failure codes — `LOCKED(needs: savana_key)`, `ON_COOLDOWN(180s)`, `WON(40)`. Wrong channel, not wrong
+words. Copy [console.py:53](game/console.py:53): **nav returns, the caller says.** `_use` returns the
+outcome, `interact()` returns it *and* still says it — then [main.py:137](game/main.py:137) changes
+by zero lines, the HUD is untouched, and the twelve test call sites keep passing. `_use` has one
+caller; `interact()` one outside tests.
+
+**At a counter it returns the price list, and adjacency discloses nothing.** Same rule as `label_for`,
+where an unvisited terminal reads `discover` — names and prices are earned by walking up, so
+`sight.things()` keeps saying `shop at (10,16)` and no more. `S.SHOPS` is read by `main.py`,
+`render.py`, `world.py` and `economy.py`, and never `sight.py`. Buying stays its own skill.
+
+**The panel has to open on screen when gemma interacts.** Watching it shop is the point; a capability
+that only surfaces in the transcript is not finished. This is the fourth coupling and the only one
+outside `world.py` — `mode` is a local variable in the pygame event loop
+([main.py:52](game/main.py:52), [:135](game/main.py:135), [:186](game/main.py:186)), which nothing in
+`world` can reach.
 
 **`write_notes` replaces the whole file rather than appending.** Append-only means gemma can never
 correct itself, and correction is the thing most worth watching — the corridor it marked dangerous
@@ -199,9 +235,15 @@ Deferred, with reasons, so they do not get rediscovered:
 
 ## Open
 
-- **Whether the notes file is injected each day or read via `read_notes()`.**
+- **Whether gemma drives the shop selection or only the purchase.** Buying directly, with the panel
+  opening cursor-on-item, is one call and shows the outcome; walking `shop_sel` down the list is
+  watchable but spends calls on a menu. Settle it before writing the `interact` schema.
 - **The size of the step budget.** 400 is a guess and nobody has watched anything spend one.
-- **Whether gemma's rationale is a required field in every call** or a free-text line between them.
 - Pressing `M` reveals an area's *extent* even with no map — you learn how big it is and how many
   cells exist, just not what is in them. Deliberate for now, and worth a decision before the model
   run.
+
+Two questions that used to sit here are answered in [`FINDINGS.md`](FINDINGS.md): the notes file is
+injected into the day's first message rather than fetched with a `read_notes()`, and the `why` is a
+required field on every call — which prototype 2 then made optional, after measuring what requiring
+it cost.

@@ -13,7 +13,7 @@ The full review is not tracked because it critiques an execution plan that does 
 throughput, process isolation, handoff mechanics. Those belong to scope, and scope has not
 started. Judging them now would be judging a guess.
 
-**Neither file should be cited.** Read [`../02-critique-response.md`](../02-critique-response.md)
+**Neither file should be cited.** Read [`../novelty.md`](../novelty.md)
 instead — it records which claims survived checking against primary sources and which did not.
 Several of the load-bearing citations in these documents are wrong, and that is the point of
 keeping the response rather than the source.
