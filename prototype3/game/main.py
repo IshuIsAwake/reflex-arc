@@ -1,4 +1,4 @@
-"""Run me:  .venv/bin/python game/main.py
+"""Run me:  .venv/bin/python game/main.py [--map grid|rle] [--think]
 
 WASD drive (hold to keep going)   M map   X mark   T console
 TAB talk to the planner   V what it sees   H hide/show its reasoning
@@ -10,6 +10,7 @@ the centre, and gemma in the pane on the right with `goto` and `distance`.
 No human-only mode: the planner is the point.
 """
 
+import argparse
 import pathlib
 import sys
 
@@ -31,28 +32,34 @@ DIRS = {pygame.K_w: (0, -1), pygame.K_s: (0, 1), pygame.K_a: (-1, 0), pygame.K_d
 
 
 def read_flags(argv):
-    """`--think`, and nothing else yet. Mutates `settings` before anything reads it.
+    """Mutates `settings` before anything reads it. Defaults come from `settings.py`.
 
-    One flag sets both, because a reasoning trace that starts repeating at temperature
-    0 has no noise to climb out with. `None` rather than a number of our choosing, so
-    `chat._stream` omits the option and the whole sampler comes from the model.
-
-    Returns the flags it did not recognise, so a typo is loud rather than ignored.
+    `--think` sets the trace and the sampler together, because a reasoning trace that
+    starts repeating at temperature 0 has no noise to climb out with. `None` rather than
+    a number of our choosing, so `chat._stream` omits the option and the whole sampler
+    comes from the model.
     """
-    rest = [a for a in argv if a != "--think"]
-    if "--think" in argv:
+    p = argparse.ArgumentParser(prog="game/main.py")
+    p.add_argument("--map", choices=("grid", "rle"), default=S.MAP_FORMAT,
+                   help=f"how the map is written into the view (default: {S.MAP_FORMAT})")
+    p.add_argument("--think", action="store_true",
+                   help="reasoning trace on, and the sampler left to the model")
+    args = p.parse_args(argv)
+    S.MAP_FORMAT = args.map
+    if args.think:
         S.MODEL_THINK = True
         S.MODEL_TEMP = None
-    return rest
+    return args
 
 
 def main():
-    unknown = read_flags(sys.argv[1:])
-    if unknown:
-        sys.exit(f"unknown option(s): {' '.join(unknown)}\nusage: main.py [--think]")
+    read_flags(sys.argv[1:])
     pygame.init()
-    pygame.display.set_caption("Reflex Arc -- prototype 2" +
-                              ("  ·  thinking, sampler unpinned" if S.MODEL_THINK else ""))
+    # The map format is in the title bar because the two arms are told apart by nothing
+    # else on screen -- the pane shows a one-line summary either way.
+    pygame.display.set_caption(
+        f"Reflex Arc -- prototype 3  ·  {S.MAP_FORMAT} map"
+        + ("  ·  thinking, sampler unpinned" if S.MODEL_THINK else ""))
     screen = pygame.display.set_mode(render.window_size())
     clock = pygame.time.Clock()
     fonts = render.Fonts()
@@ -67,6 +74,11 @@ def main():
     # see logs.py for why that order and not the other one.
     runs = pathlib.Path(__file__).resolve().parent.parent / "runs"
     run = logs.Run(runs)
+    # The conditions go on the tape, not in the directory name. Two runs differing by one
+    # setting are otherwise told apart only by their timestamps, which is not evidence.
+    run.record("run", map_format=S.MAP_FORMAT, model=S.MODEL, temp=S.MODEL_TEMP,
+               think=S.MODEL_THINK, ctx=S.MODEL_CTX, vision=S.VISION_RADIUS,
+               replans=S.NAV_REPLANS, day_steps=S.DAY_STEPS)
     w = World(recorder=run.record)
     tape = chat.Tape(run.chat_path)
     conv = chat.Conversation(w, tape)

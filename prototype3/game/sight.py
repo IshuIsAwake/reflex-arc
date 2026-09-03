@@ -41,6 +41,15 @@ GRID_HEADING = ("THE MAP OF THIS PLACE -- read it. The number down the left is t
 blocked_GRID_HEADING = ("THE SHAPE OF THIS PLACE (a picture, not a table -- do not count "
                         "cells off it; every exact fact is listed underneath)")
 
+# The heading for `rle`. It says how to read a run rather than what the encoding is,
+# for the same reason `GRID_HEADING` says how to index rather than what not to do.
+RLE_HEADING = ("THE MAP OF THIS PLACE -- one line per row, each row written as runs. "
+               "`x13-20 rock` means every cell from x=13 to x=20 of that row is rock, "
+               "both ends included; `x13 rock` is the single cell x=13. Every run "
+               "carries its own coordinates, so nothing has to be counted off the line. "
+               "Exact answers to the questions asked most often are also written out "
+               "underneath.")
+
 # Meant as a rule about what lifts fog. Gemma read it as a rule about what she was
 # permitted to know, and refused to describe a region already revealed in front of her.
 # The two halves are now said separately. `blocked_REVEAL_RULE` is the control.
@@ -107,6 +116,59 @@ def grid(w):
                 line.append(ch)
         rows.append(f"{y:>3}  " + "".join(line))
     return "\n".join(rows)
+
+
+def _word(w, x, y):
+    """What one cell is called in `rle`. The grid's glyph, said out loud."""
+    if (x, y) == w.pos:
+        return "the rover (you)"
+    ch = nav.known(w.here, x, y)
+    if ch is None:
+        return "unseen"
+    if ch == "#":
+        return "rock"
+    if ch == ".":
+        return "open"
+    return label_for(w, ch) or ch
+
+
+def _runs(w, y):
+    """One row as [x0, x1, word], merged so no two neighbouring runs share a word."""
+    out = []
+    for x in range(w.here.w):
+        word = _word(w, x, y)
+        if out and out[-1][2] == word:
+            out[-1][1] = x
+        else:
+            out.append([x, x, word])
+    return out
+
+
+def rle(w):
+    """The same map as `grid`, as runs -- every boundary carries its own coordinate.
+
+    Costs 1.9x the grid in tokens on a fresh sol and 3.8x on a filled-in one: a run is
+    ~7 tokens against ~3 for the whole stretch of repeated characters it replaces, and
+    exploring the map is what breaks the long runs up.
+    """
+    rows = []
+    for y in range(w.here.h):
+        body = ", ".join(f"x{a} {word}" if a == b else f"x{a}-{b} {word}"
+                         for a, b, word in _runs(w, y))
+        rows.append(f"y{y}: {body}")
+    return "\n".join(rows)
+
+
+def map_block(w):
+    """The map and its heading, in whichever encoding `settings.MAP_FORMAT` names.
+
+    `rle` carries no legend: its runs are already words.
+    """
+    if S.MAP_FORMAT == "grid":
+        return [GRID_HEADING, grid(w), legend(w)]
+    if S.MAP_FORMAT == "rle":
+        return [RLE_HEADING, rle(w)]
+    raise ValueError(f"settings.MAP_FORMAT is {S.MAP_FORMAT!r}, not 'grid' or 'rle'")
 
 
 def things(w):
@@ -226,9 +288,7 @@ def view(w):
         f"The rover sees {S.VISION_RADIUS} cells in every direction as it drives, and "
         f"a cell stays known once seen. {REVEAL_RULE}",
         "",
-        GRID_HEADING,
-        grid(w),
-        legend(w),
+        *map_block(w),
         "",
         "IMMEDIATELY AROUND YOU",
         *neighbours(w),

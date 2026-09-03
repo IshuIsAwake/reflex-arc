@@ -11,6 +11,13 @@ TIME_SCALE = 1.0        # 2.0 makes the day run twice as fast
 VISION_RADIUS = 3       # how far the rover sees as it drives
 BASE_REVEAL = 6         # and what it sees on arrival, so day one opens on ground
 
+# How the map is written into the view. "grid" is the picture, one character a cell.
+# "rle" is one line a row of coordinate-labelled runs, so no cell has to be counted off
+# a row -- gemma scores 0% on every counting question off the picture. Measured on
+# gemma4:e4b: the grid is a flat ~780 tokens, rle is 1.9x that on a fresh sol and 3.8x
+# once the map is filled in, because exploring the map is what fragments the runs.
+MAP_FORMAT = "grid"
+
 # --- the model -------------------------------------------------------------
 # Measured on a 6 GB RTX 3050: ~20 tokens/sec, 3.6 GB VRAM, flat to 16k context.
 MODEL = "gemma4:e4b"
@@ -51,7 +58,8 @@ GEMINI_KEY_ENV = "GEMINI_API_KEY"   # the NAME of the variable. The key never li
 GEMINI_AUTH = "key"
 
 # Free-tier pacing. The probe sleeps rather than retrying into a quota.
-# Known wrong: the observed per-minute limit is 5, not 15. See prototype3/HANDOFF.md.
+# Known wrong: the observed per-minute limit is 5, not 15, and the daily cap is 20 requests
+# per model with failed requests counting against it.
 GEMINI_RPM = 15
 GEMINI_TPM = 16000      # one call is ~5.5k tokens, so this binds before RPM does
 

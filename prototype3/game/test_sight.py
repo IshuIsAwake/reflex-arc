@@ -109,6 +109,72 @@ def test_the_legend_hides_what_has_not_been_found():
     return ok
 
 
+SPAN = re.compile(r"x(\d+)(?:-(\d+))? ([a-z][a-z ()]*[a-z)])")
+
+
+def rle_rows(w):
+    """`sight.rle` expanded back to one word a cell, so it can be laid on the grid."""
+    out = []
+    for line in sight.rle(w).splitlines():
+        cells = []
+        for a, b, word in SPAN.findall(line.split(": ", 1)[1]):
+            a = int(a)
+            b = int(b) if b else a
+            cells += [word] * (b - a + 1)
+        out.append(cells)
+    return out
+
+
+def test_the_runs_say_what_the_picture_says():
+    print("run-length encoding")
+    keep = S.MAP_FORMAT
+    S.MAP_FORMAT = "rle"
+    try:
+        # The glyph each word has to agree with. Two renderers compared against each
+        # other, not both against `nav.known`, which is the layer they share.
+        word = {sight.FOG: "unseen", "#": "rock", ".": "open",
+                sight.YOU: "the rover (you)", "H": "base pad"}
+        ok = True
+        for name, w in (("fogged", World()), ("surveyed", surveyed())):
+            spans, pic = rle_rows(w), rows(w)
+            ok &= check(f"{name}: fifty rows of fifty cells",
+                        len(spans) == 50 and all(len(r) == 50 for r in spans),
+                        f"{len(spans)} rows, widths {sorted({len(r) for r in spans})}")
+            bad = [(x, y, pic[y][x], spans[y][x]) for y in range(50) for x in range(50)
+                   if word[pic[y][x]] != spans[y][x]]
+            ok &= check(f"{name}: every cell agrees with the grid", not bad,
+                        f"{len(bad)} disagree, e.g. {bad[:3]}")
+            # An unmerged run is still correct cell by cell, and costs double.
+            unmerged = []
+            for y, line in enumerate(sight.rle(w).splitlines()):
+                said = [s[2] for s in SPAN.findall(line.split(": ", 1)[1])]
+                unmerged += [(y, a) for a, b in zip(said, said[1:]) if a == b]
+            ok &= check(f"{name}: neighbouring runs never share a word", not unmerged,
+                        str(unmerged[:3]))
+
+        ok &= check("fog is named, not left out",
+                    "unseen" in sight.rle(World()).splitlines()[0])
+        ok &= check("the heading tells her how to read a run",
+                    sight.RLE_HEADING in sight.view(World())
+                    and sight.GRID_HEADING not in sight.view(World()))
+
+        # Not flat like the grid: filling the map in is what fragments the runs. The cap
+        # is the affordability question, and it is the whole argument against this format.
+        day_one, worst = len(sight.view(World())), len(sight.view(surveyed()))
+        ok &= check("a surveyed arena still fits the budget", worst < 9000,
+                    f"sol 1 {day_one} chars, surveyed {worst}")
+
+        S.MAP_FORMAT = "nonsense"
+        try:
+            sight.view(World())
+            ok &= check("an unknown MAP_FORMAT is refused", False)
+        except ValueError:
+            ok &= check("an unknown MAP_FORMAT is refused", True)
+        return ok
+    finally:
+        S.MAP_FORMAT = keep
+
+
 def test_the_grid_has_one_door_onto_the_world():
     print("the gated door")
     src = (pathlib.Path(__file__).parent / "sight.py").read_text()
@@ -178,6 +244,7 @@ if __name__ == "__main__":
     results = [test_the_view_is_fogged(), test_the_list_agrees_with_the_grid(),
                test_the_four_cells_you_could_step_into(),
                test_the_legend_hides_what_has_not_been_found(),
+               test_the_runs_say_what_the_picture_says(),
                test_the_grid_has_one_door_onto_the_world(),
                test_decoration_never_reaches_the_view(),
                test_the_status_line_survived_the_move(),
