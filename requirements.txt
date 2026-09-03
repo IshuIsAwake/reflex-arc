@@ -1,0 +1,4 @@
+# Everything the prototypes need. One line, and that is deliberate: HTTP to Ollama
+# and to Google both go through the standard library, so there is no SDK to keep
+# up with and nothing to break when a provider changes its client.
+pygame>=2.6

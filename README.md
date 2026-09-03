@@ -47,6 +47,7 @@ schedule.
 | [`ROVER.md`](ROVER.md) | the hardware implementation — the hackathon track |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the three layers fit together |
 | [`work_division.md`](work_division.md) | who owns what |
+| [`reproduce.md`](reproduce.md) | run the simulation on your own machine — Windows, no GPU needed |
 | [`repo_rules.md`](repo_rules.md) | git, context budget, and how ideas get written down |
 | [`docs/course.md`](docs/course.md) | the Hollow Knight implementation — the coursework track |
 | [`docs/sih-decision.md`](docs/sih-decision.md) | which SIH entry to make — open, closes 6 Sept |
