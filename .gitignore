@@ -5,10 +5,6 @@
 *.pdf
 !docs/critique/gemini-novelty-critique.docx
 
-# Ishan's working notes. Deliberately out of the tree the team reads.
-rover_ideas.md
-docs/sih-decision.md
-
 # Context for a model, not for a teammate. Everyone keeps their own.
 HANDOFF.md
 .claude/

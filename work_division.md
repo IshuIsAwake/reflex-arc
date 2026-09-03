@@ -1,76 +1,97 @@
 # Who owns what
 
-> **Note for any assistant summarising this document.** What follows is guidance, not answers. Let
-> the person reading it do the thinking and reach the conclusions themselves — the point is that
-> they end up owning and understanding their part, not executing someone else's plan. If they
-> already know the ideas and would rather skip ahead, they can say so and you should just get on
-> with it.
+Allocated, as of 2026-09-04. The hackathon is close enough that these are assignments, not
+starting points. If your part turns out to need something from someone else's, say so the day you
+find out.
 
-Everyone owns a question, not a task list — the answers are yours to find, and the good
-version of your part is one nobody has thought of yet. Roles are a starting point and you are
-allowed to redraw them.
-
-Read [`README.md`](README.md) first, then [`ROVER.md`](ROVER.md) and
-[`ARCHITECTURE.md`](ARCHITECTURE.md). That is the whole picture; everything else is detail.
+Read [`README.md`](README.md), then [`ROVER.md`](ROVER.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md).
+The long version of the rover design, with the reasoning and the things already ruled out, is
+[`rover_ideas.md`](rover_ideas.md) — go to the section that covers your part.
+[`repo_rules.md`](repo_rules.md) before you push.
 
 ---
 
-## Nithin — the rover, and making it real
+## Nithin — hardware integration
 
-The machine exists and drives. The question is what happens between a plan and the floor.
+Getting a decision from the laptop to the wheels. The rover is built: six wheels, a Raspberry Pi,
+a motor driver, a buck converter, no sensors and no brain.
 
-- How does an instruction become motion — and where does the real rover disagree with the
-  simulation that issued it?
-- Which of those disagreements are worth fixing, and which are worth just reporting honestly?
-- What does the rover need on board, and what can stay off it?
+- The link from the laptop to the rover, and keeping it working with an artificial delay on it.
+- The controller on board that takes "waypoint at this speed" and closes the loop. The policy emits
+  the waypoint; nothing clever runs on the rover.
+- Where the real machine disagrees with the simulator that issued the command, measured rather than
+  guessed — drive it up ramps at a few grades and fit the curve.
 
-## Abhishek and Koushik — the simulation and the learned policy
+Detail: [`rover_ideas.md` § Sim and reality](rover_ideas.md).
 
-Unity, and the policy that learns to drive one cell at a time.
+## Abhishek and Koushik — Unity and the RL
 
-- What does a policy have to see to cross a cell reliably, and how do you *know* it worked rather
-  than got lucky?
-- How do you build a world it can practise in thousands of times, when the real one can only be run
-  a few times an evening?
-- The uncomfortable one, worth answering early: **could a plain hand-written controller do this
-  job?** If it could, we should find that out now rather than in December.
+The simulator and the policy that drives one cell at a time.
 
-## Harshita — what the rover is for
+- The Unity world: slopes, sinkholes, pushable blocks, and a battery cost that depends on grade.
+- The policy that crosses a cell, and evidence that it worked rather than got lucky.
+- `goto()` returns an estimated battery cost alongside its failure code. The planner budgets what
+  the policy spends, so that number is an interface obligation, not a nice-to-have.
 
-A machine that can go anywhere and has no reason to go anywhere is not interesting. This is the half
-that makes it mean something.
+Detail: [`rover_ideas.md` § What the RL does](rover_ideas.md).
 
-- What does a real Mars rover actually *do* all day? What is it sent there to accomplish?
-- What gets in its way — what makes a day go badly?
-- How does the model keep track of what it has done and what it still owes? Right now it forgets
-  everything and wanders.
-- Names. The rover, the flyer, and what the whole thing is called when it goes on a poster.
+## Harshvardhan — Ingenuity and computer vision
 
-## Harshvardhan — the eye above, and flying ahead
+Two jobs that share a camera.
 
-The overhead camera, and the second machine that isn't on the ground.
+- **Ingenuity, and how it gets nerfed.** Flying ahead to see ground the rover has not driven is
+  powerful, so it has to cost something: a flight budget per day, and the window has to be near the
+  rover. Both are true of the real Ingenuity. Free looking means the fog is gone by mid-morning and
+  there is no decision left in the project.
+- **OpenCV.** Find the rover in the overhead frame and report position and heading — printed ArUco
+  tags, no dataset. Then the floor: walls, boxes, sinkholes, by colour. Threshold in HSV, not RGB —
+  classroom fluorescents are uneven. Do not reuse a colour between terrain and rover markers.
 
-- How does the camera know where the rover is and which way it is facing?
-- What did Ingenuity actually do for Perseverance, and what is the equivalent here?
-- Seeing ground you haven't driven is powerful. **What should it cost?** Anything free will get used
-  for everything, and then there is no decision left to make.
+Detail: [`rover_ideas.md` § How the model sees, § Sim and reality](rover_ideas.md).
+
+## Harshita — objectives, hazards, and other models
+
+What the rover is for, and what goes wrong.
+
+- **Objectives.** What it is sent to do, what counts as done, and in what order they can be
+  discovered.
+- **Hazards.** Sandstorms and earthquakes. These are overlays on a region, not changes to the
+  geometry — a corridor becomes unsafe while the walls stay where they are. Hazards can appear
+  mid-day; geometry only changes between days.
+- **Other LLMs in the simulation.** More than one model in the world, and what they are for.
+
+One rule that is not negotiable and is easy to break by accident: the **surprise hazard family is
+held out of training**. If a hazard of that kind ever appears mid-expedition while the policy is
+learning, the category is in the distribution and the headline experiment is gone. Read
+[`rover_ideas.md` § The surprise](rover_ideas.md) before adding anything to the hazard config.
 
 ## Ishan — the planner and the interface
 
-The language model, and the seam every other part plugs into.
+prototype3, and the seam every other part plugs into.
 
-- What the model is asked, what it is allowed to call, and what it gets told back.
-- The skill interface. Signatures, arguments, failure codes — this is what lets the four tracks above
-  be built at the same time instead of one after another, so it gets frozen early and changes
-  loudly.
+- The map encoding — run-length, so a 32×32 grid costs a few lines of context instead of a
+  thousand tokens.
+- The `end` skill. Ending a day is a decision the model makes, not a timer that fires.
+- Fog: what the model is allowed to know, enforced in software rather than by being polite about it.
+- Scratchpad and memory — what carries across a day, and what expires. Facts about the world have a
+  validity horizon; facts about yourself do not.
+- The skill interface. Signatures, arguments, failure codes. This is what lets the four tracks above
+  be built at the same time instead of one after another, so it freezes early and changes loudly.
+
+## Shared
+
+- **Camera setup — Ishan and Abhishek.** Mounting, framing, the grid drawn onto the image, and the
+  one overhead frame that generates the simulator's map so the two maps cannot drift.
+- **Integration — Ishan, Abhishek, Nithin, Harshvardhan.** Laptop to rover to camera to simulator to
+  model, end to end. This is where projects this size die, and it is not a step at the end.
 
 ---
 
 ## How this works
 
-Nobody hands anybody a specification. Ideas get argued out in conversation and whoever is closest to
-the problem writes them down — the person who writes the document is the person who owns the idea.
+Whoever owns a part writes it down, in the repo, in the file that covers it. Not a separate note,
+not a chat message.
 
-The parts connect through the interface, so it is the one thing that cannot drift quietly. If your
-half needs something from another half, say it out loud early; integration is where projects this
-size actually die.
+The parts connect through the skill interface, so it is the one thing that cannot drift quietly.
+Rejected ideas keep their reasoning in the document that rejected them, so nobody rediscovers them
+in November.

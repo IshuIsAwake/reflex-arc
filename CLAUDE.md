@@ -17,8 +17,9 @@ using the best available method.
 ```
 README.md                        the idea and the current phase — read this first
 ROVER.md                         the hardware implementation — the hackathon track
+rover_ideas.md                   the long version of ROVER.md — reasoning, and what was cut
 ARCHITECTURE.md                  the three layers and how a decision reaches the motors
-work_division.md                 who owns what — questions, not task lists
+work_division.md                 who owns what — allocated, with the detail linked
 repo_rules.md                    the rules everyone shares — git, context, writing things down
 reproduce.md                     how to run it on Windows, with or without a GPU
 prototype1/                      the experiments lab — code, DESIGN.md, FINDINGS.md, AUDIT.md

@@ -45,6 +45,7 @@ schedule.
 | | |
 |---|---|
 | [`ROVER.md`](ROVER.md) | the hardware implementation — the hackathon track |
+| [`rover_ideas.md`](rover_ideas.md) | the rover in full — the reasoning, and what was already cut |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the three layers fit together |
 | [`work_division.md`](work_division.md) | who owns what |
 | [`reproduce.md`](reproduce.md) | run the simulation on your own machine — Windows, no GPU needed |

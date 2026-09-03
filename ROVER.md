@@ -58,3 +58,10 @@ camera where it is and which way it is pointing.
 
 **The planner runs, the simulator is being built.** The language model and route planning are
 mostly in place; the Unity simulation and the learned driving policy are underway.
+
+## The rest of it
+
+This page is the shape of the thing. [`rover_ideas.md`](rover_ideas.md) is the design in full — how
+the model is kept from seeing the map, what the RL actually has to learn, how the simulator and the
+floor are kept from drifting apart, and the ideas already ruled out with the reasons they were.
+[`work_division.md`](work_division.md) says who is building which part of it.
