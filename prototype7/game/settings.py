@@ -5,7 +5,11 @@
 # A wall clock for gemma is deferred -- it would make every run depend on machine speed.
 DAY_MODE = "gemma"
 DAY_SECONDS = 300
-DAY_STEPS = 1000         # one per tile driven; crossing the arena is ~30
+# One per tile driven. Crossing is ~30 on the 30 and ~50 on the 50, so this has never
+# bound -- deliberately, and it is the balancing pass the final prototype owes. The
+# three things that now compete for it are driving, a 20-step sortie, and the work
+# itself; until the budget bites, none of them has to be chosen between.
+DAY_STEPS = 1000
 
 TIME_SCALE = 1.0        # 2.0 makes the day run twice as fast
 VISION_RADIUS = 3       # how far the rover sees as it drives

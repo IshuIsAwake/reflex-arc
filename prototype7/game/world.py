@@ -454,8 +454,9 @@ class World:
             return spent                # ran out of day; the work is not finished
         o.done = True
         del self.here.objectives[o.cell]   # the instrument is packed up and gone
-        self.record("objective", at=o.cell, priority=o.priority, cost=o.cost,
-                    day=self.day)
+        # No `day=` here: `record` stamps it. Passing it again is a TypeError that only
+        # fires on a live run, because every test world has `recorder=None`.
+        self.record("objective", at=o.cell, priority=o.priority, cost=o.cost)
         return spent
 
     # --- movement --------------------------------------------------------

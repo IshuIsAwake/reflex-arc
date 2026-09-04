@@ -144,6 +144,50 @@ def test_a_settled_run_stops_recording():
     return ok
 
 
+def test_every_record_survives_a_real_recorder():
+    """`World.record` stamps `day` itself, so a caller passing `day=` again raises --
+    and only on a live run, because every test world has `recorder=None` and `record`
+    is a no-op in all of them.
+
+    That is exactly how `execute` shipped broken: eleven green suites, and the first
+    console call after them was a TypeError. So this drives one world with a real
+    recorder through every path that writes a line.
+    """
+    print("record() against something that is listening")
+    import config as C
+    import flyer
+    import skills
+    S.STORM_ON = True                   # the storm records on spawn; that counts too
+    rows = []
+    try:
+        C.use("50")
+        w = World(recorder=lambda kind, **f: rows.append((kind, f)))
+        w.here.reveal_all()
+        o = next(iter(w.here.objectives.values()))
+        x, y = o.cell
+        for cell in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+            if not w.here.blocked(*cell):
+                w.pos = cell
+                break
+        skills.call(w, "execute", {"why": "the whole point of the sol"})
+        nav.goto(w, *C.SPAWN)
+        nav.distance(w, 5, 5)
+        flyer.scout(w, w.pos[0], w.pos[1] - 3)
+        w.day_over = False
+        w.next_day()
+    finally:
+        S.STORM_ON = False
+        C.use(C.DEFAULT_ARENA)
+
+    kinds = {k for k, _ in rows}
+    ok = check("the objective was written down", "objective" in kinds, str(sorted(kinds)))
+    for want in ("nav", "scout", "day_open", "day_close"):
+        ok &= check(f"...and so was {want}", want in kinds)
+    ok &= check("every line carries the sol it happened on",
+                all("day" in f for _, f in rows))
+    return ok
+
+
 if __name__ == "__main__":
     S.DAY_MODE = "gemma"
     results = [test_a_run_is_on_disk_before_anyone_is_asked(),
@@ -151,6 +195,7 @@ if __name__ == "__main__":
                test_discarding_leaves_nothing_behind(),
                test_two_runs_in_the_same_second_do_not_collide(),
                test_the_game_log_carries_what_the_chat_log_cannot(),
-               test_a_settled_run_stops_recording()]
+               test_a_settled_run_stops_recording(),
+               test_every_record_survives_a_real_recorder()]
     print(f"\n{sum(results)}/{len(results)} groups passed")
     sys.exit(0 if all(results) else 1)
