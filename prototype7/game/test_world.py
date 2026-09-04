@@ -13,6 +13,11 @@ import config as C
 import settings as S
 from world import SOLID, World
 
+# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
+# but it is a scenario, not terrain -- letting one drift across an arena would make
+# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
+S.STORM_ON = False
+
 
 def flood(start):
     """Every cell reachable from `start` over the true grid."""

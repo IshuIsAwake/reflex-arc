@@ -162,6 +162,20 @@ SCOUT_RANGE = 10     # how far from the rover the window may be centred
 SCOUT_COST = 20      # steps, out of the same day the rover drives on
 SCOUT_RECHARGE = 25  # steps of driving owed before the next sortie
 
+# --- the weather -----------------------------------------------------------
+# One dust storm a sol, lasting the sol, visible from the moment it exists. Impassable
+# rather than lethal: `nav` folds its cells into `avoid`, so a route goes round it or
+# is refused, and the rover never touches one. See `hazards.py`.
+STORM_ON = True
+STORM_RADIUS = 6        # a disc, so 6 is ~110 cells -- 4% of the 50, 12% of the 30
+# Placements are drawn until one is acceptable, then the sol gets no storm at all. A
+# missing storm is a duller sol; a badly placed one is an unplayable sol.
+STORM_TRIES = 40
+# A storm may cut a corner off the arena. It may not cut the rover off from this much
+# of what it could otherwise reach, which is the difference between a hard sol and a
+# broken one -- and the two look identical in a transcript.
+STORM_MAX_CUTOFF = 0.75
+
 # --- navigation ------------------------------------------------------------
 # A goto plans over fog as though it were empty, so it drives into outcrops it could not
 # have known about. This is how many times one call replans before returning BLOCKED.

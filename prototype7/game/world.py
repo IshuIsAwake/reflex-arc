@@ -5,6 +5,7 @@ prototype 1 arrived at, and the human sees the same strings the model does.
 """
 
 import config as C
+import hazards
 import settings as S
 
 GLYPHS = "123"      # the objectives, in priority order
@@ -175,6 +176,7 @@ class Area:
         # and finishing an objective is a deletion rather than an edit to the terrain.
         self.objectives = {cell: Objective(cell, *spec)
                            for cell, spec in (objectives or {}).items()}
+        self.storm = None       # today's weather. `hazards.py` makes it, `next_day` turns it over
 
     def at(self, x, y):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -183,7 +185,17 @@ class Area:
             return self.rows[y][x]
         return "#"
 
+    @property
+    def storm_cells(self):
+        """Today's storm as a set, empty when the sky is clear. One read, so nothing
+        downstream has to keep checking whether there is weather at all."""
+        return self.storm.cells if self.storm else frozenset()
+
     def blocked(self, x, y):
+        # The storm is not a tile -- it sits over one. Kept out of `at` so that the
+        # grid, `Survey` and the flood-fill go on seeing the ground underneath it.
+        if (x, y) in self.storm_cells:
+            return True
         return self.at(x, y) in SOLID
 
     def visible(self, x, y):
@@ -285,6 +297,7 @@ class World:
         # everything else: a capability that competes with nothing is always worth using.
         self.scout_ready_at = 0
         self.scouts = 0         # sorties flown today, for the log
+        self._weather()
         # The landing site is visible on arrival. You can see where you came down.
         self.here.reveal(*self.pos, r=S.BASE_REVEAL)
         self._arrive()
@@ -396,8 +409,19 @@ class World:
         self.scout_ready_at = 0
         self.scouts = 0
         self.pos = C.SPAWN
+        self._weather()         # yesterday's storm has blown out; today gets its own
         self._arrive()
         self.record("day_open", at=self.pos, steps_left=self.steps_left)
+
+    def _weather(self):
+        """Today's storm. One a sol, lasting the sol, and never over the pad or the
+        landing site -- a storm the rover wakes up inside is not a decision."""
+        self.here.storm = hazards.spawn_for_day(
+            self.here, self.day, C.SPAWN, keep_clear=(self.base,))
+        if self.here.storm:
+            s = self.here.storm
+            self.record("storm", weather=s.kind, at=s.centre, cells=len(s),
+                        extent=s.extent)
 
     # --- the work --------------------------------------------------------
     @property

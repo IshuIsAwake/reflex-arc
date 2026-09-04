@@ -24,6 +24,11 @@ from world import label_for
 
 FOG = "?"
 YOU = "@"
+# The weather, which is forecast rather than discovered -- so it is drawn over fog too.
+# Knowing a storm is out there says nothing about the ground under it, which stays `?`
+# on the map once the storm has gone.
+STORM = "~"
+STORM_WORD = "dust storm"
 
 # Spelled out because this is read cold every turn by a model that cannot see the screen.
 # An old status line reading `antidotes 0/1` was taken to mean "1 available".
@@ -125,6 +130,8 @@ def grid(w):
             ch = nav.known(a, x, y)
             if (x, y) == w.pos:
                 line.append(YOU)
+            elif (x, y) in a.storm_cells:
+                line.append(STORM)
             elif ch is None:
                 line.append(FOG)
             else:
@@ -137,6 +144,8 @@ def _word(w, x, y):
     """What one cell is called in `rle`. The grid's glyph, said out loud."""
     if (x, y) == w.pos:
         return "the rover (you)"
+    if (x, y) in w.here.storm_cells:
+        return STORM_WORD
     ch = nav.known(w.here, x, y)
     if ch is None:
         return "unseen"
@@ -222,6 +231,23 @@ def things(w):
     return out
 
 
+def weather(w):
+    """Today's storm, as one sentence, or the empty string for a clear sky.
+
+    Stated as a fact and not as advice: where it is, that nothing crosses it, and that
+    it clears tonight. Whether that means detour, wait, or go somewhere else entirely
+    is the decision, and saying which would be making it.
+    """
+    s = w.here.storm
+    if not s:
+        return ""
+    x0, y0, x1, y1 = s.extent
+    return (f"A {s.kind} is over the {w.area}: {len(s)} cells centred {_c(s.centre)}, "
+            f"spanning x{x0}-{x1} and y{y0}-{y1}, drawn as {STORM} on the map. Nothing "
+            f"drives through it and a route cannot be planned across it. It blows out "
+            f"at the end of today and the ground under it is unharmed.")
+
+
 def objectives(w):
     """The work still to do, once it has been found. One line each.
 
@@ -304,6 +330,8 @@ def legend(w):
     pairs = [(YOU, "the rover, you"), ("#", "rock"), (".", "open regolith")]
     if None in on:
         pairs.append((FOG, "never seen"))
+    if a.storm_cells:
+        pairs.append((STORM, STORM_WORD))
     pairs += [(ch, label_for(w, ch)) for ch in sorted(on - {None} - set("#."))
               if label_for(w, ch)]
     return "legend: " + "   ".join(f"{ch} {name}" for ch, name in pairs)
@@ -326,6 +354,7 @@ def view(w):
         f"{seen} of its {a.w * a.h} cells. {AXES}",
         f"The rover sees {S.VISION_RADIUS} cells in every direction as it drives, and "
         f"a cell stays known once seen. {REVEAL_RULE}",
+        *([weather(w)] if w.here.storm else []),
         "",
         *map_block(w),
         "",

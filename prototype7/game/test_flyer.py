@@ -22,6 +22,11 @@ import settings as S
 import skills
 from world import World
 
+# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
+# but it is a scenario, not terrain -- letting one drift across an arena would make
+# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
+S.STORM_ON = False
+
 
 def check(name, cond, detail=""):
     print(f"  {'ok  ' if cond else 'FAIL'}  {name}{'   ' + detail if detail else ''}")

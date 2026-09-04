@@ -96,6 +96,12 @@ them off the map is the one thing you are reliably wrong about, and rocks that l
 separate rows are usually one rock. `count` does the adding up; you decide what the
 numbers mean.
 
+**A dust storm crosses the arena most sols, and you are told where it is.** It is drawn
+on the map, it is listed above it, and it covers ground you cannot drive through --
+`goto` will route around it, and refuse outright when it sits across the only way. It
+is weather, not terrain: it blows out at the end of the sol and the ground underneath
+is unharmed. Going round costs steps and waiting costs a sol.
+
 **There is work out there to find.** Objectives are scattered across the arena and sit
 under the fog like everything else, so they have to be found before they can be done.
 Each one carries a priority set by the mission and a number of steps the work itself
@@ -227,6 +233,11 @@ comes back after every call.
 
 **`count` counts, you judge.** Adding cells up off the map by eye is the one thing you
 are reliably wrong about, and rows that look like separate rocks are usually one rock.
+
+**A dust storm crosses the arena most sols.** You are told where: it is drawn on the map
+and listed above it. Nothing drives through it -- `goto` routes around, or refuses when
+it sits across the only way. It is weather, not terrain, and it blows out at the end of
+the sol. Going round costs steps and waiting costs a sol.
 
 **There is work out there to find.** Objectives sit under the fog like everything else.
 Each carries a priority set by the mission and the steps its work costs, both listed in

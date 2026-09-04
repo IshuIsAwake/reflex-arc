@@ -18,6 +18,12 @@ import settings as S
 import skills
 from world import World
 
+# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
+# but it is a scenario, not terrain -- letting one drift across an arena would make
+# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
+S.STORM_ON = False
+
+
 PAD = {"x": 15, "y": 16}    # solid, one cell south of where the rover lands
 
 
@@ -500,6 +506,8 @@ def test_the_schema_matches_what_is_wired_up():
     # avoid="auto" has no mark() behind it yet, so it must not be offered.
     ok &= check("auto is not offered", "auto'" not in blob and '"auto"' not in blob)
     # Nothing may be promised that is not built. These are items 2 to 7.
+    # `storm` is off this list now the weather exists, but no *skill* takes one as an
+    # argument -- the schemas must still not mention it.
     for absent in ("interact", "sample", "storm", "Ingenuity", "battery"):
         ok &= check(f"{absent} is not advertised", absent.lower() not in blob.lower())
     return ok

@@ -45,6 +45,8 @@ PATH = (92, 152, 224)      # a route being priced by `distance` -- blue, costs n
 PLAN = (226, 182, 72)      # ...and one being driven by `goto` -- yellow, costs steps
 SCOUT = (196, 170, 230)    # ...and the flyer's window -- violet, the one hue neither
                            # the ground, the plan nor the probe already speaks
+STORM = (150, 128, 96)     # dust in the air: the regolith's own colour, lifted and pale
+STORM_DARK = (112, 94, 68) # ...and the hatching through it, so it reads as weather
 BUMP = (240, 118, 96)      # the cell that refused, flashed as the plan is torn up
 WALKED = (167, 100, 69)    # ...and the ground it actually covered, under it
 GOOD = (116, 202, 134)

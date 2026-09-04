@@ -25,6 +25,12 @@ import sight
 import skills
 from world import World
 
+# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
+# but it is a scenario, not terrain -- letting one drift across an arena would make
+# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
+S.STORM_ON = False
+
+
 PAD = {"x": 15, "y": 16, "why": "back to the pad"}
 
 
@@ -120,8 +126,11 @@ PROMISED = {
 # Skills and mechanics that do not exist. Naming one invents a world the model reasons
 # about and cannot reach, which is the same failure as a success code for a move that
 # never happened.
+# `dust storm` came off this list when the weather landed, and `quake` stays on it:
+# `hazards.py` has the class and one object in it, and a prompt describing the second
+# kind would be inventing it.
 UNBUILT = ("look(", "interact(", "play(", "buy(", "read_notes", "write_notes", "mark(",
-           "end_day(", "fly(", "sample(", "photograph(", "Ingenuity", "dust storm",
+           "end_day(", "fly(", "photograph(", "Ingenuity",
            "sandstorm", "quake", "battery", "sample", "before dark", "nightfall the rover")
 
 

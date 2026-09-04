@@ -177,6 +177,14 @@ def draw_world(surf, w, f, reel=None):
         if cell in a.marks:
             _x_mark(surf, rect)
 
+    # Over the ground and under the rover: the storm is weather sitting on the arena,
+    # not a thing in it. Hatched rather than filled so the map still reads underneath --
+    # a solid block would look like terrain, which is the one thing it is not.
+    for cell in a.storm_cells:
+        r = _cell_rect(ox, oy, cell)
+        pygame.draw.rect(surf, C.STORM, r)
+        pygame.draw.line(surf, C.STORM_DARK, r.bottomleft, r.topright, 1)
+
     if reel:
         _reel(surf, reel, ox, oy)
     _rover(surf, ox + px * C.TILE + C.TILE // 2, oy + py * C.TILE + C.TILE // 2)
@@ -359,6 +367,8 @@ def draw_map(surf, w, f, cursor):
                 _objective(surf, r, ch, True)
             else:
                 pygame.draw.rect(surf, C.WALKED if (x, y) in walked else C.REGOLITH_DIM, r)
+            if (x, y) in a.storm_cells:
+                pygame.draw.rect(surf, C.STORM, r)
             if (x, y) in a.marks:
                 _x_mark(surf, r)
 

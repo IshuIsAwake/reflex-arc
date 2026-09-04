@@ -86,6 +86,18 @@ def _targets(area, goal, avoid):
     return out
 
 
+def with_storm(area, avoid):
+    """`avoid` plus today's weather.
+
+    The storm is folded in here rather than taught to `_passable`, so every rule that
+    already holds for an avoided cell holds for it too -- a route is planned around it,
+    a goal inside it has no way in, and `_targets` will not stop the rover beside one.
+    It also makes "what would this route have been without the storm" a plain second
+    call to `plan`, which is how `goto` tells a storm apart from an outcrop.
+    """
+    return frozenset(avoid) | area.storm_cells
+
+
 def _passable(area, cell, avoid):
     """Fogged cells are passable at cost 1, and that is the whole design. Treat fog
     as rock and the rover can never path into unexplored ground; treat it as truth
@@ -277,6 +289,10 @@ class Result:
         if self.beside:
             return (f"{_c(self.beside)} is solid, so stopping beside it IS "
                     f"arriving. Do not ask again.")
+        if self.code == "STORM_BLOCKED":
+            return (f"the dust storm is across the only way there. It is not rock and "
+                    f"it is not your doing: it blows out at the end of the sol and the "
+                    f"ground under it is fine. Go somewhere else today, or wait it out.")
         if self.code == "PLANNED":
             return ("the route is in the plan file and the rover has not moved, so no "
                     "fog lifted and planning this again gives the same answer.")
@@ -477,14 +493,18 @@ def goto(world, x, y, avoid=None, executor=None):
         avoid = frozenset(area.marks)
     else:
         avoid = frozenset(avoid or ())
+    asked, avoid = avoid, with_storm(area, avoid)
 
     path = plan(area, start, goal, avoid)
     if path is None:
         # One more hypothesis, and only from the get-go: did the avoid list seal the
         # route, or is there genuinely no way through? Those are different facts and
-        # gemma cannot tell them apart otherwise.
+        # gemma cannot tell them apart otherwise. The storm is a third: it is not the
+        # rover's doing and it clears tonight, which is a different thing to be told.
         code = "UNREACHABLE"
-        if avoid and plan(area, start, goal, frozenset()):
+        if area.storm and plan(area, start, goal, asked):
+            code = "STORM_BLOCKED"
+        elif asked and plan(area, start, goal, frozenset()):
             code = "UNREACHABLE(avoid)"
         world.last_path = (area_name, [])
         publish(world, legs, goal, executor)
@@ -597,6 +617,8 @@ def price(world, x, y, avoid=None):
     """
     area = world.here
     avoid = frozenset(area.marks) if avoid == "auto" else frozenset(avoid or ())
+    # The same weather the drive would meet, or the quote is for a trip nobody can take.
+    avoid = with_storm(area, avoid)
     path = plan(area, world.pos, (x, y), avoid)
     world.last_path = (world.area, list(path) if path else [])
     world.last_walk = (world.area, [])   # priced, not driven -- say so on the map

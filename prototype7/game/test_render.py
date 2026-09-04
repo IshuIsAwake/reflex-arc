@@ -16,6 +16,11 @@ import pygame
 import render
 import settings as S
 
+# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
+# but it is a scenario, not terrain -- letting one drift across an arena would make
+# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
+S.STORM_ON = False
+
 
 def fitted(w, h):
     """`fit_to_display` against a pretend screen, with the globals put back after.
