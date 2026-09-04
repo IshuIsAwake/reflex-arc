@@ -4,6 +4,8 @@ An arena, fog, a rover, a day and a step budget. Result strings are the failure 
 prototype 1 arrived at, and the human sees the same strings the model does.
 """
 
+import random
+
 import config as C
 import settings as S
 
@@ -73,6 +75,7 @@ class Area:
         self.seen = set()
         self.marks = set()
         self.visited = set()   # cells actually driven over, as opposed to merely seen
+        self.hazards = []      # list of dicts: {'type': str, 'cells': set, 'expires_at': int}
 
     def at(self, x, y):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -80,6 +83,9 @@ class Area:
         return "#"
 
     def blocked(self, x, y):
+        for h in self.hazards:
+            if (x, y) in h['cells']:
+                return True
         return self.at(x, y) in SOLID
 
     def visible(self, x, y):
@@ -216,10 +222,54 @@ class World:
     def spend(self, n=1):
         """One world-changing action. In gemma mode the day is made of these."""
         self.steps += n
+        self.update_hazards()
         if S.DAY_MODE == "human":
             return
         if self.steps >= S.DAY_STEPS:
             self.day_over = True
+
+    def update_hazards(self):
+        # Clear expired hazards
+        expired = [h for h in self.here.hazards if self.steps >= h['expires_at']]
+        for h in expired:
+            self.here.hazards.remove(h)
+            # Notify but only softly, the rover might not know it cleared until it checks.
+            # Actually, "the ground settles" implies it just cleared. 
+            self.record("hazard_cleared", type=h['type'])
+            
+        # Randomly spawn new hazards (max 4 active to make it obvious)
+        if len(self.here.hazards) < 4 and random.random() < 0.10:
+            h_type = random.choice(["sandstorm", "earthquake"])
+            cx = random.randint(0, self.here.w - 1)
+            cy = random.randint(0, self.here.h - 1)
+            
+            cells = set()
+            if h_type == "sandstorm":
+                # 9x9 region (much larger)
+                for y in range(max(0, cy-4), min(self.here.h, cy+5)):
+                    for x in range(max(0, cx-4), min(self.here.w, cx+5)):
+                        cells.add((x, y))
+            elif h_type == "earthquake":
+                # fault line (longer)
+                for i in range(-8, 9):
+                    x = cx + i
+                    y = cy + (i % 3)
+                    if 0 <= x < self.here.w and 0 <= y < self.here.h:
+                        cells.add((x, y))
+                        
+            # Ensure base pad and spawn are not blocked
+            base_x, base_y = self.base
+            cells.discard((base_x, base_y))
+            cells.discard(C.SPAWN)
+            
+            if cells:
+                duration = random.randint(15, 25)
+                self.here.hazards.append({
+                    'type': h_type,
+                    'cells': cells,
+                    'expires_at': self.steps + duration
+                })
+                self.record("hazard_spawned", type=h_type)
 
     @property
     def steps_left(self):
@@ -242,6 +292,7 @@ class World:
         self.steps = 0
         self.elapsed = 0.0
         self.log.clear()
+        self.here.hazards.clear()
         self.last_path = ("", [])
         self.last_walk = ("", [])
         self.reel.clear()       # nobody wants to watch yesterday's drive

@@ -141,6 +141,17 @@ def draw_world(surf, w, f, reel=None):
         if cell in a.marks:
             _x_mark(surf, rect)
 
+    for h in a.hazards:
+        for cx, cy in h['cells']:
+            if a.visible(cx, cy):
+                rect = _cell_rect(ox, oy, (cx, cy))
+                if h['type'] == 'sandstorm':
+                    # Fill cell with a slightly transparent-like color (just mix with ground)
+                    pygame.draw.rect(surf, (180, 150, 90), rect)
+                elif h['type'] == 'earthquake':
+                    # Draw a thick jagged line
+                    pygame.draw.line(surf, (200, 50, 50), rect.bottomleft, rect.topright, 4)
+
     if reel:
         _reel(surf, reel, ox, oy)
     _rover(surf, ox + px * C.TILE + C.TILE // 2, oy + py * C.TILE + C.TILE // 2)

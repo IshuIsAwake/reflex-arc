@@ -48,8 +48,8 @@ mattered, say it out loud, because the older blocks are gone.
 
 You have two skills and no others:
 
-  goto(x, y, why)       drive there. One call drives the whole way.
-  distance(x, y, why)   what that drive would cost. Spends nothing.
+  goto(x, y, why, avoid)       drive there. One call drives the whole way.
+  distance(x, y, why, avoid)   what that drive would cost. Spends nothing.
 
 Both take ABSOLUTE coordinates -- a cell on the map in your view, never an offset from
 where the rover stands. If it is at (25,25) and you want it ten cells south, work out
@@ -95,6 +95,8 @@ teaches you more than a cautious short one. Aim at far corners and distant edges
 **The arena has no wall around it.** The outer rows and columns are ordinary ground the rover 
 can stand on, so aiming at the far edge is a real journey and not a mistake.
 Some of it is rock, like anywhere else, and you find that out by going.
+
+**TEMPORARY OBSTRUCTIONS:** If your `goto` call is BLOCKED by a cell, but your map still shows that cell as clear (`.`), you have hit a temporary invisible obstruction. Do not try to drive through it again without passing the `avoid` argument (e.g. `avoid="(x,y)"` with the blocked cell coordinates), otherwise your planner will assume it is clear and repeatedly fail. Alternatively, abandon your current path and go complete another objective or return to base (the obstruction will eventually clear on its own).
 
 **The map in your view is a real map and you can read it.** It is drawn to scale, one
 character to a cell, and it is the accumulated record of everything the rover has seen.
