@@ -5,7 +5,7 @@
 # A wall clock for gemma is deferred -- it would make every run depend on machine speed.
 DAY_MODE = "gemma"
 DAY_SECONDS = 300
-DAY_STEPS = 1000         # one per tile driven; crossing the arena is ~50
+DAY_STEPS = 1000         # one per tile driven; crossing the arena is ~30
 
 TIME_SCALE = 1.0        # 2.0 makes the day run twice as fast
 VISION_RADIUS = 3       # how far the rover sees as it drives
@@ -13,9 +13,19 @@ BASE_REVEAL = 6         # and what it sees on arrival, so day one opens on groun
 
 # How the map is written into the view. "grid" is the picture, one character a cell.
 # "rle" is one line a row of coordinate-labelled runs, so no cell has to be counted off
-# a row -- gemma scores 0% on every counting question off the picture. Measured on
-# gemma4:e4b: the grid is a flat ~780 tokens, rle is 1.9x that on a fresh sol and 3.8x
-# once the map is filled in, because exploring the map is what fragments the runs.
+# a row -- gemma scores 0% on every counting question off the picture.
+#
+# What rle costs, in gemma4:e4b's own tokens, measured 2026-09-04 off `prompt_eval_count`
+# for the whole view block:
+#
+#            fresh sol        surveyed
+#   30x30    845 -> 1070      772 -> 1414   (1.27x, 1.83x)
+#   50x50   1280 -> 1285     1155 -> 3168   (1.00x, 2.74x)
+#
+# Runs fragment as the map fills in, so rle is most expensive exactly when the sol is
+# going well, and the bigger arena separates the two formats far more. Measure in tokens,
+# not chars: the grid's repeated characters pack much better than words, so the char
+# ratio understates this badly -- 1.37x where the token ratio is 2.74x.
 MAP_FORMAT = "grid"
 
 # --- the model -------------------------------------------------------------
@@ -36,9 +46,33 @@ SHOW_THINKING = True    # whether the pane displays the trace; the tape records 
 
 CHAT_W = 1000           # pixel width of the pane
 
-# Tool calls in one human turn before gemma is made to stop and speak. `distance` costs
-# no steps, so a model looping on one would never be stopped by the day's budget.
-MODEL_MAX_HOPS = 10
+# --- how much rope she gets in one turn -------------------------------------
+# She drives until she calls `end`, so these are what stop a turn that never would.
+# Two budgets, because the two kinds of call fail differently.
+#
+# `goto` spends steps, so the day's budget eventually catches a loop of them. MOVE_HOPS
+# is about pacing rather than safety.
+MOVE_HOPS = 10
+#
+# `distance`, `count` and `count_cells` spend nothing, so nothing else would ever stop
+# them: a model looping on `count` loops forever. The allowance is per *drive* -- every
+# `goto` resets it to zero. So more looking has to be paid for with moving, and since
+# moving is capped the whole turn terminates: at most (MOVE_HOPS + 1) * FREE_HOPS looks.
+FREE_HOPS = 5
+#
+# Past a cap the call is refused rather than run, and this many refusals of a kind ends
+# the turn for her. Refusing without ever stopping is how a model spends a whole turn
+# being told no. Watched 2026-09-04: with one cap and no grace, the 31B lost 24 of 48
+# calls in silence.
+MOVE_GRACE = 3
+FREE_GRACE = 5
+
+# One tool call per request, always. The 31B emits four to six at a time, and they are
+# *chosen* before any of their outcomes are known -- the second target in a batch is
+# aimed at a map several drives out of date, which is where its BLOCKED results came
+# from. Extra calls in one reply are refused, not queued: queueing runs exactly the
+# stale decisions this exists to stop.
+ONE_CALL_AT_A_TIME = True
 
 MOVE_DELAY_MS = 220     # hold a direction this long before it repeats
 MOVE_REPEAT_MS = 70     # then one step every this long
@@ -80,10 +114,16 @@ GEMINI_THINKING = "low"
 ANIMATE = True
 ANIM_PLAN = 0.012       # seconds a cell of the yellow plan takes to draw
 ANIM_PROBE = 0.022      # a cell of a blue distance probe
-ANIM_STEP = 0.035       # a cell of actual driving; 76 steps is about 2.7s
+ANIM_STEP = 0.070       # a cell of actual driving; 76 steps is about 5.3s
 ANIM_BLOCK = 0.30       # the pause on an outcrop before the plan withdraws
 ANIM_PRUNE = 0.008      # a cell of it retracting back to the rover
 REEL_MAX = 12           # pending reels kept when nothing is drawing them
+
+# The rover sits still this long after a drive before the planner is allowed to think
+# again. A 31B answers in under two seconds, so without this a sol is a sequence of
+# teleports with no drive legible between them. It is weight, not simulation -- nothing
+# in the world changes during it.
+SETTLE_SECONDS = 2.0
 
 # --- navigation ------------------------------------------------------------
 # A goto plans over fog as though it were empty, so it drives into outcrops it could not

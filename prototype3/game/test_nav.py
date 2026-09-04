@@ -70,7 +70,7 @@ def surveyed():
 
 def test_never_routes_through_known_rock():
     w = surveyed()
-    for start, goal in (((25, 25), (5, 5)), ((2, 2), (45, 45)), ((25, 25), (25, 49))):
+    for start, goal in (((15, 15), (3, 3)), ((1, 1), (27, 27)), ((15, 15), (15, 29))):
         path = nav.plan(w.here, start, goal)
         assert path, (start, goal)
         assert path[0] == start and len(path) == len(set(path)), path
@@ -82,8 +82,8 @@ def test_never_routes_through_known_rock():
 
 def test_a_surveyed_arena_agrees_with_bfs():
     w = surveyed()
-    pairs = [((25, 25), (5, 5)), ((25, 25), (45, 45)), ((2, 2), (44, 30)),
-             ((0, 49), (25, 0)), ((25, 25), (25, 26))]   # the last is the pad
+    pairs = [((15, 15), (3, 3)), ((15, 15), (27, 27)), ((1, 1), (26, 18)),
+             ((0, 29), (15, 0)), ((15, 15), (15, 16))]   # the last is the pad
     for start, goal in pairs:
         path = nav.plan(w.here, start, goal)
         want = reference_bfs(C.ARENA, start, goal)
@@ -95,16 +95,21 @@ def test_the_planner_is_not_omniscient():
     """`Area.at()` returns ground truth whether or not the cell is fogged. A plan made
     through fog must therefore be a fantasy that drives straight into rock it has never
     met -- that is what makes a blocked goto informative and exploring worth doing."""
-    # (25,49) is 24 cells away as the crow flies and a good deal more by any real route,
-    # so a plan that comes out shorter than the truth is one that has driven through rock
-    # on paper. A target where the two happen to tie would pass this by luck, hence the
-    # margin. **The truth is computed, not written down** -- it was hardcoded as 36 until
-    # 2026-08-30, which is a number about one particular arena and not about the planner.
-    truth = reference_bfs(C.ARENA, C.SPAWN, (25, 49))
-    assert truth is not None, "(25,49) has to be reachable at all"
+    # Due north of the pad, behind the boulder at (14,5): the fogged plan drives straight
+    # up through rock it has never met, so it comes out shorter than the truth. A target
+    # where the two happen to tie would pass this by luck, hence the margin. **The truth
+    # is computed, not written down** -- it was hardcoded as 36 until 2026-08-30, which is
+    # a number about one particular arena and not about the planner.
+    #
+    # There is no slack left in that 4. Isolated convex squares are cheap to walk around,
+    # so this arena's most misleading route is misleading by exactly four cells; the old
+    # one managed twelve. If a future arena keeps the boulders convex and separated, this
+    # is the test that fails first, and the fix is concave rock, not a smaller margin.
+    truth = reference_bfs(C.ARENA, C.SPAWN, (15, 0))
+    assert truth is not None, "(15,0) has to be reachable at all"
 
     w = World()                      # only the landing site is seen
-    path = nav.plan(w.here, w.pos, (25, 49))
+    path = nav.plan(w.here, w.pos, (15, 0))
     assert path, "fog has to be plannable through, or exploring is impossible"
     assert len(path) - 1 <= truth - 4, \
         (len(path) - 1, truth, "the fogged plan should be too good, by a real margin")
@@ -112,7 +117,7 @@ def test_the_planner_is_not_omniscient():
         "a plan through fog that dodges unseen rock means the planner can see it"
 
     w2 = surveyed()
-    real = nav.plan(w2.here, w2.pos, (25, 49))
+    real = nav.plan(w2.here, w2.pos, (15, 0))
     assert not any(C.ARENA[y][x] == "#" for x, y in real)
     assert len(real) - 1 == truth, (len(real) - 1, truth)
 
@@ -126,13 +131,13 @@ def test_only_one_door_onto_the_grid():
 
 def test_distance_is_optimistic():
     w = World()
-    guess = nav.distance(w, 25, 49)
-    truth = reference_bfs(C.ARENA, w.pos, (25, 49))
+    guess = nav.distance(w, 15, 0)
+    truth = reference_bfs(C.ARENA, w.pos, (15, 0))
     assert guess is not None and guess < truth, (guess, truth)
     assert w.steps == 0, "distance must not cost a step"
 
     w2 = surveyed()
-    assert nav.distance(w2, 25, 49) == truth, "surveyed, it should be exact"
+    assert nav.distance(w2, 15, 0) == truth, "surveyed, it should be exact"
 
 
 def test_the_arena_has_no_rim_wall():
@@ -141,13 +146,15 @@ def test_the_arena_has_no_rim_wall():
     UNREACHABLE. Here the outer rows and columns are ordinary ground and the system
     prompt says so, which only stays true while this passes."""
     w = surveyed()
-    edge = ([(x, 0) for x in range(50)] + [(x, 49) for x in range(50)] +
-            [(0, y) for y in range(50)] + [(49, y) for y in range(50)])
+    n = len(C.ARENA)
+    edge = ([(x, 0) for x in range(n)] + [(x, n - 1) for x in range(n)] +
+            [(0, y) for y in range(n)] + [(n - 1, y) for y in range(n)])
     open_edge = [c for c in edge if C.ARENA[c[1]][c[0]] == "."]
     assert len(open_edge) > len(edge) * 0.7, \
         f"only {len(open_edge)} of {len(edge)} edge cells are drivable"
-    for goal in ((25, 0), (25, 49), (0, 25), (0, 49)):
-        assert nav.plan(w.here, (25, 25), goal), f"cannot reach the edge at {goal}"
+    cx, cy = C.SPAWN
+    for goal in ((cx, 0), (cx, n - 1), (0, cy), (0, n - 1)):
+        assert nav.plan(w.here, C.SPAWN, goal), f"cannot reach the edge at {goal}"
 
 
 # --- the drive --------------------------------------------------------------
@@ -155,35 +162,35 @@ def test_the_arena_has_no_rim_wall():
 def test_steps_charged_equal_tiles_driven():
     w = surveyed()
     before = w.steps
-    r = nav.goto(w, 25, 26)          # the pad: solid, so land beside it
+    r = nav.goto(w, 15, 16)          # the pad: solid, so land beside it
     assert r.code == "DONE", str(r)
     assert w.steps - before == r.steps == 0, (w.steps - before, r.steps)
 
-    r = nav.goto(w, 25, 20)
+    r = nav.goto(w, 15, 10)
     assert r.code == "DONE" and w.steps == r.steps == 5, (str(r), w.steps)
 
 
 def test_a_solid_target_lands_you_next_to_it():
-    """And the answer has to say so. `DONE(at=(25,25))` for a `goto(25,26)` reads as
+    """And the answer has to say so. `DONE(at=(15,15))` for a `goto(15,16)` reads as
     not having arrived, and gemma asked for the same cell three times running on
     2026-08-25. `beside` is only safe because known rock is refused before this can
     fire -- see test_a_known_rock_is_not_somewhere_you_can_arrive, the other half of
     the same rule."""
     w = surveyed()
-    w.pos = (20, 20)
-    r = nav.goto(w, 25, 26)          # the base pad
+    w.pos = (12, 20)
+    r = nav.goto(w, 15, 16)          # the base pad
     assert r.code == "DONE", str(r)
-    assert w.pos in _around((25, 26)), w.pos
-    assert r.beside == (25, 26) and "beside=(25,26)" in str(r), str(r)
+    assert w.pos in _around((15, 16)), w.pos
+    assert r.beside == (15, 16) and "beside=(15,16)" in str(r), str(r)
     assert "IS arriving" in r.advice, r.advice
 
     # An ordinary cell says nothing, or every answer carries the noise.
-    r = nav.goto(w, 22, 22)
+    r = nav.goto(w, 13, 21)
     assert r.code == "DONE" and r.beside is None, str(r)
 
     # Rock never gets one, because it never gets a DONE to hang it on.
-    w.pos = (32, 29)
-    assert nav.goto(w, 33, 29).beside is None, "rock is UNREACHABLE, not beside"
+    w.pos = (18, 11)
+    assert nav.goto(w, 19, 11).beside is None, "rock is UNREACHABLE, not beside"
 
 
 def test_a_known_rock_is_not_somewhere_you_can_arrive():
@@ -191,24 +198,29 @@ def test_a_known_rock_is_not_somewhere_you_can_arrive():
     mistake, and answering DONE says you arrived somewhere you never went -- which
     leaves the caller nothing to correct. It cost four days on 2026-08-26."""
     w = surveyed()
-    w.pos = (32, 29)
-    assert C.ARENA[29][33] == "#", "this test is about rock"
+    w.pos = (18, 11)
+    assert C.ARENA[11][19] == "#", "this test is about rock"
 
-    r = nav.goto(w, 33, 29)
+    r = nav.goto(w, 19, 11)
     assert r.code == "UNREACHABLE", str(r)
     assert w.steps == 0, "and it does not pretend to drive"
 
     # ...but rock it has *not* seen stays a hypothesis worth driving into, which is the
-    # whole design. Only known rock is refused.
+    # whole design. Only known rock is refused. A far boulder, because BASE_REVEAL lights
+    # up six cells and the one above is inside that.
     fresh = World()
-    assert not fresh.here.visible(33, 29), "needs to still be fogged"
-    assert nav.plan(fresh.here, fresh.pos, (33, 29)) is not None, \
+    assert C.ARENA[9][26] == "#"
+    assert not fresh.here.visible(26, 9), "needs to still be fogged"
+    assert nav.plan(fresh.here, fresh.pos, (26, 9)) is not None, \
         "fogged rock must still be plannable, or exploring is impossible"
 
 
 def test_rock_it_could_not_have_known_about_stops_the_drive():
     w = World()                      # everything past the landing site is fog
-    r = nav.goto(w, 25, 5)
+    # Driven *at* a boulder it cannot see. Since the arena went sparse and convex, that
+    # is the only way to earn a BLOCKED: with NAV_REPLANS at 5, a drive merely *passing*
+    # a 3x3 walks around it and still reports DONE, listing the rock it met in `walls`.
+    r = nav.goto(w, 26, 9)
     assert r.code == "BLOCKED", str(r)
     assert r.walls, "every outcrop found on the way is reported"
     assert w.here.at(*r.at) == "#", r.at
@@ -223,7 +235,7 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     is the record that survives, and unlike the plan it can never cross rock -- which
     is what makes the two worth drawing together."""
     w = World()
-    r = nav.goto(w, 25, 49)          # 24 through fog, 36 in fact: it must be surprised
+    r = nav.goto(w, 15, 0)           # 15 through fog, 19 in fact: it must be surprised
     assert r.code in ("BLOCKED", "DONE"), str(r)
 
     area, walk = w.last_walk
@@ -244,7 +256,7 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     assert any(C.ARENA[y][x] == "#" for cells in plans for x, y in cells), \
         "some plan ran through rock nobody had seen -- that is what fog costs"
 
-    nav.distance(w, 25, 49)
+    nav.distance(w, 15, 0)
     assert w.last_walk[1] == [], "pricing a trip drives nothing and should show nothing"
 
 
@@ -258,23 +270,23 @@ def test_a_drive_says_how_much_map_it_bought():
     from a wasted one leaves the caller nothing to correct.
     """
     w = World()
-    first = nav.goto(w, 25, 20)
+    first = nav.goto(w, 15, 10)
     assert first.code == "DONE" and first.new > 0, str(first)
     assert "new=" in str(first), str(first)
 
-    again = nav.goto(w, 25, 20)
+    again = nav.goto(w, 15, 10)
     assert again.new == 0, ("standing still buys nothing", str(again))
 
     # ...and driving back down ground already surveyed buys nothing either, which is
     # the case that matters: it spends real steps and reads as a success.
-    back = nav.goto(w, 25, 25)
+    back = nav.goto(w, 15, 15)
     assert back.steps > 0, str(back)
     assert back.new == 0, ("a repeat down a mapped corridor", str(back))
 
     # A refused drive went nowhere and revealed nothing, and both are true, so the
     # field is 0 rather than absent.
     seen_rock = surveyed()
-    refused = nav.goto(seen_rock, 33, 29)     # rock it can already see, so UNREACHABLE
+    refused = nav.goto(seen_rock, 19, 11)     # rock it can already see, so UNREACHABLE
     assert refused.code.startswith("UNREACHABLE"), str(refused)
     assert refused.new == 0, str(refused)
 
@@ -286,7 +298,7 @@ def test_a_drive_says_how_much_map_it_bought():
     # And it reaches the game log, which is where "358 of 439 steps bought nothing"
     # gets computed from without reading a transcript by hand.
     w2 = World()
-    logged = nav.goto(w2, 25, 20)
+    logged = nav.goto(w2, 15, 10)
     assert w2.nav_log[-1]["new"] == logged.new, w2.nav_log[-1]
 
 
@@ -299,39 +311,40 @@ def test_pricing_a_trip_says_what_it_might_buy():
     a skill that only prices is a plausible reason why.
     """
     w = World()
-    steps, reveals = nav.price(w, 25, 45)
+    steps, reveals = nav.price(w, 15, 27)
     assert steps and reveals > 0, (steps, reveals)
 
     # Down a corridor it has already surveyed, the trip is worth nothing, and the
     # number has to say so rather than being quietly omitted.
     surveyed_w = surveyed()
-    steps, reveals = nav.price(surveyed_w, 25, 45)
+    steps, reveals = nav.price(surveyed_w, 15, 27)
     assert steps > 0 and reveals == 0, (steps, reveals)
 
     # Never negative, never larger than the fog that is actually left.
     w2 = World()
-    left = 2500 - len(w2.here.seen)
-    _, big = nav.price(w2, 0, 49)
+    left = len(C.ARENA) * len(C.ARENA[0]) - len(w2.here.seen)
+    _, big = nav.price(w2, 0, 29)
     assert 0 < big <= left, (big, left)
 
     # No route, no promise.
     assert nav.price(surveyed_w, 33, 30) == (None, 0)
 
     # `distance` still hands back the bare integer four other call sites rely on.
-    d = nav.distance(World(), 25, 45)
+    d = nav.distance(World(), 15, 27)
     assert isinstance(d, int) and d > 0, d
 
 
 def test_unreachable_says_whether_the_avoid_list_caused_it():
     w = surveyed()
-    w.pos = (25, 25)
-    fence = [(24, 25), (26, 25), (25, 24), (25, 28), (24, 28), (26, 28),
-             (23, 26), (23, 27), (27, 26), (27, 27)]
-    r = nav.goto(w, 20, 20, avoid=fence)
+    w.pos = (15, 15)
+    # A ring around the rover and the pad it is standing on, so nothing can get out.
+    fence = [(15, 14), (14, 15), (16, 15), (13, 16), (13, 17), (17, 16), (17, 17),
+             (14, 18), (15, 18), (16, 18)]
+    r = nav.goto(w, 10, 20, avoid=fence)
     assert r.code == "UNREACHABLE(avoid)", str(r)
     assert w.steps == 0, "a refused plan costs nothing"
 
-    assert nav.goto(w, 20, 20).code == "DONE", "and without the fence it is fine"
+    assert nav.goto(w, 10, 20).code == "DONE", "and without the fence it is fine"
 
 
 def test_auto_is_only_legal_somewhere_it_has_stood():
@@ -346,12 +359,12 @@ def test_a_marked_cell_is_driven_around():
     """`avoid="auto"` is the human's X list. Gemma cannot mark a cell yet -- `mark()`
     is not built -- which is exactly why `skills` refuses `avoid=auto` by name."""
     w = surveyed()
-    nav.goto(w, 25, 20)
-    assert w.pos == (25, 20)
-    w.toggle_mark((25, 22))
-    r = nav.goto(w, 25, 25, avoid="auto")
-    assert r.code == "DONE" and w.pos == (25, 25), str(r)
-    assert (25, 22) not in w.last_walk[1], "it drove through the cell it was told to dodge"
+    nav.goto(w, 15, 10)
+    assert w.pos == (15, 10)
+    w.toggle_mark((15, 12))
+    r = nav.goto(w, 15, 15, avoid="auto")
+    assert r.code == "DONE" and w.pos == (15, 15), str(r)
+    assert (15, 12) not in w.last_walk[1], "it drove through the cell it was told to dodge"
 
 
 # --- the console ------------------------------------------------------------
@@ -363,11 +376,11 @@ def test_the_console_parses_what_a_human_would_type():
     assert console._parse("goto 15 10 avoid=(3,4),(5,6)")[2] == frozenset({(3, 4), (5, 6)})
 
     w = surveyed()
-    w.pos = (20, 20)
+    w.pos = (12, 20)
     # Two lines: the code form, then the clause that says landing beside a solid target
     # is arriving. The human is shown the same words gemma is, laid out for a console
     # that truncates -- so check both, not just the last.
-    pad = console.run(w, "goto 25 26")
+    pad = console.run(w, "goto 15 16")
     assert "DONE" in pad[1][0], pad
     assert "IS arriving" in pad[-1][0], pad
     assert all(len(text) < 88 for text, _ in pad), "a truncated explanation is worse"
@@ -380,10 +393,10 @@ def test_the_console_parses_what_a_human_would_type():
 
 def test_the_log_records_what_the_plan_promised():
     w = World()
-    nav.goto(w, 25, 5)
+    nav.goto(w, 15, 0)
     last = w.nav_log[-1]
     assert last["planned"] < last["steps"] or last["code"] != "DONE", last
-    assert last["area"] == C.ARENA_NAME and last["to"] == (25, 5)
+    assert last["area"] == C.ARENA_NAME and last["to"] == (15, 0)
 
 
 if __name__ == "__main__":

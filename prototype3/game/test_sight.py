@@ -40,14 +40,14 @@ def test_the_view_is_fogged():
     print("fog")
     w = World()
     g = rows(w)
-    ok = check("fifty rows", len(g) == 50, str(len(g)))
-    ok &= check("fifty columns", all(len(r) == 50 for r in g))
+    ok = check("thirty rows", len(g) == 30, str(len(g)))
+    ok &= check("thirty columns", all(len(r) == 30 for r in g))
     ok &= check("the far corner is unseen", g[2][2] == sight.FOG)
-    ok &= check("the rover is drawn", g[25][25] == sight.YOU)
-    ok &= check("the pad is not", g[26][25] == "H")
+    ok &= check("the rover is drawn", g[15][15] == sight.YOU)
+    ok &= check("the pad is not", g[16][15] == "H")
     ok &= check("most of it is still fog",
-                sum(r.count(sight.FOG) for r in g) > 2000,
-                f"{sum(r.count(sight.FOG) for r in g)} of 2500")
+                sum(r.count(sight.FOG) for r in g) > 700,
+                f"{sum(r.count(sight.FOG) for r in g)} of 900")
 
     g2 = rows(surveyed())
     ok &= check("surveyed, nothing is fog", not any(sight.FOG in r for r in g2))
@@ -138,9 +138,9 @@ def test_the_runs_say_what_the_picture_says():
         for name, w in (("fogged", World()), ("surveyed", surveyed())):
             spans, pic = rle_rows(w), rows(w)
             ok &= check(f"{name}: fifty rows of fifty cells",
-                        len(spans) == 50 and all(len(r) == 50 for r in spans),
+                        len(spans) == 30 and all(len(r) == 30 for r in spans),
                         f"{len(spans)} rows, widths {sorted({len(r) for r in spans})}")
-            bad = [(x, y, pic[y][x], spans[y][x]) for y in range(50) for x in range(50)
+            bad = [(x, y, pic[y][x], spans[y][x]) for y in range(30) for x in range(30)
                    if word[pic[y][x]] != spans[y][x]]
             ok &= check(f"{name}: every cell agrees with the grid", not bad,
                         f"{len(bad)} disagree, e.g. {bad[:3]}")
@@ -211,7 +211,7 @@ def test_the_status_line_survived_the_move():
     w = World()
     line = sight.status_line(w)
     ok = check("has the four facts", all(bit in line for bit in
-               ("day 1", "steps left", "at (25,25)", "base pad at")), line)
+               ("day 1", "steps left", "at (15,15)", "base pad at")), line)
     ok &= check("one line", "\n" not in line)
     ok &= check("and the view carries it", line in sight.view(w))
     ok &= check("it says steps, because steps are what a sol is made of",

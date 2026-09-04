@@ -40,7 +40,7 @@ def viewport(surf, area, pos):
     """Pixel origin of cell (0,0) plus the rect the arena is allowed to paint in.
 
     An arena smaller than the view sits centred; a bigger one scrolls to follow the
-    rover and stops at its own edges. At the shipped numbers the whole 50x50 fits and
+    rover and stops at its own edges. At the shipped numbers the whole 30x30 fits and
     nothing scrolls -- raising `TILE` in config.py just starts it scrolling, which is
     why this is kept rather than simplified away."""
     def axis(span, view, here, screen_span, top):

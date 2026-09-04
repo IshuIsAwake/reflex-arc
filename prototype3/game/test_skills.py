@@ -18,7 +18,7 @@ import settings as S
 import skills
 from world import World
 
-PAD = {"x": 25, "y": 26}    # solid, one cell south of where the rover lands
+PAD = {"x": 15, "y": 16}    # solid, one cell south of where the rover lands
 
 
 def check(name, cond, detail=""):
@@ -29,11 +29,11 @@ def check(name, cond, detail=""):
 def test_a_plain_goto_drives():
     print("goto")
     w = World()
-    w.pos = (25, 22)
+    w.pos = (15, 12)
     c = skills.call(w, "goto", {**PAD, "why": "back to the pad"})
     ok = check("arrives", c.result.startswith("DONE"), c.result)
     # The pad is solid, so this lands beside it. Without `beside=` in the answer,
-    # DONE(at=(25,25)) for a goto(25,26) reads as failure and gets reissued.
+    # DONE(at=(15,15)) for a goto(15,16) reads as failure and gets reissued.
     ok &= check("and says it stopped beside a solid target", "beside=" in c.result)
     # ...and the field alone was not enough. Watched 2026-08-26: gemma read the beside=
     # form as failure and spent the rest of the run trying to drive into a counter.
@@ -76,9 +76,9 @@ def test_going_nowhere_twice_is_said_out_loud():
     # so a live run looped five times on UNREACHABLE and was never told. The rule is now
     # the invariant -- no steps spent means nothing changed means same answer.
     w2 = World()
-    w2.here.seen = {(x, y) for y in range(50) for x in range(50)}
-    w2.pos = (32, 29)
-    rock = {"x": 33, "y": 29, "why": "into the outcrop"}
+    w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
+    w2.pos = (18, 11)
+    rock = {"x": 19, "y": 11, "why": "into the outcrop"}
     far = _repeat(w2, rock)
     ok &= check("an UNREACHABLE loop is caught too",
                 far[-1].result.startswith("UNREACHABLE")
@@ -115,10 +115,10 @@ def test_drives_that_buy_no_map_are_said_out_loud_even_when_they_differ():
     """
     print("drives that buy nothing")
     w = World()
-    w.here.seen = {(x, y) for y in range(50) for x in range(50)}   # nothing left to find
+    w.here.seen = {(x, y) for y in range(w.here.h) for x in range(w.here.w)}  # nothing left
 
     hist = []
-    for x, y in ((25, 20), (25, 30), (25, 20), (25, 30)):
+    for x, y in ((15, 10), (15, 20), (15, 10), (15, 20)):
         hist.append(skills.call(w, "goto", {"x": x, "y": y, "why": "casting about"},
                                 history=hist))
     ok = check("every drive really did spend steps",
@@ -137,7 +137,7 @@ def test_drives_that_buy_no_map_are_said_out_loud_even_when_they_differ():
     # A drive that opens new ground ends the run, or returning to base would be scolded.
     w2 = World()
     run = []
-    for x, y in ((25, 20), (25, 25), (25, 20)):
+    for x, y in ((15, 10), (15, 15), (15, 10)):
         run.append(skills.call(w2, "goto", {"x": x, "y": y, "why": "there and back"},
                                history=run))
     ok &= check("a run is not started by driving home",
@@ -147,7 +147,7 @@ def test_drives_that_buy_no_map_are_said_out_loud_even_when_they_differ():
     # in a row reveal no map by construction and must not read as being stuck.
     w3 = World()
     prices = []
-    for x, y in ((2, 2), (45, 45), (25, 0), (0, 49)):
+    for x, y in ((2, 2), (27, 27), (15, 0), (0, 29)):
         prices.append(skills.call(w3, "distance", {"x": x, "y": y, "why": "which"},
                                   history=prices))
     ok &= check("comparing four routes is not being stuck",
@@ -251,13 +251,13 @@ def _steps_in(result):
 def test_an_avoid_that_parses_is_obeyed():
     print("avoid, obeyed")
     w = World()
-    w.here.seen = {(x, y) for y in range(50) for x in range(50)}
-    w.pos = (25, 22)
+    w.here.seen = {(x, y) for y in range(w.here.h) for x in range(w.here.w)}
+    w.pos = (15, 12)
     c = skills.call(w, "distance", {**PAD, "why": "clear run"})
     plain = _steps_in(c.result)
     # Seal the pad's free neighbours from the north. If the parser dropped the list on
     # the floor the number would not move, which is exactly the bug that hides.
-    fence = "(24,25),(25,25),(26,25)"
+    fence = "(14,15),(15,15),(16,15)"
     c = skills.call(w, "distance", {**PAD, "why": "dodging", "avoid": fence})
     ok = check("the list changes the answer",
                c.result.startswith("UNREACHABLE") or
@@ -268,7 +268,7 @@ def test_an_avoid_that_parses_is_obeyed():
 def test_coordinates_are_taken_generously():
     print("x and y")
     w = World()
-    w.pos = (25, 22)
+    w.pos = (15, 12)
     ok = check('"25" is 25', skills._int("x", "25") == 25)
     ok &= check("25.0 is 25", skills._int("x", 25.0) == 25)
     for bad in ("<nil>", "ten", None, 10.5, True, [10]):
@@ -297,22 +297,172 @@ def test_an_unknown_skill_says_what_there_is():
     return ok
 
 
+def _surveyed():
+    """A world with the whole arena revealed, so counting is not about fog."""
+    w = World()
+    w.here.reveal(*w.pos, r=max(w.here.w, w.here.h))
+    return w
+
+
+def test_counting_is_exact_where_reading_the_map_is_not():
+    print("count")
+    # The failure this exists for, measured 2026-09-04 on the 50x50: nine bounding boxes
+    # named, nine of them real formations, one of nine sizes correct. It knows where the
+    # rocks are and cannot say how many cells they have. So the sizes must be exact.
+    import config as C
+    was = C.ARENA
+    try:
+        C.use("50")
+        w = _surveyed()
+        r = skills.call(w, "count", {"kind": "rock"})
+        ok = check("it costs no steps", r.steps == 0)
+        ok &= check("every formation is listed", r.result.count("cells,") == 31,
+                    f"{r.result.count('cells,')} listed")
+        ok &= check("including the one that is 30", "30 cells" in r.result)
+        # Twenty sixteens tie. Listing by size would put the answer at the top and do
+        # the deciding; map order leaves the weighing where it belongs.
+        middles = [int(m) for m in re.findall(r"middle \((\d+),", r.result)]
+        sizes = [int(m) for m in re.findall(r"R\d+: (\d+) cells", r.result)]
+        ok &= check("and it is not handed over pre-ranked",
+                    sizes != sorted(sizes, reverse=True))
+        ok &= check("...but in map order", len(middles) == len(sizes))
+
+        # A middle that is not in its own formation is a coordinate `count_cells` cannot
+        # resolve. The C on this arena has its centroid in open ground inside the bay.
+        big = re.search(r"R(\d+): 30 cells, middle \((\d+),(\d+)\)", r.result)
+        ok &= check("the middle of the concave one is a cell of it", bool(big))
+        if big:
+            x, y = int(big.group(2)), int(big.group(3))
+            ok &= check("...and it really is rock", C.ARENA[y][x] == "#", f"({x},{y})")
+            cells = skills.call(w, "count_cells", {"x": x, "y": y})
+            ok &= check("count_cells resolves it", "30 cells" in cells.result,
+                        cells.result[:60])
+            ok &= check("...as runs, not a wall of coordinates",
+                        "y15: x30-39" in cells.result, cells.result[:80])
+            ok &= check("...costing nothing", cells.steps == 0)
+    finally:
+        C.ARENA = was
+        C.use(C.DEFAULT_ARENA)
+    return ok
+
+
+def test_counting_only_ever_counts_what_she_has_seen():
+    print("count under fog")
+    # Rock still under fog is fog. A size that silently meant "or more" would be the
+    # lying success code again, wearing a number.
+    w = World()          # fresh: only the landing site is revealed
+    r = skills.call(w, "count", {})
+    seen_rock = sum(1 for (x, y) in w.here.seen if w.here.at(x, y) == "#")
+    listed = sum(int(n) for n in re.findall(r"R\d+: (\d+) cells", r.result))
+    ok = check("it counts revealed rock and no more", listed == seen_rock,
+               f"{listed} counted, {seen_rock} revealed")
+    ok &= check("and fog is reported as fog", "FOG" in r.result)
+    # Open ground is neither, and saying so beats guessing which she meant.
+    here = skills.call(w, "count_cells", {"x": w.pos[0], "y": w.pos[1]})
+    ok &= check("a cell that is neither is refused by name",
+                here.result.startswith("NOT_A_FEATURE"), here.result[:50])
+    return ok
+
+
+def test_a_formation_keeps_its_name_as_it_comes_out_of_the_fog():
+    print("formation ids")
+    # Revealed rock only ever grows, so an id is worth carrying: the one event is a
+    # merge, and she may have said the losing name out loud.
+    import config as C
+    was = C.ARENA
+    try:
+        C.use("50")
+        w = World()
+        w.here.reveal(31, 16, r=3)          # part of the C
+        first = skills.call(w, "count", {"kind": "rock"}).result
+        got = re.search(r"R(\d+): (\d+) cells", first)
+        ok = check("it is named on sight", bool(got), first[:80])
+        w.here.reveal(35, 21, r=6)          # more of the same formation
+        second = skills.call(w, "count", {"kind": "rock"}).result
+        ok &= check("the same rock keeps its id",
+                    f"R{got.group(1)}:" in second, second[:120])
+        ok &= check("and the newly revealed cells are called out",
+                    "new since you last asked" in second, second[:200])
+    finally:
+        C.ARENA = was
+        C.use(C.DEFAULT_ARENA)
+    return ok
+
+
+def test_every_dialect_of_a_written_call_is_recovered():
+    """The backstop has to speak whatever the model happens to serialise into.
+
+    On 2026-09-04 `gemma4:31b-cloud` stopped populating `tool_calls` and began writing
+    every call into the content as `call:goto{x:49,y:0,why:...}`. Three runs died on
+    turn one, 0 steps in 108 seconds, because the recovery only knew `name(a, b)`.
+    Verified against a one-line prompt with the stock schema: `gemma4:e4b` answers with
+    a real tool call, so this is the model, not the request.
+
+    `count` and `end` matter as much as `goto` here. Recovery used to demand x and y,
+    so with every call narrated she could not have counted or handed a turn back.
+    """
+    print("a call by any punctuation")
+    ok = True
+    for text, want in [
+        # The brace dialect, both argument orders it has been seen in.
+        ("call:goto{why:Mapping the north-east quadrant.,x:49,y:0}",
+         ("goto", {"x": "49", "y": "0", "why": "Mapping the north-east quadrant."})),
+        ("call:goto{x:49,y:0,why:go}", ("goto", {"x": "49", "y": "0", "why": "go"})),
+        # The two older ones, which must not have regressed.
+        ('goto(15, 10, "Driving north")',
+         ("goto", {"x": "15", "y": "10", "why": "Driving north"})),
+        ('goto(x=35, y=25, why="east")',
+         ("goto", {"x": "35", "y": "25", "why": "east"})),
+        # The skills that require nothing, which were unrecoverable before.
+        ("count{kind:rock}", ("count", {"kind": "rock"})),
+        ("count(kind=rock)", ("count", {"kind": "rock"})),
+        ("end{}", ("end", {})),
+        ("end()", ("end", {})),
+        ("call:end{why:done for now}", ("end", {"why": "done for now"})),
+        ("count_cells{x:31,y:18}", ("count_cells", {"x": "31", "y": "18"})),
+    ]:
+        ok &= check(f"recovered: {text[:38]}", skills.written_call(text) == want,
+                    str(skills.written_call(text)))
+        ok &= check(f"...and seen as one: {text[:30]}", skills.looks_like_a_call(text))
+
+    # Loosening the shape is what makes prose dangerous: `end` gives the turn away, so
+    # a bracket in a sentence must never read as a call to it.
+    for text in ("goto is the right tool here", "at the end (of the sweep) I will stop",
+                 "I will count (rocks) later", "the end (of the day)",
+                 "no calls here at all"):
+        ok &= check(f"prose left alone: {text[:34]}",
+                    not skills.looks_like_a_call(text) and not skills.written_call(text),
+                    str(skills.written_call(text)))
+
+    # Read off the schema, not restated here -- the two drifting apart is the bug.
+    ok &= check("what a recovery must carry comes from the schema itself",
+                skills.REQUIRED == {t["function"]["name"]:
+                                    set(t["function"]["parameters"]["required"])
+                                    for t in skills.TOOLS})
+    return ok
+
+
 def test_the_schema_matches_what_is_wired_up():
     print("the schema is honest")
     names = {t["function"]["name"] for t in skills.TOOLS}
-    ok = check("exactly two skills", names == {"goto", "distance"}, str(names))
+    ok = check("exactly five skills",
+               names == {"goto", "distance", "count", "count_cells", "end"}, str(names))
     blob = str(skills.TOOLS)
     # Optional since 2026-09-01, and the schema has to say so or the model infers the
     # requirement from the shape and goes back to failing calls it never had to fail.
-    ok &= check("why is offered on both",
+    ok &= check("why is offered on all of them",
                 all("why" in t["function"]["parameters"]["properties"]
                     for t in skills.TOOLS))
-    ok &= check("...and required on neither",
+    ok &= check("...and required on none",
                 not any("why" in t["function"]["parameters"]["required"]
                         for t in skills.TOOLS))
-    ok &= check("...and x and y still are",
-                all({"x", "y"} <= set(t["function"]["parameters"]["required"])
-                    for t in skills.TOOLS))
+    # Only where a cell is what the call is *about*. `count` takes no coordinate and
+    # `end` takes nothing at all, and a schema demanding x and y from them would have
+    # the model inventing a pair to satisfy it.
+    placed = {"goto", "distance", "count_cells"}
+    ok &= check("...and x and y are required exactly where a cell is meant",
+                all(({"x", "y"} <= set(t["function"]["parameters"]["required"]))
+                    == (t["function"]["name"] in placed) for t in skills.TOOLS))
     # Never advertised on 2026-08-26, so gemma stepped one tile per call for a whole
     # run. Free to fix; it changes the shape of everything after it.
     ok &= check("goto says it drives the whole way", "whole way" in blob)
@@ -336,6 +486,10 @@ if __name__ == "__main__":
                test_an_avoid_that_parses_is_obeyed(),
                test_coordinates_are_taken_generously(),
                test_an_unknown_skill_says_what_there_is(),
+               test_counting_is_exact_where_reading_the_map_is_not(),
+               test_counting_only_ever_counts_what_she_has_seen(),
+               test_a_formation_keeps_its_name_as_it_comes_out_of_the_fog(),
+               test_every_dialect_of_a_written_call_is_recovered(),
                test_the_schema_matches_what_is_wired_up()]
     print(f"\n{sum(results)}/{len(results)} groups passed")
     sys.exit(0 if all(results) else 1)

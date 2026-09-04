@@ -1,23 +1,27 @@
-"""Run me:  .venv/bin/python game/main.py [--map grid|rle] [--think]
+"""Run me:  .venv/bin/python game/main.py [--arena 30|50] [--map grid|rle]
+                                        [--prompt old|terse|terse_sweep] [--think]
 
 WASD drive (hold to keep going)   M map   X mark   T console
 TAB talk to the planner   V what it sees   H hide/show its reasoning
 N next sol (once one has ended)   Q end the sol   ESC quit
 
-One 50x50 Martian plain, fog you can only clear by driving through it, a landing pad at
-the centre, and gemma in the pane on the right with `goto` and `distance`.
+A Martian plain, fog you can only clear by driving through it, a landing pad at the
+centre, and gemma in the pane on the right with `goto` and `distance`.
 
 No human-only mode: the planner is the point.
 """
 
 import argparse
+import hashlib
 import pathlib
 import sys
+import time
 
 import pygame
 
 import anim
 import chat
+import prompts
 import config as C
 import console
 import logs
@@ -42,13 +46,28 @@ def read_flags(argv):
     p = argparse.ArgumentParser(prog="game/main.py")
     p.add_argument("--map", choices=("grid", "rle"), default=S.MAP_FORMAT,
                    help=f"how the map is written into the view (default: {S.MAP_FORMAT})")
+    p.add_argument("--arena", choices=tuple(C.ARENAS), default=C.DEFAULT_ARENA,
+                   help=f"which arena to land on (default: {C.DEFAULT_ARENA}x{C.DEFAULT_ARENA})")
+    p.add_argument("--prompt", choices=tuple(prompts.PROMPTS), default=prompts.DEFAULT,
+                   help=f"which system prompt to run (default: {prompts.DEFAULT})")
+    p.add_argument("--model", default=S.MODEL,
+                   help=f"any tag `ollama list` shows, or a `-cloud` one (default: {S.MODEL})")
     p.add_argument("--think", action="store_true",
                    help="reasoning trace on, and the sampler left to the model")
     args = p.parse_args(argv)
     S.MAP_FORMAT = args.map
+    # A flag rather than an edit to `settings.py`, so the two arms of a size comparison
+    # differ by an argument that the tape then records, and not by a file that has to be
+    # put back afterwards.
+    S.MODEL = args.model
+    # Before anything reads `config` -- the window is sized off it and so is the world.
+    C.use(args.arena)
     if args.think:
         S.MODEL_THINK = True
         S.MODEL_TEMP = None
+    # Last: the prompt text is built from the arena size and the map format, so both
+    # have to be settled before it is assembled.
+    prompts.use(args.prompt)
     return args
 
 
@@ -56,9 +75,11 @@ def main():
     read_flags(sys.argv[1:])
     pygame.init()
     # The map format is in the title bar because the two arms are told apart by nothing
-    # else on screen -- the pane shows a one-line summary either way.
+    # else on screen -- the pane shows a one-line summary either way. The arena is there
+    # for the opposite reason: it is obvious on screen and easy to forget in a note.
     pygame.display.set_caption(
-        f"Reflex Arc -- prototype 3  ·  {S.MAP_FORMAT} map"
+        f"Reflex Arc -- prototype 3  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
+        f"  ·  {S.MODEL}"
         + ("  ·  thinking, sampler unpinned" if S.MODEL_THINK else ""))
     screen = pygame.display.set_mode(render.window_size())
     clock = pygame.time.Clock()
@@ -76,9 +97,17 @@ def main():
     run = logs.Run(runs)
     # The conditions go on the tape, not in the directory name. Two runs differing by one
     # setting are otherwise told apart only by their timestamps, which is not evidence.
+    #
+    # `prompt` is a hash of the system prompt and `host` says where the model ran. Two
+    # runs of one probe scored 22% and 56% and the cause could not be settled afterwards,
+    # because nothing on either tape recorded which prompt it had been asked under.
+    # `arena` is here for the same reason -- it is a flag now, so a tape without it would
+    # not say which of the two the run happened on.
     run.record("run", map_format=S.MAP_FORMAT, model=S.MODEL, temp=S.MODEL_TEMP,
                think=S.MODEL_THINK, ctx=S.MODEL_CTX, vision=S.VISION_RADIUS,
-               replans=S.NAV_REPLANS, day_steps=S.DAY_STEPS)
+               replans=S.NAV_REPLANS, day_steps=S.DAY_STEPS, host=S.OLLAMA_HOST,
+               arena=f"{C.VIEW_W}x{C.VIEW_H}",
+               prompt=hashlib.sha256(prompts.SYSTEM.encode()).hexdigest()[:12])
     w = World(recorder=run.record)
     tape = chat.Tape(run.chat_path)
     conv = chat.Conversation(w, tape)
@@ -89,7 +118,21 @@ def main():
     # being drawn, so gemma sees the outcome of one call before it can make the next.
     # It costs wall clock and that is the point: a planner seconds away from the body
     # it drives is the architecture, and here you can watch it happen.
-    conv.ready = lambda: not reel.busy
+    #
+    # The rover also sits still for `SETTLE_SECONDS` after the drawing stops. A 31B
+    # answers in under two seconds, so without a pause the sol is a burst of teleports
+    # with nothing legible between them. `settle` holds the earliest moment the next
+    # request may go out, and is pushed forward for as long as anything is moving.
+    settle = [0.0]
+
+    def ready():
+        now = time.monotonic()
+        if reel.busy:
+            settle[0] = now + S.SETTLE_SECONDS
+            return False
+        return now >= settle[0]
+
+    conv.ready = ready
     mode = "world"
     cursor = w.pos
     held = None

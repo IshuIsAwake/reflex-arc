@@ -19,11 +19,13 @@ import sys
 import types
 
 import chat
+import prompts
 import settings as S
 import sight
+import skills
 from world import World
 
-PAD = {"x": 25, "y": 26, "why": "back to the pad"}
+PAD = {"x": 15, "y": 16, "why": "back to the pad"}
 
 
 def check(name, cond, detail=""):
@@ -50,18 +52,19 @@ def rig(w, replies=(), defiant=False):
     Each reply is (what it says, what it asks to call). Anything past the end of the
     script is a plain "ok." with no calls, so a tool chain always terminates.
 
-    `defiant=True` keeps asking for tools even when the request carried no schemas.
-    That is not a strawman: on the second live run the cap fired eight times in one turn
-    with `tools` left out, so the loop must hold against a model that ignores it.
+    `defiant=True` asks for skills the request did not carry the schema for. That is not
+    a strawman: on the second live run the cap fired eight times in one turn with `tools`
+    left out, so the loop must hold against a model that ignores what it was offered.
+    The default is the honest client, which asks only for what it was given.
     """
     conv = chat.Conversation(w)
     sent, script = [], list(replies)
 
-    def fake_stream(messages, use_tools=True):
+    def fake_stream(messages, allowed=None):
         sent.append(messages)
         text, calls = script.pop(0) if script else ("ok.", [])
-        if not use_tools and not defiant:
-            calls = []
+        if allowed is not None and not defiant:
+            calls = [c for c in calls if c.get("name") in allowed]
         if text:
             conv.q.put(("say", text))
         conv.q.put(("done", ({"prompt_eval_count": 100, "eval_count": 5}, calls)))
@@ -87,39 +90,86 @@ def test_sol_opens_with_the_numbers():
     return ok
 
 
-def test_the_prompt_promises_exactly_what_exists():
-    print("an honest prompt")
-    # A prompt describing a skill that does not exist is the same failure as a success
-    # code for a move that never happened: it invents a world the model reasons about
-    # and cannot reach. Six of the eight things planned for prototype 2 are unbuilt,
-    # which makes this the test most likely to catch the next mistake.
-    ok = check("names goto", "goto(" in chat.SYSTEM)
-    ok &= check("names distance", "distance(" in chat.SYSTEM)
-    for absent in ("look(", "interact(", "play(", "buy(", "read_notes", "write_notes",
-                   "mark(", "end_day(", "fly(", "sample(", "photograph("):
-        ok &= check(f"does not promise {absent}", absent not in chat.SYSTEM)
-    # The unbuilt mechanics, by name. Mentioning a dust storm it cannot see or a base it
-    # is not yet required to return to would have it planning around neither.
-    for absent in ("Ingenuity", "dust storm", "sandstorm", "quake", "battery",
-                   "sample", "before dark", "nightfall the rover"):
-        ok &= check(f"says nothing about {absent}",
-                    absent.lower() not in chat.SYSTEM.lower())
-    ok &= check("does not offer avoid=auto", "auto" not in chat.SYSTEM)
-
+# Facts every prompt has to state, and the wordings that count as stating one. Three
+# prompts say the same things in different voices, so asserting one phrasing would only
+# check which prompt is loaded. The alternatives are per fact, not per prompt: a new
+# prompt is free to invent its own wording and must then add it here, which is the point
+# at which someone notices they dropped the promise instead of rephrasing it.
+PROMISED = {
     # The two facts that decide whether a vague instruction lands on the right cell.
-    ok &= check("says coordinates are absolute", "ABSOLUTE" in chat.SYSTEM)
-    ok &= check("and that nothing has a facing", "facing" in chat.SYSTEM)
+    "says coordinates are absolute": ("ABSOLUTE",),
+    # No facing exists, so rather than say so the prompt points at the block that names
+    # the compass directions for it. `sight.neighbours` is what has to keep doing that.
+    "points at the compass block instead of a facing": ("compass direction",),
     # Watched 2026-08-26: gemma ended a turn on "I will use distance first to confirm
     # the cost", having made two of its eight calls. A reply with no call ends the turn,
     # and it had never been told -- so it forfeited the turn by narrating it.
-    ok &= check("says a wordless turn is a spent one", "ends your turn" in chat.SYSTEM)
-    # One goto came back having driven 35 cells and found six outcrops. Aiming far is
-    # the highest-yield thing it can do and it defaults to one cell at a time.
-    ok &= check("tells it to aim far", "Aim far" in chat.SYSTEM)
-    # Prototype 1 walled its areas and 22% of calls were spent on the border. This
-    # arena has no rim, and the prompt has to say so or the habit comes along.
-    ok &= check("says the arena has no wall around it",
-                "no wall around it" in chat.SYSTEM)
+    "says a wordless turn is a spent one": ("ends your turn",),
+    # One goto came back having driven 35 cells and found six outcrops. Aiming far is the
+    # highest-yield thing it can do and it defaults to one cell at a time.
+    "says goto reaches any distance": ("no range limit", "Aim far",
+                                       "long shot into the unknown"),
+    "and says not to be timid with it": ("conservative", "inching forward"),
+    # Prototype 1 walled its areas and 22% of calls were spent on the border. This arena
+    # has no rim, and the prompt has to say so or the habit comes along.
+    # `test_world.test_the_whole_arena_is_one_region` is what keeps this claim true.
+    "says the far edges are real destinations": ("is not rock can be reached",
+                                                 "no wall around it"),
+}
+
+# Skills and mechanics that do not exist. Naming one invents a world the model reasons
+# about and cannot reach, which is the same failure as a success code for a move that
+# never happened.
+UNBUILT = ("look(", "interact(", "play(", "buy(", "read_notes", "write_notes", "mark(",
+           "end_day(", "fly(", "sample(", "photograph(", "Ingenuity", "dust storm",
+           "sandstorm", "quake", "battery", "sample", "before dark", "nightfall the rover")
+
+
+def test_every_prompt_promises_exactly_what_exists():
+    """Run over all of `prompts.PROMPTS`, not just the live one.
+
+    A prompt kept around to be re-measured against is still a prompt someone can select
+    with a flag, so it has to stay honest. Checking only the default would let a shelved
+    one rot into promising a skill that has since been deleted.
+    """
+    print("honest prompts")
+    ok = True
+    for name in prompts.PROMPTS:
+        p = prompts.PROMPTS[name]()
+        # Read off `skills.NAMES` rather than listed here, so a skill added later cannot
+        # be wired up and left out of the prompt -- which is a skill she never calls.
+        for skill in skills.NAMES:
+            ok &= check(f"{name}: names {skill}", f"{skill}(" in p)
+        for absent in UNBUILT:
+            ok &= check(f"{name}: says nothing about {absent}", absent.lower() not in p.lower())
+        # `avoid="auto"` is parsed and refused, so promising it would be promising a
+        # refusal. Checked as a bare word because that is how the prompt would say it.
+        ok &= check(f"{name}: does not offer avoid=auto", "auto" not in p)
+        for fact, wordings in PROMISED.items():
+            ok &= check(f"{name}: {fact}", any(x in p for x in wordings))
+    return ok
+
+
+def test_the_live_prompt_matches_the_map_it_ships_with():
+    """The 2026-09-04 loss: two runs read under a prompt describing the grid's ruler
+    while `--map rle` was running. The map paragraph is built from `MAP_FORMAT`, so the
+    two cannot disagree -- this is what proves the wiring, in both directions."""
+    print("the prompt describes the map actually being sent")
+    import settings as S
+    keep = S.MAP_FORMAT
+    ok = True
+    try:
+        S.MAP_FORMAT = "grid"
+        p = prompts.use("old")
+        ok &= check("grid: describes the ruler", "ruler across the top" in p)
+        ok &= check("grid: says nothing about runs", "x7-9 rock" not in p)
+        S.MAP_FORMAT = "rle"
+        p = prompts.use("old")
+        ok &= check("rle: describes the runs", "x7-9 rock" in p)
+        ok &= check("rle: says nothing about the ruler", "ruler across the top" not in p)
+    finally:
+        S.MAP_FORMAT = keep
+        prompts.use(prompts.DEFAULT)
     return ok
 
 
@@ -152,14 +202,14 @@ def test_the_view_is_replaced_not_appended():
 def test_a_tool_call_round_trips():
     print("goto, end to end")
     w = World()
-    w.pos = (25, 22)
+    w.pos = (15, 12)
     call = {"name": "goto", "arguments": dict(PAD)}
     c, sent = rig(w, [("", [call]), ("I am beside the pad.", [])])
     c.open_day(w)
     c.send("go back to base")
     c.pump()
 
-    ok = check("the rover moved", w.pos != (25, 22), str(w.pos))
+    ok = check("the rover moved", w.pos != (15, 12), str(w.pos))
     ok &= check("the call is on the record",
                 len(c.calls) == 1 and c.calls[0].name == "goto")
     ok &= check("the assistant turn kept its tool_calls",
@@ -196,10 +246,10 @@ def test_a_bad_call_is_counted_and_costs_nothing():
     ok &= check("and it is counted", c.bad_args == 1)
 
     # The case this counter was built for is now the case it must *not* fire on.
-    # (25,20), not the pad: the rover lands beside the pad, so arriving there costs
+    # (15,10), not the pad: the rover lands beside the pad, so arriving there costs
     # nothing and a zero-step drive cannot tell "it ran" from "it was refused".
     w2 = World()
-    c2, _ = rig(w2, [("", [{"name": "goto", "arguments": {"x": 25, "y": 20}}]),
+    c2, _ = rig(w2, [("", [{"name": "goto", "arguments": {"x": 15, "y": 10}}]),
                      ("Driven.", [])])
     c2.open_day(w2)
     c2.send("head north")
@@ -210,56 +260,187 @@ def test_a_bad_call_is_counted_and_costs_nothing():
     return ok
 
 
-def test_the_hop_cap_stops_a_loop():
-    print("the hop cap")
+def _ran(conv):
+    """Tool results that are outcomes rather than refusals."""
+    return [m for m in conv.messages
+            if m["role"] == "tool" and not m["content"].startswith("REFUSED")]
+
+
+def test_only_one_call_of_a_batch_ever_runs():
+    print("one call at a time")
+    # Watched 2026-09-04: the 31B asked for six drives in one reply. They ran back to
+    # back against a live world, but every target after the first had been chosen off a
+    # map several drives out of date -- one view per batch, not one per drive.
     w = World()
-    # distance costs no steps, so the sol's budget is no backstop against this.
-    spin = {"name": "distance", "arguments": {"x": 2, "y": 2, "why": "again"}}
-    c, _ = rig(w, [("", [spin])] * (S.MODEL_MAX_HOPS + 5))
+    batch = [{"name": "goto", "arguments": {"x": 15, "y": 10 + i}} for i in range(6)]
+    c, sent = rig(w, [("", batch), ("Done.", [])])
+    c.open_day(w)
+    c.send("explore")
+    c.pump()
+    ok = check("exactly one of the six ran", len(_ran(c)) == 1, f"{len(_ran(c))} ran")
+    ok &= check("and the other five were refused",
+                sum(1 for m in c.messages
+                    if m["role"] == "tool" and "one call at a time" in m["content"]) == 5)
+    # `_settle` has already appended the assistant turn carrying all six tool_calls, so
+    # a call with no answer dangles off a message nothing responded to.
+    asked = sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
+    answered = sum(1 for m in c.messages if m["role"] == "tool")
+    ok &= check("every call asked for still has an answer", asked == answered,
+                f"{asked} asked, {answered} answered")
+    ok &= check("and the turn carried on afterwards", len(sent) == 2, f"{len(sent)} sent")
+    return ok
+
+
+def test_a_turn_runs_until_she_ends_it():
+    print("end, not silence")
+    w = World()
+    drive = {"name": "goto", "arguments": {"x": 15, "y": 12}}
+    # Words alone no longer hand back: only `end` does. Three drives, a sentence with no
+    # call in it, then `end`.
+    c, sent = rig(w, [("", [drive]), ("", [drive]), ("Still going.", [drive]),
+                      ("", [{"name": "end", "arguments": {"why": "done"}}])])
+    c.open_day(w)
+    c.send("explore")
+    c.pump()
+    ok = check("she drove three times", len(_ran(c)) == 4, f"{len(_ran(c))} calls ran")
+    ok &= check("and the turn is over only once she said so", c.ended)
+    ok &= check("...which the pane says",
+                any(who == "error" and "she called end" in t for who, t in c.lines))
+    ok &= check("nothing was asked for after it", len(sent) == 4, f"{len(sent)} sent")
+    ok &= check("and the sol is untouched -- end ends a turn, not a day",
+                not w.day_over and w.steps_left > 0)
+    return ok
+
+
+def test_looking_is_paid_for_with_driving():
+    print("the two allowances")
+    w = World()
+    # `distance` and `count` cost no steps, so the day's budget is no backstop: a model
+    # looping on one loops forever. The allowance resets on every drive, so more looking
+    # has to be bought with moving -- and moving is capped, so the turn terminates.
+    look = {"name": "distance", "arguments": {"x": 2, "y": 2, "why": "again"}}
+    c, _ = rig(w, [("", [look])] * 40, defiant=True)
     c.open_day(w)
     c.send("how far is (2,2)?")
     c.pump()
-    ok = check("it was stopped", c.hops <= S.MODEL_MAX_HOPS, f"{c.hops} hops")
-    ok &= check("and told why",
-                any(who == "error" and "hop cap" in text for who, text in c.lines))
-    ok &= check("in words gemma can read too",
-                any("without saying anything" in m.get("content", "") for m in c.messages))
-    # The cap fired four times in one turn on 2026-08-26 because it asked rather than
-    # enforced. Once is the whole point: after it, the tools are gone.
-    ok &= check("and it fires exactly once",
-                sum(1 for who, t in c.lines if who == "error" and "hop cap" in t) == 1)
-    ran = [m for m in c.messages
-           if m["role"] == "tool" and not m["content"].startswith("REFUSED")]
-    ok &= check("not one call ran past the cap", len(ran) == S.MODEL_MAX_HOPS,
-                f"{len(ran)} actually ran")
-    ok &= check("and the turn is over", not c.busy)
+    ok = check("looking stopped at the allowance", len(_ran(c)) == S.FREE_HOPS,
+               f"{len(_ran(c))} ran")
+    ok &= check("and the turn was ended for her", c.ended)
+    ok &= check("after exactly FREE_GRACE refusals",
+                sum(1 for m in c.messages
+                    if m["role"] == "tool" and m["content"].startswith("REFUSED"))
+                == S.FREE_GRACE)
+    ok &= check("with gemma told, not just the pane",
+                any("REFUSED" in m.get("content", "") for m in c.messages))
 
-    # Withholding the schemas is a request, not an enforcement. Live, the model kept
-    # calling anyway. The cap has to hold against that or it is decoration.
+    # A drive buys the looking back. Five looks, one drive, five more looks: eleven
+    # calls run where the flat allowance would have stopped at five.
     w2 = World()
-    d, _ = rig(w2, [("", [spin])] * 40, defiant=True)
+    drive = {"name": "goto", "arguments": {"x": 15, "y": 12}}
+    script = ([("", [look])] * S.FREE_HOPS + [("", [drive])]
+              + [("", [look])] * S.FREE_HOPS
+              + [("", [{"name": "end", "arguments": {}}])])
+    d, _ = rig(w2, script)
     d.open_day(w2)
-    d.send("how far is (2,2)?")
+    d.send("look around")
     d.pump()
-    ok &= check("a model that ignores tools-off is capped once anyway",
-                sum(1 for who, t in d.lines if who == "error" and "hop cap" in t) == 1)
-    ran = [m for m in d.messages
-           if m["role"] == "tool" and not m["content"].startswith("REFUSED")]
-    ok &= check("and its later calls are refused, not run",
-                len(ran) == S.MODEL_MAX_HOPS, f"{len(ran)} actually ran")
-    ok &= check("with the refusal said out loud",
-                any("refused" in t for who, t in d.lines if who == "error"))
-    # Watched 2026-08-26: one call refused per turn, eight turns running, and gemma was
-    # told none of them -- it asked and got silence. A call that vanishes leaves nothing
-    # to reason about, so the same call comes back.
-    ok &= check("and gemma is told, not just the pane",
-                any("REFUSED" in m.get("content", "") for m in d.messages))
-    # Every tool_call must have a result or the history dangles: `_settle` already
-    # appended the assistant turn carrying them.
-    asked = sum(len(m["tool_calls"]) for m in d.messages if m.get("tool_calls"))
-    answered = sum(1 for m in d.messages if m["role"] == "tool")
-    ok &= check("every call asked for has an answer", asked == answered,
-                f"{asked} asked, {answered} answered")
+    ok &= check("driving gives the looking allowance back",
+                len(_ran(d)) == S.FREE_HOPS * 2 + 2, f"{len(_ran(d))} ran")
+    ok &= check("...and it really was reset, not merely raised", d.frees <= S.FREE_HOPS)
+    return ok
+
+
+def test_driving_is_capped_and_the_turn_ends_itself():
+    print("the drive cap")
+    w = World()
+    # A model that never calls `end` still has to stop. Refusing forever is its own
+    # failure -- a whole turn spent being told no -- so the grace is what ends it.
+    far = [{"name": "goto", "arguments": {"x": 15, "y": 10 + (i % 5)}} for i in range(40)]
+    c, _ = rig(w, [("", [f]) for f in far], defiant=True)
+    c.open_day(w)
+    c.send("explore")
+    c.pump()
+    ok = check("driving stopped at the cap", len(_ran(c)) == S.MOVE_HOPS,
+               f"{len(_ran(c))} ran")
+    ok &= check("and the turn ended itself", c.ended)
+    ok &= check("after exactly MOVE_GRACE refusals",
+                sum(1 for m in c.messages
+                    if m["role"] == "tool" and m["content"].startswith("REFUSED"))
+                == S.MOVE_GRACE)
+    ok &= check("every call asked for has an answer",
+                sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
+                == sum(1 for m in c.messages if m["role"] == "tool"))
+    return ok
+
+
+def test_ending_is_never_refused():
+    print("the way out is always open")
+    # If `end` were budgeted, a turn that had run out of everything else could not do
+    # the one thing that gets it out. Spend the drive allowance, then end.
+    #
+    # `defiant`, because the schema for `goto` is withdrawn once the drives are gone --
+    # so a model that respects the request cannot reach the refusal path at all. This
+    # asserts the backstop under the model that ignores it.
+    w = World()
+    drive = {"name": "goto", "arguments": {"x": 15, "y": 12}}
+    script = ([("", [drive])] * (S.MOVE_HOPS + 1)
+              + [("", [{"name": "end", "arguments": {}}])])
+    c, _ = rig(w, script, defiant=True)
+    c.open_day(w)
+    c.send("explore")
+    c.pump()
+    ok = check("the drive past the cap was refused",
+               any(m["content"].startswith("REFUSED")
+                   for m in c.messages if m["role"] == "tool"))
+    ok &= check("but end still ran", any(m["role"] == "tool" and m["content"]
+                                         .startswith("END") for m in c.messages))
+    ok &= check("and it ended the turn", c.ended)
+    return ok
+
+
+def test_a_spent_allowance_withdraws_the_schema():
+    """The cap stops being an argument and becomes an absence.
+
+    Watched 2026-09-04 on `runs/20260904-224619`: with the drives gone, the 31B re-sent
+    the identical `goto` three times and had the turn ended for it, four turns out of
+    five. The refusal was reaching it -- ~57 tokens landing into a ~6,700-token prompt
+    whose bulk was a map that had not changed, and it lost every time. So the skill it
+    cannot afford is left out of the request instead.
+    """
+    print("what is not offered cannot be asked for")
+    w = World()
+    drive = {"name": "goto", "arguments": {"x": 15, "y": 12}}
+    look = {"name": "distance", "arguments": {"x": 2, "y": 2}}
+    c, sent = rig(w, [("", [drive])] * S.MOVE_HOPS + [("", [look]), ("", [look])])
+    c.open_day(w)
+    c.send("explore")
+    c.pump()
+
+    ok = check("every drive of the allowance ran", c.moves == S.MOVE_HOPS, str(c.moves))
+    ok &= check("and then goto was withdrawn", "goto" not in c._allowed(),
+                str(c._allowed()))
+    ok &= check("but end never is", "end" in c._allowed())
+    ok &= check("and the free skills stay while they are affordable",
+                "count" in c._allowed())
+    # The refusal path is a backstop for a model that ignores the schema, so an honest
+    # one must never reach it: no refusal, and the turn ends by running out of script.
+    ok &= check("so nothing was refused", c.move_denied == 0, str(c.move_denied))
+
+    # Spend the looks too. With both gone the request carries one way out and no others.
+    # Driven through the script rather than set by hand: `send` resets the counters, so
+    # a turn posed as already-spent is not one.
+    d, _ = rig(World(), [("", [drive])] * S.MOVE_HOPS + [("", [look])] * S.FREE_HOPS)
+    d.open_day(w)
+    d.send("explore, then look around")
+    d.pump()
+    ok &= check("a turn with nothing left is offered end alone",
+                d._allowed() == ("end",), str(d._allowed()))
+    ok &= check("and the schemas really are filtered, not just the names",
+                [t["function"]["name"] for t in skills.tools_for(d._allowed())] == ["end"])
+    # `_left` is what it reads on the way there, and it used to promise a drive back.
+    ok &= check("the allowance note does not promise a drive it cannot make",
+                "before you have to drive again" not in d._left(), d._left())
+    ok &= check("...and names the way out instead", "end" in d._left(), d._left())
     return ok
 
 
@@ -270,7 +451,7 @@ def test_a_call_written_as_text_is_read_and_run():
     # sampler moves that. Refusing costs a round trip and often gets the same reply
     # back, so a complete call is read out of the text and run.
     w = World()
-    typed = 'I will drive north to explore.\ngoto(25, 15, "Driving north")'
+    typed = 'I will drive north to explore.\ngoto(15, 10, "Driving north")'
     c, _ = rig(w, [(typed, []), ("Drove north and stopped against rock.", [])])
     c.open_day(w)
     c.send("explore the region")
@@ -280,7 +461,7 @@ def test_a_call_written_as_text_is_read_and_run():
     ok &= check("and said out loud, not slipped through",
                 any(who == "error" and "typed out" in t for who, t in c.lines))
     ok &= check("the call actually ran", len(c.calls) == 1 and c.calls[0].name == "goto")
-    ok &= check("so the rover moved", w.pos == (25, 15), str(w.pos))
+    ok &= check("so the rover moved", w.pos == (15, 10), str(w.pos))
     # The assistant turn has to carry the call, or the tool result that follows answers
     # a question no message ever asked -- the dangling history `_refuse` guards against.
     ok &= check("the assistant turn carries the recovered call",
@@ -323,7 +504,7 @@ def test_an_incomplete_call_is_refused_rather_than_guessed_at():
     c.send("explore the region")
     c.pump()
     ok &= check("so it gets a nudge instead", c.narrated == 1, f"{c.narrated}")
-    ok &= check("nothing ran", not c.calls and w.pos == (25, 25))
+    ok &= check("nothing ran", not c.calls and w.pos == (15, 15))
     # A backstop that re-asks forever is the cap-that-asks-nicely mistake again.
     ok &= check("one nudge, not six", c.narrated == 1)
     c.send("try again")
@@ -359,9 +540,9 @@ def test_a_fabricated_view_never_reaches_the_context():
     # occupied. All of it became an assistant message, so from the next turn on the
     # model was reasoning over a map it made up.
     w = World()
-    faked = ('I will drive east.\ngoto(35, 25, "east")\n\n'
+    faked = ('I will drive east.\ngoto(25, 15, "east")\n\n'
              'WHAT YOU CAN SEE RIGHT NOW\n'
-             'day 1  |  399 steps left  |  at (31,25) on the Jezero flats\n'
+             'day 1  |  399 steps left  |  at (21,15) on the Jezero flats\n'
              + "?" * 3000)
     c, _ = rig(w, [(faked, []), ("Arrived.", [])])
     c.open_day(w)
@@ -378,7 +559,7 @@ def test_a_fabricated_view_never_reaches_the_context():
                 not any("399 steps" in m.get("content", "") for m in c.messages))
     # The real call in front of the fabrication still counts.
     ok &= check("the call before it was still recovered and run",
-                c.recovered == 1 and w.pos == (35, 25), str(w.pos))
+                c.recovered == 1 and w.pos == (25, 15), str(w.pos))
 
     # A reply that merely mentions the heading mid-sentence keeps all of itself.
     kept, dropped = chat.cut_fabrication(
@@ -423,7 +604,7 @@ def test_the_request_pins_the_temperature():
                 seen["options"].get("num_ctx") == S.MODEL_CTX)
     ok &= check("the tools went with it",
                 [t["function"]["name"] for t in seen.get("tools", [])]
-                == ["goto", "distance"])
+                == skills.NAMES)
     return ok
 
 
@@ -588,8 +769,8 @@ def test_the_tape_says_what_each_response_cost():
     row = rows[0]
     ok &= check("carrying Ollama's numbers, not a re-parse of the text",
                 row["tokens_in"] == 100 and row["tokens_out"] == 5, str(row))
-    ok &= check("and where in the turn it was asked",
-                row["hops"] == 0 and row["tools"] is True, str(row))
+    ok &= check("and where in the turn it was asked, and what it carried",
+                row["hops"] == 0 and row["tools"] == skills.NAMES, str(row))
     ok &= check("the day and the clock come along, like every other row",
                 row["day"] == w.day and isinstance(row["t"], float))
     # The footer already draws this live from `conv.last`. A copy per response in the
@@ -602,11 +783,16 @@ def test_the_tape_says_what_each_response_cost():
 if __name__ == "__main__":
     S.DAY_MODE = "gemma"
     results = [test_sol_opens_with_the_numbers(),
-               test_the_prompt_promises_exactly_what_exists(),
+               test_every_prompt_promises_exactly_what_exists(),
                test_the_view_is_replaced_not_appended(),
                test_a_tool_call_round_trips(),
                test_a_bad_call_is_counted_and_costs_nothing(),
-               test_the_hop_cap_stops_a_loop(),
+               test_only_one_call_of_a_batch_ever_runs(),
+               test_a_turn_runs_until_she_ends_it(),
+               test_looking_is_paid_for_with_driving(),
+               test_driving_is_capped_and_the_turn_ends_itself(),
+               test_ending_is_never_refused(),
+               test_a_spent_allowance_withdraws_the_schema(),
                test_a_call_written_as_text_is_read_and_run(),
                test_an_incomplete_call_is_refused_rather_than_guessed_at(),
                test_ordinary_prose_is_left_alone(),

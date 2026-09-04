@@ -27,6 +27,14 @@ YOU = "@"
 
 # Spelled out because this is read cold every turn by a model that cannot see the screen.
 # An old status line reading `antidotes 0/1` was taken to mean "1 available".
+#
+# **y grows south, and flipping it was considered and rejected on 2026-09-04.** Gemma's
+# one recorded mistake here went the other way -- she called (10,45) "Northwest" -- so
+# her compass prior is y-up. But the map prints row 0 first, so +y north would put the
+# south edge at the top of the picture, and fixing that means reversing this render, the
+# pygame one, and leaving `config.ARENA` upside down for whoever edits it. The real fix
+# is that she should not be converting at all: coordinates want a compass gloss at the
+# point they are emitted.
 AXES = ("x grows to the east (right), y grows to the south (down). "
         "North is y-1, south is y+1, west is x-1, east is x+1.")
 
@@ -175,7 +183,7 @@ def things(w):
     """Everything named on the known map, with its coordinate already computed.
 
     The grid carries shape; this carries fact. Recovering an x by counting into a
-    50-column row is the arithmetic gemma gets wrong, and a wrong coordinate here
+    30-column row is the arithmetic gemma gets wrong, and a wrong coordinate here
     becomes a wrong `goto`.
 
     Rock is deliberately not listed -- whether gemma can pick the boulders out of the

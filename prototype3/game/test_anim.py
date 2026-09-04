@@ -40,7 +40,7 @@ def kinds(timeline):
 def test_a_drive_is_recorded_as_it_happens():
     print("what nav writes down")
     w = World()
-    r = nav.goto(w, 25, 45)         # meets five boulders on the way and still arrives
+    r = nav.goto(w, 29, 2)         # the long north-east diagonal, three boulders deep
     ok = check("it gets there", r.code == "DONE", str(r))
     ok &= check("one reel queued", len(w.reel) == 1, str(len(w.reel)))
 
@@ -72,7 +72,7 @@ def test_a_drive_is_recorded_as_it_happens():
     # be rock, so there is nowhere else to re-route to and nav stops rather than
     # inventing a destination.
     w2 = World()
-    r2 = nav.goto(w2, 25, 5)
+    r2 = nav.goto(w2, 15, 7)       # the south face of the boulder due north
     ok &= check("blocked *on* the target lays no second plan",
                 r2.code == "BLOCKED" and kinds(w2.reel[0]).count("plan") == 1, str(r2))
     return ok
@@ -82,7 +82,7 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
     print("distance")
     w = World()
     before = w.pos, w.steps
-    nav.distance(w, 25, 45)
+    nav.distance(w, 15, 0)
     ok = check("one reel queued", len(w.reel) == 1)
     ks = kinds(w.reel[0])
     ok &= check("a probe, not a drive", ks == ["start", "probe"], str(ks))
@@ -91,7 +91,7 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
     # An unreachable price has no route to draw, so it queues nothing rather than an
     # empty reel that would flash for a frame and mean nothing.
     w2 = World()
-    w2.here.seen = {(x, y) for y in range(50) for x in range(50)}
+    w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
     w2.pos = (32, 29)
     nav.distance(w2, 33, 29)         # straight into a known outcrop
     ok &= check("an unreachable price draws nothing", not w2.reel)
@@ -101,7 +101,7 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
 def test_the_fog_opens_in_time_with_the_rover():
     print("the fog is held shut")
     w = World()
-    nav.goto(w, 25, 45)
+    nav.goto(w, 15, 0)
     far = w.pos
     ok = check("the world has already seen the far end", w.here.visible(*far))
 
@@ -121,7 +121,7 @@ def test_the_fog_opens_in_time_with_the_rover():
 def test_the_plan_is_torn_up_when_it_is_wrong():
     print("yellow, then no yellow")
     w = World()
-    nav.goto(w, 25, 45)
+    nav.goto(w, 15, 0)
     reel = anim.Reel(w)
 
     saw_plan_over_rock = saw_retracting = saw_pruned_to_rover = False
@@ -147,7 +147,7 @@ def test_the_plan_is_torn_up_when_it_is_wrong():
 def test_the_reel_never_changes_the_world():
     print("a display, and only a display")
     w = World()
-    nav.goto(w, 25, 45)
+    nav.goto(w, 15, 0)
     after = (w.pos, w.steps, w.day, len(w.here.seen), len(w.here.visited),
              len(w.nav_log), w.last_walk[1][:], w.last_path[1][:])
 
@@ -159,7 +159,7 @@ def test_the_reel_never_changes_the_world():
 
     # And the same holds if nobody ever draws it, which is how every other test runs.
     w2 = World()
-    nav.goto(w2, 25, 45)
+    nav.goto(w2, 15, 0)
     ok &= check("an undrawn reel changes nothing either", w2.pos == w.pos)
     return ok
 
@@ -167,8 +167,8 @@ def test_the_reel_never_changes_the_world():
 def test_skipping_lands_exactly_where_the_world_already_is():
     print("SPACE")
     w = World()
-    nav.goto(w, 25, 45)
-    nav.goto(w, 20, 45)
+    nav.goto(w, 15, 0)
+    nav.goto(w, 12, 0)
     reel = anim.Reel(w)
     for _ in range(30):
         reel.tick(1 / 60)
@@ -177,14 +177,14 @@ def test_skipping_lands_exactly_where_the_world_already_is():
     reel.skip()
     ok &= check("skipping empties the queue", not reel.busy and not w.reel)
     ok &= check("and shows the rover where it really is", reel.where(w.pos) == w.pos)
-    ok &= check("with nothing left veiled", not reel.veiled((25, 45)))
+    ok &= check("with nothing left veiled", not reel.veiled((15, 0)))
     return ok
 
 
 def test_a_long_stall_catches_up_rather_than_crawling():
     print("one big dt")
     w = World()
-    nav.goto(w, 25, 45)
+    nav.goto(w, 15, 0)
     reel = anim.Reel(w)
     reel.tick(0.001)
     reel.tick(30.0)              # the model held the loop for thirty seconds
@@ -198,10 +198,10 @@ def test_turning_it_off_records_nothing():
     S.ANIMATE = False
     try:
         w = World()
-        nav.goto(w, 25, 45)
+        nav.goto(w, 15, 0)
         nav.distance(w, 5, 5)
         ok = check("no reels are kept", not w.reel)
-        ok &= check("but the drive still happened", w.pos == (25, 45), str(w.pos))
+        ok &= check("but the drive still happened", w.pos == (15, 0), str(w.pos))
         ok &= check("and a reel over an empty queue is never busy",
                     not anim.Reel(w).busy)
     finally:
@@ -214,7 +214,7 @@ def test_the_queue_cannot_grow_forever():
     w = World()
     for i in range(S.REEL_MAX * 3):
         w.pos = C.SPAWN
-        nav.distance(w, 25, 45)
+        nav.distance(w, 15, 0)
     return check("capped", len(w.reel) == S.REEL_MAX, f"{len(w.reel)} kept")
 
 

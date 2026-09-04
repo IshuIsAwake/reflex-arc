@@ -22,6 +22,7 @@ import re
 
 import nav
 import settings as S
+from world import centre_of
 
 NIL = {"<nil>", "nil", "none", "null", "undefined", ""}
 
@@ -138,16 +139,96 @@ TOOLS = [
             "avoid": {"type": "string", "description":
                       "cells to treat as impassable, like '(3,4),(5,6)'. Usually omit."},
         }, "required": ["x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "count",
+        "description": (
+            "Every rock formation and every patch of fog you have revealed so far, "
+            "each with how many cells it covers and one coordinate at its middle. "
+            "Rock formations keep the same id for the whole expedition, so R4 is the "
+            "same rock tomorrow. Counting cells off the map by eye is the one thing "
+            "you are reliably wrong about -- ask for the numbers instead of adding "
+            "them up. It costs no steps. Rock still under fog is not counted as rock, "
+            "because you have not seen it yet."),
+        "parameters": {"type": "object", "properties": {
+            "kind": {"type": "string", "description":
+                     "'rock', 'fog', or omit for both"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what you are weighing up"},
+        }, "required": []}}},
+    {"type": "function", "function": {
+        "name": "count_cells",
+        "description": (
+            "The exact cells one formation occupies. Give it any coordinate that "
+            "belongs to the thing -- the middle coordinate `count` gave you is always "
+            "one. Use it when you need the shape rather than the size, such as working "
+            "out which way round something you cannot drive through. Costs no steps."),
+        "parameters": {"type": "object", "properties": {
+            "x": {"type": "integer", "description": "absolute column"},
+            "y": {"type": "integer", "description": "absolute row"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what you are weighing up"},
+        }, "required": ["x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "end",
+        "description": (
+            "Hand the conversation back. Until you call this you are the only one "
+            "talking, so you can drive as long as you like -- one call at a time, "
+            "reading the map each time. Call it when you have finished what you were "
+            "asked, or when you want to check something with the crew. It ends your "
+            "turn, not the sol: the day runs until the steps do."),
+        "parameters": {"type": "object", "properties": {
+            "why": {"type": "string", "description":
+                    "optional: one line on where you have got to"},
+        }, "required": []}}},
 ]
 
 NAMES = [t["function"]["name"] for t in TOOLS]
+
+
+def tools_for(names=None):
+    """The schemas for `names`, in TOOLS order. `None` is all of them.
+
+    A skill the turn can no longer afford is left out of the request rather than
+    refused after the fact. A refusal is one line arriving into a prompt whose other
+    6,700 tokens are a map that has not changed since the last one, and it loses:
+    watched 2026-09-04, the 31B re-sent the identical `goto` three times after being
+    told it had no drives left, then had the turn ended for it. What is not offered
+    cannot be asked for, so the cap stops being something to argue with.
+    """
+    if names is None:
+        return TOOLS
+    keep = set(names)
+    return [t for t in TOOLS if t["function"]["name"] in keep]
+
 
 # A call the model wrote out instead of making. Built from NAMES so a skill added later
 # cannot be forgotten. At Ollama's default temperature 3 of 12 turns came back with the
 # call sitting in the reply text and no tool_calls at all -- nothing runs, nothing moves,
 # and the pane shows a confident sentence. `MODEL_TEMP` is the fix; this is the backstop.
 # The digit requirement keeps it off prose like "goto is the right tool here".
-CALL_SHAPED = re.compile(r"\b(" + "|".join(NAMES) + r")\s*\(\s*[^)]*\d")
+#
+# Braces as well as parens, and `:` as well as `=`, because on 2026-09-04 `gemma4:31b-cloud`
+# stopped populating `tool_calls` at all and began writing every call into the content as
+# `call:goto{x:49,y:0,why:...}`. Verified against a one-line prompt with the stock schema:
+# the local `gemma4:e4b` answers the same request with a real tool call and empty content,
+# so it is that model behind that endpoint, not the schema and not the view.
+#
+# What each skill actually needs, read off its own schema rather than assumed. `count`
+# and `end` require nothing, so a recovery path demanding x and y could never return
+# either -- which with a model narrating *every* call means she can never count and
+# never hand back a turn.
+REQUIRED = {t["function"]["name"]: set(t["function"]["parameters"].get("required", ()))
+            for t in TOOLS}
+
+# A skill that needs arguments is recognised by having one with a digit in it. A skill
+# that needs none cannot be, so it has to look like a call some other way: empty
+# brackets, or something with a `:` or `=` in them. Otherwise "at the end (of the sweep)"
+# reads as a call to `end` and quietly gives the turn away.
+_needy = [n for n in NAMES if REQUIRED[n]]
+_free = [n for n in NAMES if not REQUIRED[n]]
+CALL_SHAPED = re.compile("|".join(
+    ([r"\b(?:" + "|".join(_needy) + r")\s*[({]\s*[^)}]*\d"] if _needy else [])
+    + ([r"\b(?:" + "|".join(_free) + r")\s*[({]\s*(?:[)}]|[^)}]*[:=])"] if _free else [])))
 
 
 def looks_like_a_call(text):
@@ -156,7 +237,7 @@ def looks_like_a_call(text):
 
 
 # The same thing again, but parsed rather than merely detected.
-WRITTEN = re.compile(r"\b(" + "|".join(NAMES) + r")\s*\(([^()]*)\)")
+WRITTEN = re.compile(r"\b(" + "|".join(NAMES) + r")\s*[({]([^(){}]*)[)}]")
 
 
 def _fields(inside):
@@ -193,22 +274,35 @@ def written_call(text):
     `skills.call` still validates it, so a malformed recovery comes back BAD_ARGS like
     any other, and everything recovered this way is counted on the tape.
 
-    Complete means x and y. A written `goto(25, 15)` is as complete as a tool call
-    carrying the same two, and the recovery path must not be stricter than the real one.
+    Complete means whatever that skill's own schema calls required -- `x` and `y` for a
+    `goto`, nothing at all for `count` or `end`. A written `goto(25, 15)` is as complete
+    as a tool call carrying the same two, and the recovery path must not be stricter than
+    the real one.
 
-    Accepts `goto(35, 25, "why")` and `goto(x=35, y=25, why="...")`.
+    Accepts `goto(35, 25, "why")`, `goto(x=35, y=25, why="...")`, and the brace dialect
+    `call:goto{x:35,y:25,why:...}` that `gemma4:31b-cloud` switched to on 2026-09-04.
     """
     for m in WRITTEN.finditer(text or ""):
         args, positional = {}, []
-        for field in _fields(m.group(2)):
+        # Blank fields dropped, so `end()` parses to no arguments rather than to one
+        # empty positional that then lands in `x`.
+        for field in (f for f in _fields(m.group(2)) if f.strip()):
             key, eq, val = field.partition("=")
+            if not eq:
+                # `x:49` is the brace dialect. `isidentifier` below is what stops a
+                # positional string with a colon in it being read as a keyword.
+                key, eq, val = field.partition(":")
             if eq and key.strip().isidentifier():
                 args[key.strip()] = _unquote(val)
             else:
                 positional.append(_unquote(field))
         for key, val in zip(("x", "y", "why"), positional):
             args.setdefault(key, val)
-        if {"x", "y"} <= set(args):
+        # A skill that takes no required argument has no positional form either, so
+        # bracketed prose -- "at the end (of the sweep)" -- is text and not a call.
+        if not REQUIRED[m.group(1)] and positional:
+            continue
+        if REQUIRED[m.group(1)] <= set(args):
             return m.group(1), args
     return None
 
@@ -290,6 +384,82 @@ def _stuck(c, history):
     return ""
 
 
+def _runs(cells):
+    """A set of cells as one line of coordinate runs a row, the way the map is written.
+
+    Thirty coordinates in a row is a wall she has to parse; `y15: x30-39` is the same
+    fact in the notation she is already reading the map in.
+    """
+    rows = {}
+    for x, y in sorted(cells, key=lambda c: (c[1], c[0])):
+        rows.setdefault(y, []).append(x)
+    out = []
+    for y, xs in rows.items():
+        spans, lo, prev = [], xs[0], xs[0]
+        for x in xs[1:] + [None]:
+            if x != prev + 1:
+                spans.append(f"x{lo}" if lo == prev else f"x{lo}-{prev}")
+                lo = x
+            prev = x
+        out.append(f"y{y}: {', '.join(spans)}")
+    return " | ".join(out)
+
+
+def _count(world, kind):
+    """Sizes and middles for everything revealed. Facts only -- deliberately unranked.
+
+    Listed in map order, north to south, not by size. She is the one weighing which
+    formation matters; a list already sorted by the answer would be doing that for her.
+    """
+    a, s = world.here, world.survey
+    want = (kind or "").strip().lower() or "both"
+    if want not in ("rock", "fog", "both"):
+        return (f"BAD_ARGS(kind must be 'rock', 'fog' or omitted, got {kind!r}). "
+                f"Nothing happened.")
+    lines = []
+    if want in ("rock", "both"):
+        found = s.rock(a)
+        found.sort(key=lambda f: (centre_of(f[1])[1], centre_of(f[1])[0]))
+        for fid, cells in found:
+            mx, my = centre_of(cells)
+            grew = s.since_last(fid, len(cells))
+            more = f", {grew} of them new since you last asked" if grew else ""
+            lines.append(f"  R{fid}: {len(cells)} cells, middle ({mx},{my}){more}")
+        lines.insert(0, f"ROCK -- {len(found)} formations you have seen:")
+    if want in ("fog", "both"):
+        blobs = s.fog(a)
+        blobs.sort(key=lambda c: (centre_of(c)[1], centre_of(c)[0]))
+        fog = [f"  {len(c)} cells, middle {centre_of(c)}" for c in blobs]
+        lines.append(f"FOG -- {len(blobs)} patches still unseen:" if blobs
+                     else "FOG -- none left, you have seen the whole arena.")
+        lines += fog
+    # A formation she may have named out loud must not simply stop existing.
+    for gone, kept in s.take_merges():
+        lines.append(f"  NOTE: R{gone} and R{kept} turned out to be one formation. "
+                     f"It is all R{kept} now.")
+    return "COUNT --\n" + "\n".join(lines)
+
+
+def _count_cells(world, x, y):
+    """Every cell of the one feature at (x, y), written as runs."""
+    a, s = world.here, world.survey
+    if not (0 <= x < a.w and 0 <= y < a.h):
+        return f"BAD_ARGS(({x},{y}) is off the arena). Nothing happened."
+    if (x, y) not in a.seen:
+        for c in s.fog(a):
+            if (x, y) in c:
+                return (f"CELLS(fog, {len(c)} cells) -- {_runs(c)}. You have not been "
+                        f"here, so what is under it is unknown.")
+    if a.at(x, y) != "#":
+        return (f"NOT_A_FEATURE(({x},{y})) -- that is open ground you have already "
+                f"seen, not rock and not fog. Give a cell that belongs to the thing "
+                f"you mean; the middle coordinate `count` gives you always does.")
+    for fid, cells in s.rock(a):
+        if (x, y) in cells:
+            return f"CELLS(R{fid}, {len(cells)} cells) -- {_runs(cells)}"
+    return f"NOT_A_FEATURE(({x},{y})) -- nothing revealed there."
+
+
 def call(world, name, args, history=()):
     """Run one skill. Returns a finished `Call` -- never raises, never lies.
 
@@ -308,11 +478,28 @@ def call(world, name, args, history=()):
 
     try:
         c.why = _why(c.args.get("why"))
-        x = _int("x", c.args.get("x"))
-        y = _int("y", c.args.get("y"))
-        avoid = _avoid(c.args.get("avoid"))
+        if name in ("goto", "distance", "count_cells"):
+            x = _int("x", c.args.get("x"))
+            y = _int("y", c.args.get("y"))
+        if name in ("goto", "distance"):
+            avoid = _avoid(c.args.get("avoid"))
     except BadArgs as e:
         c.result = f"BAD_ARGS({e}). Nothing happened and nothing was spent."
+        return c
+
+    if name == "end":
+        # The turn is ended by `chat`, which is the only thing that knows what a turn
+        # is. Here it is a call like any other so that it lands on the tape in order
+        # with the rest, rather than as an event beside them.
+        c.result = "END -- your turn is over and the crew can speak again."
+        return c
+
+    if name == "count":
+        c.result = _count(world, c.args.get("kind"))
+        return c
+
+    if name == "count_cells":
+        c.result = _count_cells(world, x, y)
         return c
 
     if name == "goto":
@@ -342,12 +529,19 @@ def call(world, name, args, history=()):
     return c
 
 
-def budget_note(world):
+def budget_note(world, hops=""):
     """Handed back with a result when the day is spent, because OUT_OF_STEPS on its own
-    reads as a failure of the call rather than the end of the day."""
+    reads as a failure of the call rather than the end of the day.
+
+    `hops` is what is left of the turn's allowance, and it rides on *every* result
+    rather than only on the last one. A cap she is told about only once she has hit it
+    is a cap she cannot plan around -- the 31B spent half a run discovering it by
+    having calls refused.
+    """
+    out = hops
     if world.day_over:
-        return (" The day is over -- you have no steps left. Anything that costs "
+        out += (" The day is over -- you have no steps left. Anything that costs "
                 "steps will refuse from here.")
-    if world.steps_left < S.DAY_STEPS // 10:
-        return f" Only {world.steps_left} steps left today."
-    return ""
+    elif world.steps_left < S.DAY_STEPS // 10:
+        out += f" Only {world.steps_left} steps left today."
+    return out

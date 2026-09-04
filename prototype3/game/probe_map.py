@@ -8,7 +8,7 @@ true arena, which she cannot see.
 
 Two axes:
   * *quantitative* -- name the cell at (x,y), count the classes in a box, list the rock
-    on a row. All of these need indexing a coordinate into a 50-character row.
+    on a row. All of these need indexing a coordinate into a 30-character row.
   * *qualitative* -- which quadrant holds the most fog, where is the biggest unexplored
     region. No counting, just texture. Each is forced-choice with a baseline computed in
     code, so "lucky" is a number rather than a worry.
@@ -43,6 +43,7 @@ import urllib.request
 from pathlib import Path
 
 import chat
+import prompts
 import config as C
 import nav
 import settings as S
@@ -65,8 +66,8 @@ LIVE_PARA_HEAD = "**The map in your view is a real map and you can read it.**"
 
 def systems():
     """(unblocked, blocked) system prompts, differing only in the map paragraph."""
-    live = chat.SYSTEM
-    assert LIVE_PARA_HEAD in live, "the unblocked map paragraph is gone from chat.SYSTEM"
+    live = prompts.SYSTEM
+    assert LIVE_PARA_HEAD in live, "the unblocked map paragraph is gone from prompts.SYSTEM"
     head = live.index(LIVE_PARA_HEAD)
     tail = live.index("Use `distance` only to compare journeys")
     blocked = live[:head] + BLOCKED_PARA + "\n\n" + live[tail:]
@@ -96,10 +97,10 @@ def view_for(w, blocked):
 # more than one sample out of a greedy decoder. The drives are fixed, so every arm sees
 # byte-identical maps and the comparison is paired.
 DRIVES = [
-    [(25, 40), (10, 40), (10, 20)],
-    [(25, 40), (10, 40), (10, 20), (40, 20), (40, 45), (5, 45), (5, 5), (45, 5)],
-    [(25, 40), (10, 40), (10, 20), (40, 20), (40, 45), (5, 45), (5, 5), (45, 5),
-     (25, 25), (18, 10), (32, 35), (45, 30), (3, 30), (30, 3), (20, 47)],
+    [(15, 24), (6, 24), (6, 12)],
+    [(15, 24), (6, 24), (6, 12), (24, 12), (24, 27), (3, 27), (3, 3), (27, 3)],
+    [(15, 24), (6, 24), (6, 12), (24, 12), (24, 27), (3, 27), (3, 3), (27, 3),
+     (15, 15), (11, 6), (19, 21), (27, 18), (2, 18), (18, 2), (12, 28)],
 ]
 
 
@@ -121,7 +122,11 @@ def cls(w, x, y):
     return "rock" if ch == "#" else "open"
 
 
-ROW = re.compile(r"^\s*(\d{1,2})  (.{50})$", re.M)
+# Row width comes from the arena, so a resize does not silently stop matching anything.
+# Built per call rather than at import, because the arena is chosen at startup now and a
+# pattern frozen against the default would quietly match nothing on the other one.
+def _row_re():
+    return re.compile(r"^\s*(\d{1,2})  (.{%d})$" % len(C.ARENA[0]), re.M)
 
 
 def audit(w):
@@ -136,7 +141,7 @@ def audit(w):
     The rover's own cell renders as `@` and is skipped: it is drawn over whatever is
     underneath, and it is excluded from every question for the same reason.
     """
-    rows = dict(ROW.findall(sight.grid(w)))
+    rows = dict(_row_re().findall(sight.grid(w)))
     assert len(rows) == w.here.h, f"parsed {len(rows)} rows, not {w.here.h}"
     bad = []
     for y in range(w.here.h):
@@ -663,7 +668,7 @@ def main():
                    "model": model,
                    "thinking": S.GEMINI_THINKING if hosted else False,
                    # Which prompt asked it. Two tapes were once compared as replications
-                   # when `chat.SYSTEM` had changed between them and nothing said so.
+                   # when `prompts.SYSTEM` had changed between them and nothing said so.
                    "system_sha": hashlib.sha256(system.encode()).hexdigest()[:8]}
             f.write(json.dumps(rec, ensure_ascii=False, default=list) + "\n")
             f.flush()

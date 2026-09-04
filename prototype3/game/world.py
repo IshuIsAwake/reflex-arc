@@ -49,6 +49,79 @@ def components(w, h, member):
     return out
 
 
+def centre_of(cells):
+    """The member cell nearest the middle of `cells`.
+
+    The *middle* of a concave formation is often not in it -- the C on the 50x50 has
+    its centroid sitting in open ground inside the bay. A centre that is not a member
+    is a coordinate `count_cells` cannot look anything up by, so it is snapped onto the
+    nearest cell that is one. Ties break north then west, so the same set always names
+    the same cell.
+    """
+    cx = sum(x for x, _ in cells) / len(cells)
+    cy = sum(y for _, y in cells) / len(cells)
+    return min(cells, key=lambda c: ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c[1], c[0]))
+
+
+class Survey:
+    """Names the rock formations as they come out of the fog, and remembers the names.
+
+    Only revealed cells count. A formation half in fog is reported at the size she has
+    actually seen, and the fogged half reads as fog -- a number that silently meant
+    "or more" would be the lying success code again, in a field.
+
+    **Rock ids are stable because revealed rock only ever grows.** A cell never stops
+    being rock, so a formation can gain cells and two formations can turn out to be one,
+    but nothing ever splits. That makes an id worth carrying: the only event to report
+    is a merge, and the lowest id survives it.
+
+    Fog gets no ids, and this is not an oversight. Fog does the opposite -- it only ever
+    shrinks, and one region becomes three as she drives through the middle of it. There
+    is no persistent thing there to name.
+    """
+
+    def __init__(self):
+        self.owner = {}      # cell -> formation id
+        self.size = {}       # id -> cells known last time she asked
+        self.merges = []     # ids absorbed since the last report, as (gone, kept)
+        self._next = 1
+
+    def rock(self, area):
+        """Revealed rock, as `(id, cells)`, ids assigned and merges recorded."""
+        groups = components(area.w, area.h,
+                            lambda x, y: (x, y) in area.seen and area.at(x, y) == "#")
+        out = []
+        for cells in groups:
+            known = sorted({self.owner[c] for c in cells if c in self.owner})
+            if known:
+                # Lowest wins. She may have referred to any of the others, so the ones
+                # that lose are reported rather than left to vanish mid-conversation.
+                fid = known[0]
+                for gone in known[1:]:
+                    self.merges.append((gone, fid))
+                    self.size.pop(gone, None)
+            else:
+                fid, self._next = self._next, self._next + 1
+            for c in cells:
+                self.owner[c] = fid
+            out.append((fid, cells))
+        return out
+
+    def fog(self, area):
+        """Unrevealed regions. No ids, for the reason in the class docstring."""
+        return components(area.w, area.h, lambda x, y: (x, y) not in area.seen)
+
+    def since_last(self, fid, now):
+        """Cells revealed since she last asked, and the count is updated by asking."""
+        was = self.size.get(fid)
+        self.size[fid] = now
+        return None if was is None else now - was
+
+    def take_merges(self):
+        out, self.merges = self.merges, []
+        return out
+
+
 def label_for(w, ch):
     """What to call a tile, out loud, on screen and in the view.
 
@@ -136,6 +209,7 @@ class World:
         self.recorder = recorder
         self.revealed = set()   # what the last move opened up, for the playback
         self.reel = []          # finished drives waiting to be drawn. See anim.py
+        self.survey = Survey()  # formation ids, carried across the whole expedition
         # The landing site is visible on arrival. You can see where you came down.
         self.here.reveal(*self.pos, r=S.BASE_REVEAL)
         self._arrive()

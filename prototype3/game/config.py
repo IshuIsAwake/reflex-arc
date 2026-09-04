@@ -11,11 +11,11 @@ Prototype 1 walled its areas and lost 22% of gemma's calls to the border.
 """
 
 # --- display ---------------------------------------------------------------
-# 50 x 50 at 17px fits on screen without scrolling. `render.viewport` centres a small
-# area and follows a big one, so raising TILE just starts it scrolling.
+# Either arena at 17px is on screen without scrolling -- 50 x 50 is 850px, the wider of
+# the two. `render.viewport` centres a small area and follows a big one, so raising TILE
+# just starts it scrolling. VIEW_W and VIEW_H are set by `use()` from the arena itself,
+# never written down, so a resize cannot leave the window the wrong shape.
 TILE = 17
-VIEW_W = 50
-VIEW_H = 50
 HUD_H = 110
 FPS = 60
 
@@ -63,20 +63,75 @@ CHAT_BAD = (234, 112, 96)
 
 ARENA_NAME = "Jezero flats"
 
-# --- the arena -------------------------------------------------------------
-# 410 rock of 2500 (16.4%), one connected region. Twenty boulders of sixteen cells and
-# ten of nine, none touching, at least two clear cells apart so the flood fill can tell
-# them apart and so can an eye. Generator seed 78.
+# --- the arenas ------------------------------------------------------------
+# Two, and the size is the only thing that differs on purpose. `--arena 50` picks the
+# old one; everything else in the game reads `ARENA` and does not care which is loaded.
+#
+# The 30x30 is the size the real classroom arena will be, so it is the default. It is
+# also small enough that three effects went flat on it -- `distance` is optimistic by at
+# most 4 cells against 12, `goto` returns BLOCKED only when driven straight at rock, and
+# `rle` costs 1.31x the grid against 3.8x. The 50x50 is where those are measurable.
+#
+# Run test_world.py after editing either. It fails on a sealed pocket, which is
+# invisible until someone has wasted a day walking to it.
+
+# 124 rock of 900 (13.8%), one connected region. Twelve boulders of nine cells and
+# exactly one of sixteen, none touching, at least two clear cells apart so the flood
+# fill can tell them apart and so can an eye. Generator seed 4.
+#
+# **Every boulder is a square, and only one is 4x4.** A 3x3 cannot be seen from any
+# single row of `sight.rle` -- three rows each reading `x7-9 rock` have to be merged --
+# so "which formation is largest" is a question about merging rows and nothing else.
 #
 # Boulders are allowed on the outer ring: keeping them off left a clear lap round the
 # arena, and gemma ping-ponged along that free perimeter for 439 steps.
+FLATS_30 = [
+    "..............................",
+    "........................###...",
+    "....###.................###...",
+    "....###.................###...",
+    "....###.......................",
+    "..............###.............",
+    "..............###.............",
+    "..............###.............",
+    ".........................###..",
+    "###....####..............###..",
+    "###....####........###...###..",
+    "###....####........###........",
+    ".......####........###........",
+    "..............................",
+    "..............................",
+    "...............@..............",
+    ".......###....HHH.............",
+    ".......###....HHH.............",
+    ".......###....................",
+    "..............................",
+    "..........................###.",
+    "..........................###.",
+    "..................###.....###.",
+    "...###............###.........",
+    "...###............###.........",
+    "...###...###..................",
+    ".........###..................",
+    ".........###........###.......",
+    "....................###.......",
+    "....................###.......",
+]
+
+# 440 rock of 2500 (17.6%), one connected region. One formation of thirty, twenty of
+# sixteen and ten of nine, none touching, two clear cells apart. Generator seed 78, plus
+# the thirty placed by hand.
 #
-# Identity is recovered by flood fill, not written down, so every component must be
-# exactly nine or sixteen -- a merge or a split fails outright.
+# The thirty is a **C opening east** at x30-39, y15-21, and it is concave on purpose.
+# Convex boulders two cells apart get walked round in silence, so `goto` almost never
+# returned BLOCKED and no route was ever expensive. Crossing this one's mouth costs 24
+# steps where the straight line is 6.
 #
-# Run test_world.py after editing. It also fails on a sealed pocket, which is invisible
-# until someone has wasted a day walking to it.
-ARENA = [
+# It is also the only formation of its size, which is what makes "the largest formation"
+# answerable. Twenty tied sixteens made it a question with no answer and it was asked
+# four times before that was noticed; `test_the_geology_is_exactly_what_was_authored`
+# now guards both arenas so it cannot come back.
+FLATS_50 = [
     ".........................................###......",
     "...................##...................###.......",
     "...................##..##..............#####......",
@@ -92,13 +147,13 @@ ARENA = [
     "##...........................##....#..............",
     ".............######...............................",
     ".............####.....#...........................",
-    ".............####....###..........................",
-    "...............##..#.###..........................",
-    "..#................#####..........................",
-    ".###...............###............................",
-    ".##.....#......................................#..",
-    "###....####...................................####",
-    ".......###....................................####",
+    ".............####....###......##########..........",
+    "...............##..#.###......##..................",
+    "..#................#####......##..................",
+    ".###...............###........##..................",
+    ".##.....#.....................##...............#..",
+    "###....####...................##..............####",
+    ".......###....................##########......####",
     ".......#......#...................................",
     ".............##...................................",
     "..........##.###............................####..",
@@ -129,5 +184,20 @@ ARENA = [
     "....#######...#...................................",
 ]
 
-# Dead centre. The pad sits immediately south -- behind the rover, where it landed.
-SPAWN = (25, 25)
+ARENAS = {"30": (FLATS_30, (15, 15)), "50": (FLATS_50, (25, 25))}
+DEFAULT_ARENA = "30"
+
+
+def use(name):
+    """Load an arena. `main.py` calls this before anything reads the module.
+
+    The spawn is dead centre of each and the pad sits immediately south, behind the
+    rover, where it landed. The view size comes off the rows rather than being written
+    down beside them, which is how the two used to disagree.
+    """
+    global ARENA, SPAWN, VIEW_W, VIEW_H
+    ARENA, SPAWN = ARENAS[name]
+    VIEW_H, VIEW_W = len(ARENA), len(ARENA[0])
+
+
+use(DEFAULT_ARENA)
