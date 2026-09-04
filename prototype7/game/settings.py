@@ -169,3 +169,24 @@ SCOUT_RECHARGE = 25  # steps of driving owed before the next sortie
 # At 8 a drive absorbs so much of its own trouble that the rock list stops relating to
 # what was asked.
 NAV_REPLANS = 5
+
+# --- the route file --------------------------------------------------------
+# The live route: the current plan, and only ever the current one. Rewritten on every
+# fresh `goto` and on every replan inside one, so a reader holds the rover's present
+# intention rather than a queue of stale ones. Emptied when there is no route -- the
+# dangerous failure is a reader still executing the last good plan after the planner
+# has given up on it.
+#
+# This is the seam to Unity and to the learned policy: they read this file and drive
+# the physical rover from it. Relative paths resolve against the prototype directory,
+# not the shell's. Only a live run writes it (`nav.publish` checks `world.recorder`),
+# so importing nav in a test puts nothing on disk. None turns it off altogether.
+PLAN_FILE = "runs/plan.txt"
+
+# What a `goto` from the model actually does. `main.py --executor` sets it.
+#   teleport  step cell to cell, writing the route as it goes (the default)
+#   plan      plan, write the route file, and move nothing
+# `plan` is for watching the planner alone: the rover stays put, so no fog lifts and
+# every plan is made over the same map. The model is told this in the result rather
+# than being left to work out why its situation never changes.
+EXECUTOR = "teleport"

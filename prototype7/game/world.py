@@ -178,6 +178,12 @@ class Area:
                 for y in range(max(0, cy - r), min(self.h, cy + r + 1))
                 for x in range(max(0, cx - r), min(self.w, cx + r + 1))}
 
+    def reveal_all(self):
+        """Lift the whole fog. Never used by the game -- driving and the flyer are the
+        only two things that open the map there. This is for `plan_txt --survey`, where
+        seeing everything is the deliberate point rather than a bug."""
+        self.seen |= {(x, y) for y in range(self.h) for x in range(self.w)}
+
     def reveal_cells(self, cells):
         """Open the fog over a set of cells. Returns the ones that were new.
 
@@ -227,6 +233,12 @@ class World:
         # neither -- which is the confusion these two exist to end.
         self.last_path = ("", [])
         self.last_walk = ("", [])
+        # The objective the route file is currently about, and every leg planned toward
+        # it. `nav` owns the contents; they live here because they outlast a single
+        # `goto` -- a call that came back BLOCKED and the call that carries on from
+        # where it stopped are one journey, and the file has to read like one.
+        self.plan_goal = None
+        self.plan_legs = []
         self.log = []
         self.recorder = recorder
         self.revealed = set()   # what the last move opened up, for the playback
@@ -341,6 +353,7 @@ class World:
         self.log.clear()
         self.last_path = ("", [])
         self.last_walk = ("", [])
+        self.plan_goal, self.plan_legs = None, []   # yesterday's journey is over
         self.reel.clear()       # nobody wants to watch yesterday's drive
         # The flyer charges overnight along with everything else, so a sol never opens
         # owing a recharge it did not earn.

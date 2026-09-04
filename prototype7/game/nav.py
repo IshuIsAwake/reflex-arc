@@ -15,15 +15,32 @@ ground truth whether or not the cell is fogged -- reading it without checking
 `Area.visible` first makes the planner quietly omniscient, everything keeps working,
 and nothing ever looks wrong. `test_nav.py` counts the reads in this file for that
 reason, so there had better stay exactly one.
+
+It also writes the route out. `goto` moves the rover in the simulation *and* leaves
+the plan on disk as FORWARD/LEFT/RIGHT/BACKWARD, which is what Unity and the learned
+policy read to drive the physical rover. One file, always the current plan.
 """
 
 import heapq
+import os
+import tempfile
+import time
 
 import settings as S
 from world import SOLID, THINGS
 
 NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
+# Clockwise from north, and this order is load-bearing: `route_actions` gets its turns
+# from the difference between two indices into it. 0=N 1=E 2=S 3=W.
+DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))
+HEADING_NAMES = ("N", "E", "S", "W")
+# The whole alphabet the route file speaks. Anything reading it can check against this.
+MOVES = ("FORWARD", "BACKWARD", "LEFT", "RIGHT")
 FAR = 1 << 30
+
+# The prototype directory, so a relative S.PLAN_FILE means the same thing whether
+# main.py was started from prototype7/ or from prototype7/game/.
+PLAN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def known(area, x, y):
@@ -132,6 +149,41 @@ def _trace(came, cur):
     return out
 
 
+def route_actions(path, heading=0):
+    """A cell path from `plan` rewritten as the rover's own actions, plus the heading
+    it finishes on. Returns `(actions, heading)`.
+
+    `plan` speaks in world coordinates -- north is north whatever the rover is doing.
+    The rover has a facing, so north is only FORWARD when it is already pointing north;
+    six wheels and a differential drive make turning in place the primitive.
+
+    BACKWARD is one action and leaves the heading alone, where a U-turn costs two turns
+    and injects two turns' worth of heading error. **The rover we have cannot reverse**
+    -- so anything driving this file has to expand BACKWARD into two turns and a
+    FORWARD. Said here because that is a contract with the hardware, not a detail.
+
+    A repeated or diagonal step raises. `plan` never emits one, and quietly accepting
+    it would write a file that drives somewhere else.
+
+    Pure. Plans nothing, moves nothing, reads no grid.
+    """
+    out = []
+    for a, b in zip(path, path[1:]):
+        step = (b[0] - a[0], b[1] - a[1])
+        if step not in DIRS:
+            raise ValueError(f"not a single orthogonal step: {_c(a)} -> {_c(b)}")
+        want = DIRS.index(step)
+        turn = (want - heading) % 4
+        if turn == 2:
+            out.append("BACKWARD")
+            continue
+        if turn:
+            out.append("RIGHT" if turn == 1 else "LEFT")
+        out.append("FORWARD")
+        heading = want
+    return out, heading
+
+
 def _c(cell):
     return f"({cell[0]},{cell[1]})"
 
@@ -157,10 +209,10 @@ class Result:
     took.
     """
 
-    GOOD = {"DONE", "SCOUTED"}
+    GOOD = {"DONE", "SCOUTED", "PLANNED"}
 
     def __init__(self, code, steps=0, at=None, stopped=None, beside=None, walls=(),
-                 new=None, to=None):
+                 new=None, to=None, planned=None):
         self.code = code
         self.steps = steps
         self.at = at
@@ -172,6 +224,8 @@ class Result:
         # a scout window has a centre and leaves the rover where it stands, so `at`
         # alone cannot say what was asked for.
         self.to = to
+        # How long the route is, for a call that planned one and drove none of it.
+        self.planned = planned
 
     @property
     def tone(self):
@@ -187,6 +241,8 @@ class Result:
             bits.append(f"beside={_c(self.beside)}")
         if self.stopped:
             bits.append(f"stopped={_c(self.stopped)}")
+        if self.planned is not None:
+            bits.append(f"route={self.planned}")
         bits.append(f"steps={self.steps}")
         # Printed even when it is nought -- especially when it is nought. A drive that
         # bought no map is the thing worth saying, and a field that appears only on
@@ -221,12 +277,140 @@ class Result:
         if self.beside:
             return (f"{_c(self.beside)} is solid, so stopping beside it IS "
                     f"arriving. Do not ask again.")
+        if self.code == "PLANNED":
+            return ("the route is in the plan file and the rover has not moved, so no "
+                    "fog lifted and planning this again gives the same answer.")
         if self.code == "DONE" and not self.steps:
             return "you were already standing there. Nothing moved, nothing spent."
         if self.steps and self.new == 0:
             return (f"those {self.steps} steps were spent over ground already on your "
                     f"map and revealed nothing new. Aim at cells showing ?.")
         return ""
+
+
+def plan_file():
+    """Absolute path of the live route file, or None when it is switched off."""
+    if not S.PLAN_FILE:
+        return None
+    if os.path.isabs(S.PLAN_FILE):
+        return S.PLAN_FILE
+    return os.path.join(PLAN_ROOT, S.PLAN_FILE)
+
+
+def _replace(tmp, out, tries=10, wait=0.05):
+    """`os.replace`, retried. It is atomic and it is also refused with WinError 5 the
+    moment anything else has the target open for a fraction of a second -- OneDrive
+    syncing the folder, an editor with the file up, a reader tailing it.
+
+    Half a second of retries, then raise. A route file that cannot be rewritten is a
+    fault worth stopping for: whatever reads it would otherwise go on driving the plan
+    the planner has already replaced.
+    """
+    for n in range(tries):
+        try:
+            os.replace(tmp, out)
+            return
+        except PermissionError:
+            if n == tries - 1:
+                raise
+            time.sleep(wait)
+
+
+def write_plan(out, legs, goal, executor="teleport"):
+    """The whole journey to one objective, rewritten from scratch on every change.
+
+    `legs` is every plan made toward `goal`, oldest first, each a
+    `(cells, start, heading, status)`. A leg carries a status once it is over. The last
+    leg with no status is the live one.
+
+    Two jobs at once, and only one of them is dangerous:
+
+      * every leg is written out, so the file is the story of getting there -- the
+        first hypothesis, each wall that broke it, and what was tried instead;
+      * only the live leg's moves are left runnable. Finished legs keep theirs behind
+        `#`, so a reader that strips comments and drives the rest gets at most one
+        route, always the current one, however many times the plan changed.
+
+    A new objective starts a new file. A route to somewhere the rover is no longer
+    going is the worst kind of stale: it is perfectly well-formed.
+
+    Written to a temporary file and renamed over the target -- atomic on Windows as
+    well as POSIX, so a reader arriving mid-write gets the previous file rather than
+    half of this one. A rover executing half a plan drives into something.
+    """
+    live = len(legs) - 1 if legs and legs[-1][3] is None else -1
+    out_lines = [
+        "# reflex-arc live route -- one objective, every leg of it.",
+        f"# goal {_c(goal)}, executor={executor}",
+        f"# {len(legs)} leg(s). Only an uncommented move is one to drive.",
+    ]
+    if not legs:
+        out_lines.append("# NO ROUTE -- the planner has none. Do not drive the last one.")
+
+    for i, (cells, at, heading, status) in enumerate(legs):
+        actions, ends = route_actions(cells, heading)
+        state = status or "LIVE"
+        out_lines += [
+            "#",
+            f"# leg {i + 1}/{len(legs)}  {state}  from {_c(at)} facing "
+            f"{HEADING_NAMES[heading]}, {len(cells) - 1} moves, {len(actions)} "
+            f"actions, ends facing {HEADING_NAMES[ends]}",
+            "# cells: " + " ".join(_c(c) for c in cells),
+        ]
+        out_lines += actions if i == live else [f"# {a}" for a in actions]
+
+    # The simulation never turns the rover, so the facing every leg starts from is
+    # assumed rather than measured. Whatever drives this has to square itself first.
+    out_lines.append("# note: the simulation does not turn, so facing is assumed.")
+    out_lines.append("# note: this rover cannot reverse -- expand BACKWARD before driving.")
+
+    out = os.path.abspath(out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(out), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("\n".join(out_lines) + "\n")
+        _replace(tmp, out)
+    except BaseException:
+        os.path.exists(tmp) and os.remove(tmp)
+        raise
+    return out
+
+
+def _close_leg(legs, status):
+    """Mark the live leg finished. A leg with a status keeps its moves commented out,
+    so at most one runnable route is ever in the file."""
+    if legs and legs[-1][3] is None:
+        cells, at, heading, _ = legs[-1]
+        legs[-1] = (cells, at, heading, status)
+
+
+def clear_plan(world):
+    """Empty the route file for a new session.
+
+    Whatever reads this file has no way to know how old it is. Left alone, the first
+    thing a fresh run offers is the last plan of the previous one -- a route from a
+    position the rover is no longer in, which is the worst kind of wrong because it is
+    perfectly well-formed.
+    """
+    world.plan_goal, world.plan_legs = None, []
+    publish(world, [], world.pos)
+
+
+def publish(world, legs, goal, executor="teleport"):
+    """Rewrite the live route file, if there is one. Called wherever `goto` commits to
+    a route -- the first plan and every replan -- so the file holds one plan, the
+    current one, instead of a pile of them nobody can tell apart.
+
+    Written only for a live run, and `world.recorder` is what marks one -- `logs.py`
+    sets it and it is None in every test, the same seam `world.py` uses to keep itself
+    free of I/O. A suite that plans thousands of routes has no business touching the
+    disk, and a plan file a test left behind is a route the next reader believes.
+    `S.PLAN_FILE = None` switches it off for a live run too.
+    """
+    out = plan_file()
+    if out and world.recorder:
+        write_plan(out, legs, goal, executor)
 
 
 def _log(world, area_name, start, goal, planned, result):
@@ -241,18 +425,35 @@ def _log(world, area_name, start, goal, planned, result):
     return result
 
 
-def goto(world, x, y, avoid=None):
+def goto(world, x, y, avoid=None, executor=None):
     """Drive to (x, y) over the map the rover has. Returns a Result.
 
     `avoid=None`      dodge only the rock it already knows about
     `avoid=[(a, b)]`  ...and these cells, this trip only
     `avoid="auto"`    ...and every cell it has marked. Visited destinations only.
 
+    Every route is written to `S.PLAN_FILE` as it is committed to, whatever the
+    executor -- that file is what Unity and the learned policy drive.
+
+    `executor="teleport"` (the default) steps cell to cell via `world.move`.
+    `executor="plan"` plans, writes the file, and moves nothing, which is for watching
+    the planner alone: no fog lifts, so every plan is made over the same map.
+
     The drive stops the moment a step is refused -- face to face with the outcrop,
     which is where the most map has been revealed -- records it, and replans up to
     NAV_REPLANS times.
     """
+    executor = S.EXECUTOR if executor is None else executor
     area, area_name, goal, start = world.here, world.area, (x, y), world.pos
+
+    # Every plan made toward this objective, oldest first, as
+    # (cells, from, heading, status). Replans append -- and so does a fresh `goto` at a
+    # goal the rover has not reached yet, because being blocked and trying again is one
+    # journey and the file has to read like one. Only a change of objective, or having
+    # arrived at the last one, starts the list over.
+    if world.plan_goal != goal:
+        world.plan_goal, world.plan_legs = goal, []
+    legs = world.plan_legs
 
     # Every cell actually driven over, as against the cells that were planned for.
     # Handed to the world by reference so it grows as the drive does -- a watcher
@@ -270,6 +471,7 @@ def goto(world, x, y, avoid=None):
     if avoid == "auto":
         if goal not in area.visited:
             world.last_path = (area_name, [])
+            publish(world, legs, goal, executor)
             return _log(world, area_name, start, goal, None,
                         Result("NOT_VISITED", at=start, new=0))
         avoid = frozenset(area.marks)
@@ -285,11 +487,25 @@ def goto(world, x, y, avoid=None):
         if avoid and plan(area, start, goal, frozenset()):
             code = "UNREACHABLE(avoid)"
         world.last_path = (area_name, [])
+        publish(world, legs, goal, executor)
         return _log(world, area_name, start, goal, None, Result(code, at=start, new=0))
 
     planned = len(path) - 1
     world.last_path = (area_name, list(path))
+    # The heading is always north here: nothing in the simulation turns the rover, so
+    # the file says the facing is assumed and whatever drives it squares up first.
+    legs.append((list(path), start, 0, None))
+    publish(world, legs, goal, executor)
     reel.append(("plan", list(path)))
+
+    if executor == "plan":
+        # Plan and stop. The route file is the whole output, and it keeps its actions
+        # uncommented: unlike a finished drive this one has not been carried out, and
+        # the actions are exactly what somebody is meant to read.
+        world.play(reel)
+        return _log(world, area_name, start, goal, planned,
+                    Result("PLANNED", at=start, planned=planned, new=0))
+
     walls, steps, replans = [], 0, S.NAV_REPLANS
     # What the drive bought. `world.revealed` holds one move's worth and is replaced on
     # the next, so it is unioned as we go rather than read at the end.
@@ -303,6 +519,15 @@ def goto(world, x, y, avoid=None):
             # arriving reads as not having arrived.
             kw["beside"] = goal
         world.play(reel)
+        # The drive is over. Closing the last leg takes the file out of "drive this"
+        # and into "here is what happened" -- leave it open and whatever reads it goes
+        # on offering a route the rover has already finished.
+        _close_leg(legs, code)
+        publish(world, legs, goal, executor)
+        if code in Result.GOOD:
+            # Arrived. What comes next is a new journey even if it names the same cell,
+            # so the accumulation stops here instead of growing without end.
+            world.plan_goal = None
         return _log(world, area_name, start, goal, planned,
                     Result(code, steps=steps, walls=walls, **kw))
 
@@ -341,8 +566,13 @@ def goto(world, x, y, avoid=None):
         replans -= 1
         path = plan(area, world.pos, goal, avoid)
         if path is None:
+            _close_leg(legs, "BLOCKED")
+            publish(world, legs, goal, executor)
             break                     # gemma calls goto again from wherever it is
         world.last_path = (area_name, list(path))
+        _close_leg(legs, "SUPERSEDED")
+        legs.append((list(path), world.pos, 0, None))
+        publish(world, legs, goal, executor)
         reel.append(("plan", list(path)))
 
     return done("BLOCKED", at=wall, stopped=world.pos)

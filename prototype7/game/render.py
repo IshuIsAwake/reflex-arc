@@ -25,44 +25,42 @@ def window_size():
     return gw + S.CHAT_W, gh
 
 
-CHAT_MIN = 460      # narrower than this and the pane wraps into uselessness
+MIN_CHAT = 460      # narrower than this and the pane wraps into uselessness
+MIN_TILE = 6        # smaller and the grid stops being readable at all
 
 
 def fit_to_display():
-    """Shrink the tiles and the pane until the window fits the screen it opens on.
+    """Shrink the tile and the pane until the window fits the desktop it opens on.
 
-    At the shipped numbers the window is 1880 x 990, which needs about 1080 rows of
-    desktop once Windows has taken its title bar and taskbar -- so on a 1080p laptop
-    the bottom of the arena is off the screen and the HUD with it. Hard-coding a
-    smaller TILE would only move the problem to the next machine.
+    The shipped 17px tile and 1000px pane make an 1880x990 window. That is bigger than
+    a 1536x864 laptop, and the way it fails is bad: the pane hangs off the right edge,
+    the HUD sits under the taskbar, and a window whose controls you cannot reach looks
+    from the outside exactly like a game that did not start.
 
-    Height sets the tile size, because the arena is square and the pane does not
-    constrain it. Whatever width is left over goes to the pane, down to CHAT_MIN; if
-    the pane would go under that, the tiles give up more instead. `viewport()` already
-    scrolls an arena bigger than the view, so nothing here can break the drawing --
-    the worst case is a smaller picture.
+    Height sets the tile, because only the tile can shrink it; width then buys back
+    whatever is left for the pane. Never grows either -- the numbers in `config.py` and
+    `settings.py` stay the ceiling, so a big monitor gets what was designed and a small
+    one gets the same layout, smaller. Below the minimums it stops and overflows
+    visibly: a 3px tile that technically fits is worse than a window you can drag.
 
-    Returns (tile, pane) after clamping, or None if the desktop size cannot be read
-    (a headless test, an old SDL). Mutates `C.TILE` and `S.CHAT_W`, which every other
-    size in this file is derived from, so this is the only place that has to know.
+    Mutates `C.TILE` and `S.CHAT_W`, which every other size here is derived from, so
+    call it once after `pygame.init()` and before anything reads either. Returns the
+    window size that results. `S.FIT_TO_SCREEN = False` leaves the shipped numbers
+    exactly, which is what a screenshot that has to match somebody else's needs.
     """
     if not S.FIT_TO_SCREEN:
-        return None
+        return window_size()
     try:
-        dw, dh = pygame.display.get_desktop_sizes()[0]
-    except Exception:
-        return None                      # not worth failing to start over
-    dw -= S.SCREEN_RESERVE_W
-    dh -= S.SCREEN_RESERVE_H
+        sw, sh = pygame.display.get_desktop_sizes()[0]
+    except (pygame.error, IndexError):
+        return window_size()        # no display to ask; leave the shipped numbers
+    sw, sh = sw - S.SCREEN_RESERVE_W, sh - S.SCREEN_RESERVE_H
 
-    tile = min(C.TILE, (dh - C.HUD_H - MARGIN * 2) // C.VIEW_H)
-    pane = min(S.CHAT_W, dw - (C.VIEW_W * tile + MARGIN * 2))
-    if pane < CHAT_MIN:
-        tile = (dw - CHAT_MIN - MARGIN * 2) // C.VIEW_W
-        pane = dw - (C.VIEW_W * max(tile, 4) + MARGIN * 2)
-
-    C.TILE, S.CHAT_W = max(4, tile), max(CHAT_MIN, pane)
-    return C.TILE, S.CHAT_W
+    by_height = (sh - C.HUD_H - MARGIN * 2) // C.VIEW_H
+    by_width = (sw - MIN_CHAT - MARGIN * 2) // C.VIEW_W
+    C.TILE = max(MIN_TILE, min(C.TILE, by_height, by_width))
+    S.CHAT_W = max(MIN_CHAT, min(S.CHAT_W, sw - game_size()[0]))
+    return window_size()
 
 
 class Fonts:

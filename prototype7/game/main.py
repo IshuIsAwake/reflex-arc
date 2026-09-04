@@ -25,6 +25,7 @@ import prompts
 import config as C
 import console
 import logs
+import nav
 import render
 import settings as S
 import sight
@@ -52,10 +53,14 @@ def read_flags(argv):
                    help=f"which system prompt to run (default: {prompts.DEFAULT})")
     p.add_argument("--model", default=S.MODEL,
                    help=f"any tag `ollama list` shows, or a `-cloud` one (default: {S.MODEL})")
+    p.add_argument("--executor", choices=("teleport", "plan"), default=S.EXECUTOR,
+                   help=f"what a goto does; 'plan' writes the route and moves nothing "
+                        f"(default: {S.EXECUTOR})")
     p.add_argument("--think", action="store_true",
                    help="reasoning trace on, and the sampler left to the model")
     args = p.parse_args(argv)
     S.MAP_FORMAT = args.map
+    S.EXECUTOR = args.executor
     # A flag rather than an edit to `settings.py`, so the two arms of a size comparison
     # differ by an argument that the tape then records, and not by a file that has to be
     # put back afterwards.
@@ -78,9 +83,12 @@ def main():
     # else on screen -- the pane shows a one-line summary either way. The arena is there
     # for the opposite reason: it is obvious on screen and easy to forget in a note.
     pygame.display.set_caption(
-        f"Reflex Arc -- prototype 3  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
+        f"Reflex Arc -- prototype 7  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
         f"  ·  {S.MODEL}"
         + ("  ·  thinking, sampler unpinned" if S.MODEL_THINK else ""))
+    # Before anything asks how big anything is: every other size is derived from
+    # C.TILE and S.CHAT_W, so this has to run ahead of set_mode and the subsurfaces.
+    render.fit_to_display()
     screen = pygame.display.set_mode(render.window_size())
     clock = pygame.time.Clock()
     fonts = render.Fonts()
@@ -109,6 +117,7 @@ def main():
                arena=f"{C.VIEW_W}x{C.VIEW_H}",
                prompt=hashlib.sha256(prompts.SYSTEM.encode()).hexdigest()[:12])
     w = World(recorder=run.record)
+    nav.clear_plan(w)   # this session's route file starts empty, never yesterday's
     tape = chat.Tape(run.chat_path)
     conv = chat.Conversation(w, tape)
     conv.open_day(w)

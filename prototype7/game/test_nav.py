@@ -9,14 +9,28 @@ wrong reason the arena stops being a test of anything and nothing looks broken.
 """
 
 import os
+import tempfile
 from collections import deque
 
 import config as C
 import console
 import nav
+import plan_txt
+import settings as S
+from nav import DIRS
 from world import SOLID, THINGS, World
 
 NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
+
+
+def _roomy():
+    """A world on the 50, with a recorder, for the route-file tests.
+
+    They need a goal far enough off to force replans, and (40,40) does not exist on
+    the 30. `C.use` is put back by the runner at the bottom of the file.
+    """
+    C.use("50")
+    return World(recorder=lambda *a, **k: None)
 
 
 def reference_bfs(rows, start, goal):
@@ -399,8 +413,250 @@ def test_the_log_records_what_the_plan_promised():
     assert last["area"] == C.ARENA_NAME and last["to"] == (15, 0)
 
 
+def test_the_actions_replay_to_the_planned_path():
+    """The one that matters. `route_actions` turns absolute cells into turns and a
+    facing, and every way of getting that wrong -- sign of the turn, order of DIRS,
+    forgetting to carry the heading -- lands the rover somewhere else while the file
+    still looks perfectly reasonable. So drive the file back and compare.
+    """
+    w = World()
+    path = nav.plan(w.here, w.pos, (25, 5))
+    assert path and len(path) > 3, path
+    actions, end = nav.route_actions(path, 0)
+
+    pos, h, walked = path[0], 0, [path[0]]
+    for a in actions:
+        if a == "LEFT":
+            h = (h - 1) % 4
+        elif a == "RIGHT":
+            h = (h + 1) % 4
+        else:
+            sign = -1 if a == "BACKWARD" else 1
+            pos = (pos[0] + sign * DIRS[h][0], pos[1] + sign * DIRS[h][1])
+            walked.append(pos)
+    assert walked == path, (walked, path)
+    assert h == end, (h, end)
+    assert sum(a in ("FORWARD", "BACKWARD") for a in actions) == len(path) - 1
+
+
+def test_going_backwards_costs_one_move_and_no_turn():
+    """The (want - heading) % 4 == 2 case, which a random arena route may never hit.
+
+    Reversing must not become a U-turn: that is two turns' worth of heading error
+    spent to reach a cell one move away, and it fails by being merely wasteful rather
+    than by being wrong. The heading staying put is the half that is easy to lose --
+    the rover moved, it did not turn.
+    """
+    facing_north = 0
+    assert nav.route_actions([(5, 5), (5, 6)], facing_north) == (["BACKWARD"], 0)
+    assert nav.route_actions([(5, 5), (4, 5)], 0) == (["LEFT", "FORWARD"], 3)
+    assert nav.route_actions([(5, 5), (6, 5)], 0) == (["RIGHT", "FORWARD"], 1)
+    assert nav.route_actions([(5, 5), (5, 4)], 0) == (["FORWARD"], 0)
+    assert nav.route_actions([(5, 5)], 2) == ([], 2)
+
+
+def test_writing_a_plan_drives_nothing():
+    """`plan_txt` exists to produce a file and no motion. A regression here is
+    silent: the file still gets written, and the rover has spent the day."""
+    out = os.path.join(tempfile.gettempdir(), "reflex_plan_check.txt")
+    w = World()
+    before = (w.pos, w.steps, len(w.here.seen))
+    try:
+        assert plan_txt.main(["--to", "25", "5", "--out", out]) == 0
+        lines = open(out, encoding="utf-8").read().splitlines()
+    finally:
+        if os.path.exists(out):
+            os.remove(out)
+    body = [l for l in lines if not l.startswith("#")]
+    assert body and set(body) <= set(nav.MOVES), body
+    assert lines[0].startswith("# reflex-arc live route"), lines[0]
+    # plan_txt builds its own throwaway World; this one must be untouched.
+    assert (w.pos, w.steps, len(w.here.seen)) == before
+
+
+def test_an_unreachable_target_empties_the_file_rather_than_leaving_it():
+    """The dangerous failure is not a missing file, it is the last good route still
+    sitting there after the planner has given up -- somebody drives it."""
+    out = os.path.join(tempfile.gettempdir(), "reflex_nope.txt")
+    rock = [(x, y) for y in range(len(C.ARENA))
+            for x in range(len(C.ARENA[0])) if C.ARENA[y][x] == "#"]
+    assert rock, "the arena has no wall to aim at"
+    try:
+        assert plan_txt.main(["--to", "5", "5", "--survey", "--out", out]) == 0
+        assert "FORWARD" in open(out, encoding="utf-8").read()
+        assert plan_txt.main(["--to", str(rock[0][0]), str(rock[0][1]),
+                              "--survey", "--out", out]) == 1
+        left = open(out, encoding="utf-8").read()
+    finally:
+        if os.path.exists(out):
+            os.remove(out)
+    assert "NO ROUTE" in left and "FORWARD" not in left, left
+
+
+def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
+    """Two halves, both of which fail silently if they break.
+
+    A test world has no recorder, so it must leave nothing on disk -- otherwise every
+    suite drops a route where the next reader will find it and believe it.
+
+    A real run rewrites the one file instead of adding another, so what is on disk is
+    the current plan and never a backlog somebody has to work out the order of.
+    """
+    out = os.path.join(tempfile.gettempdir(), "reflex_live_plan.txt")
+    keep = S.PLAN_FILE
+    S.PLAN_FILE = out
+    try:
+        if os.path.exists(out):
+            os.remove(out)
+        nav.goto(World(), 25, 5)
+        assert not os.path.exists(out), "a test with no recorder wrote a plan file"
+
+        w = _roomy()
+        nav.goto(w, 25, 5)
+        first = open(out, encoding="utf-8").read()
+        assert "# goal (25,5)" in first, first[:200]
+
+        nav.goto(w, 5, 25)
+        second = open(out, encoding="utf-8").read()
+        assert second.count("# reflex-arc live route") == 1, "the file accumulated"
+        assert "# goal (5,25)" in second and "# goal (25,5)" not in second
+
+        # The safety property, and the reason the file exists in this shape: whatever
+        # drives the rover reads it and runs what it finds. A finished route still
+        # executable is a rover that does the trip twice.
+        assert not [l for l in second.splitlines() if not l.startswith("#")], second
+        # ...but the moves must still be legible, or the file is useless to watch.
+        assert any(l.startswith("# FORWARD") for l in second.splitlines()), second
+    finally:
+        S.PLAN_FILE = keep
+        C.use(C.DEFAULT_ARENA)
+        if os.path.exists(out):
+            os.remove(out)
+
+
+def test_planning_only_writes_the_route_and_moves_nothing():
+    """`executor="plan"` has exactly one job and one way to fail badly.
+
+    The job: a route file with drivable actions still in it, unlike a finished drive
+    which strips them. The failure that matters is silent -- a plan call that charges
+    a step or lifts a cell of fog is a rover that moved when it was told not to, and
+    nothing on screen would say so.
+    """
+    out = os.path.join(tempfile.gettempdir(), "reflex_plan_only.txt")
+    keep = S.PLAN_FILE
+    S.PLAN_FILE = out
+    try:
+        w = _roomy()
+        before = (w.pos, w.steps, len(w.here.seen), len(w.here.visited))
+        r = nav.goto(w, 12, 4, executor="plan")
+        after = (w.pos, w.steps, len(w.here.seen), len(w.here.visited))
+        body = [l for l in open(out, encoding="utf-8").read().splitlines()
+                if not l.startswith("#")]
+    finally:
+        S.PLAN_FILE = keep
+        C.use(C.DEFAULT_ARENA)
+        if os.path.exists(out):
+            os.remove(out)
+
+    assert after == before, (before, after)
+    assert r.code == "PLANNED" and r.steps == 0, str(r)
+    moves = sum(b in ("FORWARD", "BACKWARD") for b in body)
+    assert r.planned == moves, (r.planned, moves)
+    assert set(body) <= set(nav.MOVES) and body, body
+    assert "plan file" in r.advice, r.advice
+
+
+def test_the_file_keeps_every_leg_of_one_objective_and_only_one_is_runnable():
+    """A drive that replans is several routes, not one, and the file is the story of
+    all of them -- the first hypothesis, each wall that broke it, what was tried next.
+
+    The dangerous half is the other one. However many legs pile up, at most a single
+    leg may be left uncommented: whatever reads this file strips `#` and drives the
+    rest, and two runnable legs is a rover driving one route and then an older one it
+    had already abandoned.
+    """
+    out = os.path.join(tempfile.gettempdir(), "reflex_legs.txt")
+    keep = S.PLAN_FILE
+    S.PLAN_FILE = out
+    try:
+        w = _roomy()
+        # (40,40) is rock, so this replans its way across the arena and ends BLOCKED.
+        r = nav.goto(w, 40, 40)
+        text = open(out, encoding="utf-8").read()
+
+        # Same objective throughout, and more than one leg to show for it.
+        legs = [l for l in text.splitlines() if l.startswith("# leg ")]
+        assert len(legs) > 1, text
+        assert text.count("# goal ") == 1 and "# goal (40,40)" in text
+        assert r.code == "BLOCKED", str(r)
+
+        # A finished drive leaves nothing to run; every move is behind a `#`.
+        assert not [l for l in text.splitlines() if not l.startswith("#")], text
+        assert sum(l[2:] in nav.MOVES for l in text.splitlines()) > 1
+
+        # A live plan leaves exactly one leg runnable.
+        nav.goto(w, 5, 5, executor="plan")
+        live = open(out, encoding="utf-8").read().splitlines()
+        assert [l for l in live if l.startswith("# leg ")][-1].count("LIVE") == 1
+        assert all(l in nav.MOVES for l in live if not l.startswith("#"))
+        assert "# goal (40,40)" not in "\n".join(live), "a new objective starts fresh"
+    finally:
+        S.PLAN_FILE = keep
+        C.use(C.DEFAULT_ARENA)
+        if os.path.exists(out):
+            os.remove(out)
+
+
+def test_the_journey_survives_calls_until_the_objective_is_reached():
+    """Being blocked and trying again is one journey, not several.
+
+    `goto` returning BLOCKED does not mean the rover gave up on the goal -- gemma
+    calls again from wherever it stopped. If the file reset on each of those, it would
+    show the last leg of a five-call struggle and nothing of the four that produced it,
+    which is exactly the history worth keeping.
+
+    Arriving is what ends it. Without that the list grows for the rest of the run.
+    """
+    out = os.path.join(tempfile.gettempdir(), "reflex_journey.txt")
+    keep_file, keep_replans = S.PLAN_FILE, S.NAV_REPLANS
+    S.PLAN_FILE, S.NAV_REPLANS = out, 0     # stop at the first wall, so it takes several
+    try:
+        w = _roomy()
+        nav.clear_plan(w)
+
+        def legs():
+            return [l for l in open(out, encoding="utf-8").read().splitlines()
+                    if l.startswith("# leg ")]
+
+        seen = []
+        for _ in range(4):
+            r = nav.goto(w, 2, 2)
+            seen.append(len(legs()))
+            if r.code == "DONE":
+                break
+        assert seen == sorted(seen) and seen[-1] > 1, seen
+        assert seen[-1] == len(seen), "one call that did not arrive, one leg kept"
+
+        # Each attempt starts where the last one stopped -- that is what makes the
+        # legs one journey rather than four unrelated routes.
+        text = open(out, encoding="utf-8").read()
+        assert text.count("# goal ") == 1 and "# goal (2,2)" in text
+
+        # Arriving ends it: the next call is a new journey even at the same cell.
+        while nav.goto(w, 2, 2).code != "DONE":
+            pass
+        nav.goto(w, 2, 2)
+        assert len(legs()) == 1, legs()
+    finally:
+        S.PLAN_FILE, S.NAV_REPLANS = keep_file, keep_replans
+        C.use(C.DEFAULT_ARENA)
+        if os.path.exists(out):
+            os.remove(out)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
             fn()
+    C.use(C.DEFAULT_ARENA)   # `_roomy` pins the 50; leave the module as we found it
     print("all nav checks passed")
