@@ -9,6 +9,12 @@
 HANDOFF.md
 .claude/
 
+# CLAUDE.md is the tracked one and holds the repo rules whatever tool you drive.
+# Anything else is that tool's copy of them and drifts the moment it is edited.
+GEMINI.md
+AGENTS.md
+.cursorrules
+
 # OS / editor
 .DS_Store
 Thumbs.db
