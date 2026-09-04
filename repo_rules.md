@@ -1,13 +1,10 @@
 # Repo rules
-
-Short, and few. They exist because six people and about as many language models share this repo,
-and both groups have their own way of making a mess of it.
+Ishu is the only exemption ; )
 
 ## Git
 
-- **Never push to `main` directly.** Branch, then open a pull request, even for a one-line fix. If
-  it breaks, we want to know whose branch it came from. *(Ishan merges — an exemption he awarded
-  himself, on the grounds that he is the integration point. Take it up with him. ;\) )*
+- **Never push to `main` directly.** Branch, then open a pull reques. If
+  it breaks, we want to know whose branch it came from.
 - **Commit messages say what changed and why.** A sentence someone can read in a log six weeks from
   now. `fix`, `update`, `changes` and `asdf` all tell the next person nothing. No prefixes or
   ceremony needed — look at `git log` for the shape.
@@ -24,9 +21,8 @@ feeding them too much.
   100 lines — and when you hit the cap, delete before you add. Pointers to files beat copies of
   them.
 - **Point a model at the files it actually needs.** Not the repo. Not the whole directory. If you
-  cannot say why a file is open, close it.
-- **Comments and docs carry the conclusion, not the history.** One or two lines saying the thing a
-  change would break. Git remembers how you got there; nobody else needs to.
+  cannot say why a file is open, close it. Models these days are smart enough about - asking them to read the handoff and only reading files required would achieve this.
+
 
 ## Ideas
 
