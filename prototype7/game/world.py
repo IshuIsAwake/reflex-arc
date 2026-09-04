@@ -7,14 +7,44 @@ prototype 1 arrived at, and the human sees the same strings the model does.
 import config as C
 import settings as S
 
-SOLID = set("#H")   # everything you cannot drive through
+GLYPHS = "123"      # the objectives, in priority order
+SOLID = set("#H") | set(GLYPHS)   # everything you cannot drive through
 THINGS = SOLID - set("#")   # ...and just the things. A rock is not a destination
+
+# Objectives are solid so that `nav._targets` puts the rover *beside* one rather than
+# on top of it -- which is what working alongside an instrument means, and which the
+# base pad already got for free. Making them drivable instead would complete them by
+# running them over.
 
 # What each tile is called out loud. Lives here rather than in render.py because the
 # renderer imports pygame and the model loop cannot: gemma reads these same words.
 # One wording for the screen and the view, the way Result.__str__ is one wording for
 # the console and the model.
-LABELS = {"H": "base pad"}
+# No commas in a label: `sight.rle` joins a row's runs with ", ", so one here splits a
+# single run into two and the map quietly stops parsing.
+LABELS = {"H": "base pad",
+          "1": "high-priority objective",
+          "2": "medium-priority objective",
+          "3": "low-priority objective"}
+
+
+class Objective:
+    """One piece of work, where it is and what it costs to do.
+
+    `priority` and `cost` are both facts the mission hands over. Which to do first is
+    not one of them.
+    """
+
+    def __init__(self, cell, glyph, priority, cost):
+        self.cell = cell
+        self.glyph = glyph
+        self.priority = priority
+        self.cost = cost
+        self.done = False
+
+    def __repr__(self):
+        return (f"Objective({self.cell}, {self.priority}, {self.cost} steps"
+                f"{', done' if self.done else ''})")
 
 
 def components(w, h, member):
@@ -133,7 +163,7 @@ def label_for(w, ch):
 
 
 class Area:
-    def __init__(self, name, rows):
+    def __init__(self, name, rows, objectives=None):
         self.name = name
         self.rows = [r.replace("@", ".") for r in rows]
         self.w = len(self.rows[0])
@@ -141,9 +171,15 @@ class Area:
         self.seen = set()
         self.marks = set()
         self.visited = set()   # cells actually driven over, as opposed to merely seen
+        # Laid over the rows rather than written into them, so the map stays one thing
+        # and finishing an objective is a deletion rather than an edit to the terrain.
+        self.objectives = {cell: Objective(cell, *spec)
+                           for cell, spec in (objectives or {}).items()}
 
     def at(self, x, y):
         if 0 <= x < self.w and 0 <= y < self.h:
+            if (x, y) in self.objectives:
+                return self.objectives[(x, y)].glyph
             return self.rows[y][x]
         return "#"
 
@@ -217,7 +253,7 @@ class World:
     """
 
     def __init__(self, recorder=None):
-        self.here = Area(C.ARENA_NAME, C.ARENA)
+        self.here = Area(C.ARENA_NAME, C.ARENA, C.OBJECTIVES)
         self.pos = C.SPAWN
         self.day = 1
         self.day_over = False
@@ -362,6 +398,41 @@ class World:
         self.pos = C.SPAWN
         self._arrive()
         self.record("day_open", at=self.pos, steps_left=self.steps_left)
+
+    # --- the work --------------------------------------------------------
+    @property
+    def objectives(self):
+        """Every objective on this arena, done or not. Ordered as `config` wrote them."""
+        return list(self.here.objectives.values())
+
+    def adjacent_objective(self):
+        """The unfinished objective the rover is standing next to, if any.
+
+        Orthogonal only, and one at a time -- the same four cells `nav` can drive
+        between, so "next to it" means the same thing to the planner and to the work.
+        """
+        x, y = self.pos
+        for cell in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+            o = self.here.objectives.get(cell)
+            if o and not o.done:
+                return o
+        return None
+
+    def execute(self, o):
+        """Do the work at `o`, charging its cost. Returns the steps actually spent.
+
+        Charged before the objective is marked done, so a sol that runs out mid-task
+        still pays for what it used -- the day ending is not a refund.
+        """
+        spent = min(o.cost, self.steps_left)
+        self.spend(spent)
+        if spent < o.cost:
+            return spent                # ran out of day; the work is not finished
+        o.done = True
+        del self.here.objectives[o.cell]   # the instrument is packed up and gone
+        self.record("objective", at=o.cell, priority=o.priority, cost=o.cost,
+                    day=self.day)
+        return spent
 
     # --- movement --------------------------------------------------------
     def move(self, dx, dy):

@@ -17,6 +17,7 @@ import sys
 import nav
 import settings as S
 import sight
+import world
 from world import World
 
 
@@ -109,7 +110,9 @@ def test_the_legend_hides_what_has_not_been_found():
     return ok
 
 
-SPAN = re.compile(r"x(\d+)(?:-(\d+))? ([a-z][a-z ()]*[a-z)])")
+# The word may hyphenate -- "high-priority objective". The range in front of it is
+# consumed by the digits group first, so `x13-20 rock` is still a to b and not a word.
+SPAN = re.compile(r"x(\d+)(?:-(\d+))? ([a-z][a-z ()-]*[a-z)])")
 
 
 def rle_rows(w):
@@ -132,8 +135,13 @@ def test_the_runs_say_what_the_picture_says():
     try:
         # The glyph each word has to agree with. Two renderers compared against each
         # other, not both against `nav.known`, which is the layer they share.
+        #
+        # The named tiles come out of `world.LABELS` rather than being written again
+        # here. A second copy is how this went red on the objectives branch: `1` was
+        # put on the map and into LABELS, and this table -- which nobody thought of --
+        # raised KeyError on the first cell that carried one.
         word = {sight.FOG: "unseen", "#": "rock", ".": "open",
-                sight.YOU: "the rover (you)", "H": "base pad"}
+                sight.YOU: "the rover (you)", **world.LABELS}
         ok = True
         for name, w in (("fogged", World()), ("surveyed", surveyed())):
             spans, pic = rle_rows(w), rows(w)

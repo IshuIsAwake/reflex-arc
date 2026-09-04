@@ -186,7 +186,36 @@ FLATS_50 = [
     "....#######...#...................................",
 ]
 
-ARENAS = {"30": (FLATS_30, (15, 15)), "50": (FLATS_50, (25, 25))}
+# --- objectives ------------------------------------------------------------
+# What the rover is out there to do. `cell: (glyph, priority, step cost)`.
+#
+# **Not characters in the arena strings.** They are laid over `Area.at` instead, so the
+# rows above stay pure ground and rock -- one map, edited in one place, with no new tile
+# to declare to the flood-fill or the word table. It also means an objective can be
+# completed by deleting it rather than by rewriting a row.
+#
+# Priority and cost are independent on purpose. Tie them together -- highest priority
+# also the most work -- and there is only one sensible order, so the decision collapses
+# into reading a column. The interesting choice is a cheap low-priority one nearby
+# against an expensive high-priority one across the arena, and that only exists if the
+# two axes can disagree.
+#
+# Both are facts handed over, not judgements: mission control assigns priority and the
+# instrument determines the cost. Which to do first, and which to abandon when the sol
+# runs short, is the model's.
+OBJECTIVES_30 = {
+    (24, 6): ("1", "high", 40),
+    (8, 20): ("2", "medium", 15),
+    (2, 28): ("3", "low", 60),
+}
+OBJECTIVES_50 = {
+    (40, 10): ("1", "high", 40),
+    (14, 30): ("2", "medium", 15),
+    (9, 42): ("3", "low", 60),
+}
+
+ARENAS = {"30": (FLATS_30, (15, 15), OBJECTIVES_30),
+          "50": (FLATS_50, (25, 25), OBJECTIVES_50)}
 
 # Two defaults, because they answer different questions and running them together
 # broke seven suites at once. This one is what anything gets that does not ask --
@@ -204,8 +233,8 @@ def use(name):
     rover, where it landed. The view size comes off the rows rather than being written
     down beside them, which is how the two used to disagree.
     """
-    global ARENA, SPAWN, VIEW_W, VIEW_H
-    ARENA, SPAWN = ARENAS[name]
+    global ARENA, SPAWN, VIEW_W, VIEW_H, OBJECTIVES
+    ARENA, SPAWN, OBJECTIVES = ARENAS[name]
     VIEW_H, VIEW_W = len(ARENA), len(ARENA[0])
 
 

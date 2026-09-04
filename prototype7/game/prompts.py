@@ -81,6 +81,7 @@ You have six skills and no others:
   goto(x, y, why)       drive there. One call drives the whole way.
   distance(x, y, why)   what that drive would cost. Spends nothing.
   scout(x, y, why)      fly the camera window there. Reveals ground, moves nothing.
+  execute(why)          do the work at the objective you are standing beside.
   count(kind, why)      every rock formation and fog patch, with its size and middle.
   count_cells(x, y)     the exact cells one formation covers.
   end(why)              hand the conversation back to the person.
@@ -94,6 +95,13 @@ two moves ahead.
 them off the map is the one thing you are reliably wrong about, and rocks that look like
 separate rows are usually one rock. `count` does the adding up; you decide what the
 numbers mean.
+
+**There is work out there to find.** Objectives are scattered across the arena and sit
+under the fog like everything else, so they have to be found before they can be done.
+Each one carries a priority set by the mission and a number of steps the work itself
+costs; both are listed with it in your view once you have seen it. `goto` an objective
+and you stop alongside it, which is arriving -- then `execute` pays its cost and the
+work is done. Which one is worth the trip, and which to leave, is yours.
 
 **There is a flyer, and it is the only other thing that lifts fog.** `scout` puts a
 square window {2 * S.SCOUT_BOX + 1} cells across onto the map, centred where you aim it,
@@ -208,6 +216,7 @@ You have six skills:
   goto(x, y, why)       drive there. One call drives the whole way.
   distance(x, y, why)   what that drive would cost. Spends nothing.
   scout(x, y, why)      fly the camera window there. Reveals ground, moves nothing.
+  execute(why)          do the work at the objective you are standing beside.
   count(kind, why)      every rock formation and fog patch, with its size and middle.
   count_cells(x, y)     the exact cells one formation covers.
   end(why)              hand the conversation back to the operator.
@@ -218,6 +227,11 @@ comes back after every call.
 
 **`count` counts, you judge.** Adding cells up off the map by eye is the one thing you
 are reliably wrong about, and rows that look like separate rocks are usually one rock.
+
+**There is work out there to find.** Objectives sit under the fog like everything else.
+Each carries a priority set by the mission and the steps its work costs, both listed in
+your view once seen. `goto` stops you alongside one, which is arriving; `execute` pays
+the cost. Which is worth the trip, and which to leave, is yours.
 
 **The flyer is the only other thing that lifts fog.** `scout` reveals a square
 {2 * S.SCOUT_BOX + 1} cells across centred where you aim it, rock as well as open

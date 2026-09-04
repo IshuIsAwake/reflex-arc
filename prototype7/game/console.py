@@ -9,6 +9,7 @@ import re
 
 import flyer
 import nav
+import skills
 
 HELP = [
     "goto X Y                     drive there over the map you have",
@@ -16,6 +17,7 @@ HELP = [
     "goto X Y avoid=(3,4),(5,6)   ...dodging these cells, this trip only",
     "distance X Y [avoid=...]     length floor and a reveal guess, costs no steps",
     "scout X Y                    fly the window there. Centre, not corner",
+    "execute                      do the work at the objective you are beside",
 ]
 
 
@@ -44,8 +46,17 @@ def run(world, text):
 
     if verb in ("", "help", "?"):
         return echo + [(line, "plain") for line in HELP]
-    if verb not in ("goto", "distance", "dist", "scout"):
+    if verb not in ("goto", "distance", "dist", "scout", "execute"):
         return echo + [(f"no such command: {verb}   (try help)", "bad")]
+
+    if verb == "execute":
+        # The only verb that takes no cell: the objective is whichever one the rover
+        # is already standing next to.
+        c = skills.call(world, "execute", {})
+        tone = "good" if c.result.startswith("EXECUTED") else "bad"
+        world.say(c.result.split(" -- ")[0], tone)
+        return echo + [(c.result, tone)]
+
     if not cells:
         return echo + [("needs an X and a Y -- try  goto 19 13", "bad")]
 

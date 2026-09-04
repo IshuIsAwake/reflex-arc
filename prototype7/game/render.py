@@ -11,6 +11,7 @@ import pygame
 
 import config as C
 import settings as S
+import world as W
 
 MARGIN = 15
 
@@ -155,7 +156,7 @@ def draw_world(surf, w, f, reel=None):
                 base = C.ROCK if lit else C.ROCK_DIM
                 pygame.draw.rect(surf, tuple(max(0, min(255, v + shade)) for v in base),
                                  rect)
-            elif ch == "H":
+            elif ch == "H" or ch in W.GLYPHS:
                 things.append((rect, ch, lit, (x, y)))
                 pygame.draw.rect(surf, C.REGOLITH if lit else C.REGOLITH_DIM, rect)
             else:
@@ -171,6 +172,8 @@ def draw_world(surf, w, f, reel=None):
     for rect, ch, lit, cell in things:
         if ch == "H":
             _pad(surf, rect, lit)
+        elif ch in W.GLYPHS:
+            _objective(surf, rect, ch, lit)
         if cell in a.marks:
             _x_mark(surf, rect)
 
@@ -219,6 +222,20 @@ def _reel(surf, reel, ox, oy):
         pygame.draw.rect(surf, C.BUMP, box, 2)
         pygame.draw.line(surf, C.BUMP, box.topleft, box.bottomright, 2)
         pygame.draw.line(surf, C.BUMP, box.topright, box.bottomleft, 2)
+
+
+def _objective(surf, rect, ch, lit):
+    """An instrument to be worked, drawn as a ring so the ground still shows through.
+
+    Priority picks the hue and the three are the traffic-light order, which is the one
+    ranking the environment is allowed to hand over -- it is a fact about the mission,
+    not a judgement about what to do first.
+    """
+    col = {"1": C.BAD, "2": C.PLAN, "3": C.GOOD}.get(ch, C.INK)
+    if not lit:
+        col = tuple(int(v * 0.55) for v in col)
+    r = max(2, rect.width // 2 - 2)
+    pygame.draw.circle(surf, col, rect.center, r, max(1, rect.width // 6))
 
 
 def _pad(surf, rect, lit):
@@ -337,6 +354,9 @@ def draw_map(surf, w, f, cursor):
                 pygame.draw.rect(surf, C.ROCK, r)
             elif ch == "H":
                 pygame.draw.rect(surf, C.BASE, r)
+            elif ch in W.GLYPHS:
+                pygame.draw.rect(surf, C.REGOLITH_DIM, r)
+                _objective(surf, r, ch, True)
             else:
                 pygame.draw.rect(surf, C.WALKED if (x, y) in walked else C.REGOLITH_DIM, r)
             if (x, y) in a.marks:

@@ -459,9 +459,9 @@ def test_every_dialect_of_a_written_call_is_recovered():
 def test_the_schema_matches_what_is_wired_up():
     print("the schema is honest")
     names = {t["function"]["name"] for t in skills.TOOLS}
-    ok = check("exactly six skills",
-               names == {"goto", "distance", "scout", "count", "count_cells", "end"},
-               str(names))
+    ok = check("exactly seven skills",
+               names == {"goto", "distance", "scout", "execute", "count", "count_cells",
+                         "end"}, str(names))
     blob = str(skills.TOOLS)
     # `scout` changes the map and not the position, which is the one thing about it a
     # model will get backwards -- the same shape as `DONE(beside=...)` reading as a

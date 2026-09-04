@@ -6,6 +6,7 @@ this is the file the rover implementation swaps while both sides stay put.
     goto(x, y, why, avoid=...)       drive there. Costs a step a tile
     distance(x, y, why, avoid=...)   what it would cost. Costs nothing
     scout(x, y, why)                 the flyer's window. Costs steps, moves nothing
+    execute(why)                     the work at the objective you are beside
 
 `scout` is the one skill that changes the map without changing the position, which is
 the fact about it a model gets backwards -- so the schema says so before the first call
@@ -169,6 +170,18 @@ TOOLS = [
             "why": {"type": "string", "description":
                     "optional: one line on what you expect to be under there"},
         }, "required": ["x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "execute",
+        "description": (
+            "Do the work at the objective the rover is standing next to. Drive to the "
+            "objective first -- goto puts you alongside it, which is arriving -- then "
+            "call this. It costs that objective's own number of steps, listed with it "
+            "in your view, and the objective is finished and gone once it is paid. "
+            "Standing anywhere else this does nothing and costs nothing."),
+        "parameters": {"type": "object", "properties": {
+            "why": {"type": "string", "description":
+                    "optional: one line on why this one now"},
+        }, "required": []}}},
     {"type": "function", "function": {
         "name": "count",
         "description": (
@@ -495,6 +508,45 @@ def _count_cells(world, x, y):
     return f"NOT_A_FEATURE(({x},{y})) -- nothing revealed there."
 
 
+def _execute(world):
+    """Do the work at the objective the rover is beside, and say what it cost.
+
+    Every refusal says where the nearest unfinished objective is and that nothing was
+    spent. A bare code leaves a 4B model nothing to act on, which is the lesson
+    `DONE(beside=...)` cost four days: a field is not a sentence.
+    """
+    left = [o for o in world.objectives if not o.done]
+    o = world.adjacent_objective()
+    if o is None:
+        if not left:
+            return ("NOTHING_TO_DO -- every objective on this arena is finished. "
+                    "Nothing was spent.")
+        near = ", ".join(f"{p.priority} priority at ({p.cell[0]},{p.cell[1]}), "
+                         f"{p.cost} steps of work" for p in left)
+        return (f"NOT_BESIDE_ONE -- the rover is not next to an objective, so nothing "
+                f"happened and nothing was spent. Still to do: {near}. Drive to one; "
+                f"goto stops you alongside it, which is arriving.")
+
+    if world.day_over:
+        return (f"OUT_OF_STEPS -- the {o.priority}-priority objective at "
+                f"({o.cell[0]},{o.cell[1]}) needs {o.cost} steps and the day is over. "
+                f"Nothing was spent. It will still be there tomorrow.")
+
+    spent = world.execute(o)
+    if not o.done:
+        return (f"UNFINISHED(at=({o.cell[0]},{o.cell[1]}), steps={spent}) -- the work "
+                f"needs {o.cost} steps and the day ran out after {spent}. The objective "
+                f"is not done and the steps are gone. Start it earlier tomorrow.")
+    rest = [p for p in left if p is not o]
+    tail = (" Nothing else is left to do." if not rest else
+            " Still to do: " + ", ".join(
+                f"{p.priority} priority at ({p.cell[0]},{p.cell[1]}), {p.cost} steps"
+                for p in rest) + ".")
+    return (f"EXECUTED(at=({o.cell[0]},{o.cell[1]}), priority={o.priority}, "
+            f"steps={spent}) -- the work is done and the objective is off the map."
+            + tail)
+
+
 def call(world, name, args, history=()):
     """Run one skill. Returns a finished `Call` -- never raises, never lies.
 
@@ -537,7 +589,13 @@ def call(world, name, args, history=()):
         c.result = _count_cells(world, x, y)
         return c
 
-    if name == "scout":
+    if name == "execute":
+        left = len(world.here.objectives)
+        c.result = _execute(world)
+        # Doing the work is the point of the sol, so it counts as gain even though it
+        # reveals nothing -- otherwise `_stuck` reads the whole mission as waste.
+        c.gained = 1 if len(world.here.objectives) < left else 0
+    elif name == "scout":
         r, advice = flyer.scout(world, x, y)
         # Counted as gain the same way a drive is, so `_stuck` catches a run of sorties
         # over ground already mapped without needing to know what a sortie is.
@@ -546,6 +604,11 @@ def call(world, name, args, history=()):
     elif name == "goto":
         r = nav.goto(world, x, y, avoid)
         c.gained = r.new or 0
+        # A drive that ends beside work still to do bought something, even over ground
+        # already mapped. Without this the scold fires on the one journey the sol is
+        # actually for -- going to an objective is not casting about.
+        if not c.gained and world.adjacent_objective():
+            c.gained = 1
         # `beside=` was meant to carry this on its own and did not. Watched
         # 2026-08-26: gemma read DONE(at=(10,15), beside=(10,16)) as a failure to
         # reach (10,16) and spent the rest of the run trying to step into a shop

@@ -192,7 +192,7 @@ class Conversation:
         """
         names = ["end"]
         if self.moves < S.MOVE_HOPS:
-            names += ["goto", "scout"]      # both spend steps, so both are moves
+            names += ["goto", "scout", "execute"]   # all three spend steps
         if self.frees < S.FREE_HOPS:
             names += ["distance", "count", "count_cells"]
         return tuple(n for n in skills.NAMES if n in names)
@@ -409,7 +409,9 @@ class Conversation:
             self._stop("she called end")
             return
 
-        move = name in ("goto", "scout")   # what spends steps, not what changes position
+        # What spends steps, not what changes position: a sortie and a piece of work
+        # both cost the day even though neither moves the rover.
+        move = name in ("goto", "scout", "execute")
         spent = self.moves >= S.MOVE_HOPS if move else self.frees >= S.FREE_HOPS
         if spent:
             self._deny(first, move)

@@ -74,7 +74,8 @@ blocked_REVEAL_RULE = "Nothing else reveals ground."
 HALLMARKS = ("WHAT YOU CAN SEE RIGHT NOW",
              "THE SHAPE OF THIS PLACE",
              "IMMEDIATELY AROUND YOU",
-             "WHAT YOU KNOW IS HERE")
+             "WHAT YOU KNOW IS HERE",
+             "OBJECTIVES YOU HAVE FOUND")
 
 
 def status_line(w):
@@ -205,6 +206,8 @@ def things(w):
             ch = nav.known(a, x, y)
             if ch is None or ch in "#." or (x, y) == w.pos:
                 continue
+            if (x, y) in a.objectives:
+                continue          # `objectives()` says more about these than a name
             name = label_for(w, ch)
             if name:
                 found.setdefault(name, []).append((x, y))
@@ -216,6 +219,27 @@ def things(w):
         else:
             out.append(f"{name}, {len(cells)} cells at "
                        + ", ".join(_c(c) for c in cells))
+    return out
+
+
+def objectives(w):
+    """The work still to do, once it has been found. One line each.
+
+    Priority and cost are stated as bare facts and never ordered for her -- the list is
+    in the order `config` wrote it, not sorted by anything. Deciding which is worth the
+    trip is the whole experiment; sorting this would answer it in the environment.
+
+    Only objectives the rover has actually seen appear. They sit in fog like everything
+    else, which is what makes finding them part of the sol.
+    """
+    a = w.here
+    out = []
+    for cell, o in a.objectives.items():
+        if not a.visible(*cell):
+            continue
+        beside = " -- the rover is beside this one" if w.adjacent_objective() is o else ""
+        out.append(f"{o.priority} priority at {_c(cell)}, {o.cost} steps of work"
+                   f"{beside}")
     return out
 
 
@@ -290,6 +314,7 @@ def view(w):
     a = w.here
     seen = sum(1 for y in range(a.h) for x in range(a.w) if nav.known(a, x, y) is not None)
     known = things(w)
+    todo = objectives(w)
     return "\n".join([
         "--- WHAT YOU CAN SEE RIGHT NOW ---",
         "This block is rewritten from scratch every time you are called. It is always "
@@ -310,12 +335,17 @@ def view(w):
         "WHAT YOU KNOW IS HERE" if known else
         "You have not yet seen anything here but regolith and rock.",
         *(f"  {t}" for t in known),
+        "",
+        "OBJECTIVES YOU HAVE FOUND" if todo else
+        "You have not found any objectives yet. They are out there under the fog.",
+        *(f"  {t}" for t in todo),
     ])
 
 
 def one_line(w):
     """The pane's collapsed version. Fifty rows of grid a turn would drown the
     conversation, and the human has the actual arena on the left."""
-    n = len(things(w))
+    n, todo = len(things(w)), len(objectives(w))
     return (f"view: ({w.pos[0]},{w.pos[1]}), {w.steps_left} steps, "
-            f"{n} landmark{'' if n == 1 else 's'} known")
+            f"{n} landmark{'' if n == 1 else 's'} known, "
+            f"{todo} objective{'' if todo == 1 else 's'} found")
