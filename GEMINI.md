@@ -1,4 +1,4 @@
-# CLAUDE.md
+# GEMINI.md
 
 Repo-scoped instructions. These are standing rules; anything true only *right now* belongs in
 your own `HANDOFF.md` instead — untracked, one per person.
