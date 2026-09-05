@@ -55,6 +55,12 @@ Python buffers and the terminal tells you nothing while the rover moves.
 Add `--dry-run` to watch the whole loop print its pulses without sending anything. Do
 that first in a new room.
 
+**The game and the watcher can start in either order.** Whatever is in `plan.txt` when
+the watcher opens has already been driven — the game writes a leg and then waits, so a
+file with content in it is the *last* leg, not the next one. The watcher remembers it
+before it starts watching and says which leg it is ignoring. Only the bridge has to be
+up first, and only by the time something actually drives.
+
 ## Then just play
 
 Drive the game as normal. Every `goto` writes a leg, the rover drives it, you press

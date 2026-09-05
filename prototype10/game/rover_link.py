@@ -163,7 +163,18 @@ def watch(pi, path, facing="N", interval=0.25, dry_run=False):
     print(f"  pulses  forward {FORWARD_SECONDS}s, left {TURN_SECONDS}s  (uncalibrated)")
     print("Ctrl+C to stop.\n")
 
-    last = None
+    # Whatever is in the file at startup has already been driven, or was never
+    # ours: the game writes a leg and waits, so a file with content in it when
+    # this begins is the *last* leg, not the next one. Remembering it before the
+    # loop starts is what makes it safe to start this before the game -- without
+    # it, a leftover file drives the moment the process opens, against a rover
+    # nobody is watching yet.
+    last = _digest(path)
+    stale = headings_from_file(path) if last else []
+    if stale:
+        print(f"  ignoring the leg already in the file: {' '.join(stale)}")
+        print("  (already driven, or from an earlier run -- waiting for the next write)\n")
+
     while True:
         # The digest is taken *before* the parse, so a file we have already
         # answered for is dropped whether it was drivable or not. Checking
