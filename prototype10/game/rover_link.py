@@ -70,8 +70,8 @@ HEADINGS = nav.HEADING_NAMES   # ("N", "E", "S", "W"), clockwise
 # two at a time -- one such drop killed a run mid-leg. Retrying is safe: a gap in
 # commands is self-protecting, because the Pi stops the motors after 500ms of
 # silence, so re-stating a pulse can never resume a rover that ran on unwatched.
-POST_TRIES = 3
-POST_TIMEOUT = 3
+POST_TRIES = 5
+POST_TIMEOUT = 5
 
 
 def _post(pi, path, payload=None):
