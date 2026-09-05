@@ -13,7 +13,9 @@ long, then a stop. See ARCHITECTURE.md's "learned policy" layer for what eventua
 replaces the fixed pulse -- the file format does not change when it does.
 
 The rover cannot reverse (`nav.route_actions`'s own note), so BACKWARD is expanded
-into two turns and a forward before anything is sent. The left motor's DIR line is
+into two turns, a forward, and two turns back before anything is sent -- BACKWARD
+leaves the plan's heading alone, so the rover has to end it facing as it started or
+everything after drives mirrored. The left motor's DIR line is
 hardware-faulted as of 2026-09-05 and cannot turn that way at all either, so LEFT
 (a 90 degree turn that way) is driven as three RIGHT pulses instead: turning 270
 degrees right lands on the same heading as 90 degrees left. Slower and never
@@ -52,18 +54,25 @@ def actions_from_file(path):
 
     `nav.write_plan` already comments out every finished leg, so an uncommented
     FORWARD/LEFT/RIGHT/BACKWARD line IS a move still to drive -- no leg-boundary
-    bookkeeping needed here. BACKWARD becomes two turns and a forward, per
-    `nav.route_actions`'s own note that this rover cannot reverse. LEFT becomes
-    three RIGHT turns -- 270 degrees right ends on the same heading as 90 degrees
-    left -- because the left motor can't reverse either, so it can't pivot that
-    way directly at all.
+    bookkeeping needed here.
+
+    BACKWARD becomes two turns, a forward, and two turns back, per
+    `nav.route_actions`'s own note that this rover cannot reverse. The turn back
+    is the load-bearing half: `route_actions` emits BACKWARD as a move that leaves
+    the heading alone, so every action after it assumes the old facing. Stopping
+    after the forward -- the same note's "two turns' worth of heading error" --
+    leaves the rover 180 degrees out and drives the rest of the route mirrored.
+
+    LEFT becomes three RIGHT turns -- 270 degrees right ends on the same heading
+    as 90 degrees left -- because the left motor can't reverse either, so it can't
+    pivot that way directly at all. That one is already heading-neutral.
     """
     out = []
     with open(path, "r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
             if line == "BACKWARD":
-                out += ["RIGHT", "RIGHT", "FORWARD"]
+                out += ["RIGHT", "RIGHT", "FORWARD", "RIGHT", "RIGHT"]
             elif line == "LEFT":
                 out += ["RIGHT", "RIGHT", "RIGHT"]
             elif line in ("FORWARD", "RIGHT"):

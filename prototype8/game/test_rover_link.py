@@ -51,12 +51,51 @@ def test_a_finished_leg_stays_commented_out():
         os.remove(path)
 
 
-def test_backward_expands_to_two_turns_and_a_forward():
+def test_backward_expands_to_two_turns_a_forward_and_two_turns_back():
     path = _write(["FORWARD", "BACKWARD", "RIGHT"])
     try:
-        assert RL.actions_from_file(path) == ["FORWARD", "RIGHT", "RIGHT", "FORWARD", "RIGHT"]
+        assert RL.actions_from_file(path) == [
+            "FORWARD", "RIGHT", "RIGHT", "FORWARD", "RIGHT", "RIGHT", "RIGHT"]
     finally:
         os.remove(path)
+
+
+def _drive(actions):
+    """Where a pulse list actually leaves the rover, as (cell, heading), starting at
+    (0,0) facing north. Turns are exactly 90 degrees here -- the point is the plan's
+    geometry, not the chassis's calibration."""
+    dirs = ((0, -1), (1, 0), (0, 1), (-1, 0))       # nav.DIRS, clockwise from north
+    (x, y), h = (0, 0), 0
+    for a in actions:
+        if a == "RIGHT":
+            h = (h + 1) % 4
+        elif a == "FORWARD":
+            x, y = x + dirs[h][0], y + dirs[h][1]
+    return (x, y), h
+
+
+def test_a_route_with_a_backward_still_ends_where_the_plan_says():
+    """The regression that matters: BACKWARD leaves the plan's heading alone, so an
+    expansion that ends 180 degrees out drives every later action mirrored. Before the
+    turn-back this route finished at (1,1) facing north instead of (-1,1) facing west
+    -- right about the reverse, wrong about everything after it."""
+    path = _write(["BACKWARD", "LEFT", "FORWARD"])
+    try:
+        # Plan: reverse one cell to (0,1) still facing north, turn to face west, and
+        # step to (-1,1). Only FORWARD and RIGHT are ever sent.
+        assert _drive(RL.actions_from_file(path)) == ((-1, 1), 3)
+    finally:
+        os.remove(path)
+
+
+def test_every_expansion_leaves_the_heading_the_plan_expects():
+    # `route_actions`: LEFT ends facing west, RIGHT east, BACKWARD and FORWARD north.
+    for line, heading in (("LEFT", 3), ("BACKWARD", 0), ("RIGHT", 1), ("FORWARD", 0)):
+        path = _write([line])
+        try:
+            assert _drive(RL.actions_from_file(path))[1] == heading, line
+        finally:
+            os.remove(path)
 
 
 def test_left_expands_to_three_right_turns():
