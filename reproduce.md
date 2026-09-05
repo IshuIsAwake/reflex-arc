@@ -160,15 +160,16 @@ In a second terminal, alongside `main.py`, from `prototype8`:
 It prints every plan change it picks up and drives it as it happens — nothing else to press. Leave
 `main.py` running in the first terminal exactly as before; this only ever reads the file it writes.
 
-**One route the rover physically cannot take yet:** a `LEFT` pivot needs the left motor to reverse,
-and that motor's DIR line is hardware-faulted right now (2026-09-05, IngenuitySim's
-`rover_bridge/MANUAL.md`). `rover_link.py` refuses the whole drive rather than run it out of order —
-you'll see `REFUSED: route needs a LEFT turn...` printed instead of the rover moving. Nothing to fix
-on this side; it clears once the motor is repaired.
+**A pivot the rover physically cannot take directly:** `LEFT` needs the left motor to reverse, and
+that motor's DIR line is hardware-faulted right now (2026-09-05, IngenuitySim's
+`rover_bridge/MANUAL.md`). `rover_link.py` works around it rather than refusing: a `LEFT` is driven
+as three `RIGHT` pulses instead — 270° right lands on the same heading as 90° left. Slower (three
+pulses instead of one) but never touches the broken pivot. Only `FORWARD` and `RIGHT` are ever
+actually sent to the Pi.
 
 | what you see | what it is |
 |---|---|
-| `REFUSED: route needs a LEFT turn...` | Expected until the left motor is fixed — see above. |
+| A turn takes three pulses instead of one | That was a `LEFT`, expanded to three `RIGHT`s — see above. Expected until the left motor is fixed. |
 | `urlopen error [Errno 11001]` / `URLError` | Can't reach the Pi. Confirm the IP with `--pi`, and that `server.py` is actually running there. |
 | Nothing prints at all | `nav.plan_file()` resolved to `None`, or the file hasn't been written yet — drive somewhere in the game window first. |
 | Rover moves, but the wrong distance/angle | `ROVER_PULSE_SECONDS` in `rover_link.py` (0.5s) is a placeholder, not measured on this chassis yet. |

@@ -13,11 +13,11 @@ long, then a stop. See ARCHITECTURE.md's "learned policy" layer for what eventua
 replaces the fixed pulse -- the file format does not change when it does.
 
 The rover cannot reverse (`nav.route_actions`'s own note), so BACKWARD is expanded
-into two turns and a forward before anything is sent. A LEFT pivot is refused
-outright and the whole file is skipped: the left motor's DIR line is
-hardware-faulted as of 2026-09-05 and cannot turn that way at all. Driving
-everything up to the bad turn and stopping silently wrong is worse than not
-starting.
+into two turns and a forward before anything is sent. The left motor's DIR line is
+hardware-faulted as of 2026-09-05 and cannot turn that way at all either, so LEFT
+(a 90 degree turn that way) is driven as three RIGHT pulses instead: turning 270
+degrees right lands on the same heading as 90 degrees left. Slower and never
+touches the broken pivot -- only FORWARD and RIGHT are ever actually sent.
 """
 
 import argparse
@@ -32,8 +32,9 @@ import nav
 ROVER_PULSE_SECONDS = 0.5
 
 # (throttle, turn) per action -- FORWARD and RIGHT match what the rover's own
-# dashboard already drives safely; LEFT is refused in `drive` before this is used.
-_DRIVE = {"FORWARD": (1.0, 0.0), "RIGHT": (0.0, -1.0), "LEFT": (0.0, 1.0)}
+# dashboard already drives safely. Nothing else is ever looked up: LEFT and
+# BACKWARD are both expanded away in `actions_from_file`, before this is used.
+_DRIVE = {"FORWARD": (1.0, 0.0), "RIGHT": (0.0, -1.0)}
 
 
 def _post(pi, path, payload=None):
@@ -46,12 +47,16 @@ def _post(pi, path, payload=None):
 
 
 def actions_from_file(path):
-    """The live action list out of a written plan.txt.
+    """The live action list out of a written plan.txt, reduced to only FORWARD and
+    RIGHT -- the two moves the rover can actually make right now.
 
     `nav.write_plan` already comments out every finished leg, so an uncommented
     FORWARD/LEFT/RIGHT/BACKWARD line IS a move still to drive -- no leg-boundary
-    bookkeeping needed here. BACKWARD is expanded on the way out, per
-    `nav.route_actions`'s note that this rover cannot reverse.
+    bookkeeping needed here. BACKWARD becomes two turns and a forward, per
+    `nav.route_actions`'s own note that this rover cannot reverse. LEFT becomes
+    three RIGHT turns -- 270 degrees right ends on the same heading as 90 degrees
+    left -- because the left motor can't reverse either, so it can't pivot that
+    way directly at all.
     """
     out = []
     with open(path, "r", encoding="utf-8") as f:
@@ -59,18 +64,15 @@ def actions_from_file(path):
             line = raw.strip()
             if line == "BACKWARD":
                 out += ["RIGHT", "RIGHT", "FORWARD"]
-            elif line in ("FORWARD", "LEFT", "RIGHT"):
+            elif line == "LEFT":
+                out += ["RIGHT", "RIGHT", "RIGHT"]
+            elif line in ("FORWARD", "RIGHT"):
                 out.append(line)
     return out
 
 
 def drive(pi, actions):
-    """Send one pulse a action, in order. Refuses up front rather than partway
-    through -- see the module docstring for why a LEFT anywhere in the list
-    voids the whole thing."""
-    if "LEFT" in actions:
-        raise ValueError("route needs a LEFT turn -- left motor can't reverse, "
-                          "hardware-faulted. Nothing sent.")
+    """Send one pulse a action, in order."""
     for action in actions:
         throttle, turn = _DRIVE[action]
         _post(pi, "/drive", {"throttle": throttle, "turn": turn})
@@ -102,8 +104,8 @@ def watch(pi, path, interval=1.0):
                 try:
                     drive(pi, actions)
                     print("  done")
-                except (ValueError, urllib.error.URLError) as e:
-                    print(f"  REFUSED/FAILED: {e}")
+                except urllib.error.URLError as e:
+                    print(f"  FAILED: {e}")
         time.sleep(interval)
 
 

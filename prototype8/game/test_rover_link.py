@@ -1,6 +1,7 @@
-"""Checks the plan-file parsing and the LEFT refusal -- the two things worth
-getting wrong here. Nothing here touches the network; `drive`/`watch` are not
-covered, the same way `nav`'s tests never open a socket either.
+"""Checks the plan-file parsing, especially the two expansions -- BACKWARD and
+LEFT -- that stand in for moves this rover cannot make directly. Nothing here
+touches the network; `drive`/`watch` are not covered, the same way `nav`'s tests
+never open a socket either.
 
     .venv\\Scripts\\python.exe game\\test_rover_link.py
 """
@@ -58,17 +59,16 @@ def test_backward_expands_to_two_turns_and_a_forward():
         os.remove(path)
 
 
-def test_left_voids_the_whole_drive():
+def test_left_expands_to_three_right_turns():
     # The hardware fact this guards: the left motor cannot reverse, so a LEFT
-    # pivot cannot be driven at all, not driven wrong. `drive` must refuse
-    # before sending a single pulse rather than stop partway through.
-    sent = []
+    # pivot cannot be driven directly at all. Three RIGHT turns (270 degrees)
+    # land on the same heading as one LEFT turn (90 degrees) and never touch
+    # the broken pivot.
+    path = _write(["FORWARD", "LEFT", "FORWARD"])
     try:
-        RL.drive("http://unused", ["FORWARD", "LEFT", "FORWARD"])
-        assert False, "should have raised"
-    except ValueError as e:
-        assert "LEFT" in str(e)
-    assert sent == []
+        assert RL.actions_from_file(path) == ["FORWARD", "RIGHT", "RIGHT", "RIGHT", "FORWARD"]
+    finally:
+        os.remove(path)
 
 
 def test_empty_file_yields_no_actions():
