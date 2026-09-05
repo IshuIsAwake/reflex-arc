@@ -155,7 +155,6 @@ def test_every_record_survives_a_real_recorder():
     """
     print("record() against something that is listening")
     import config as C
-    import flyer
     import skills
     S.STORM_ON = True                   # the storm records on spawn; that counts too
     rows = []
@@ -172,7 +171,6 @@ def test_every_record_survives_a_real_recorder():
         skills.call(w, "execute", {"why": "the whole point of the sol"})
         nav.goto(w, *C.SPAWN)
         nav.distance(w, 5, 5)
-        flyer.scout(w, w.pos[0], w.pos[1] - 3)
         w.day_over = False
         w.next_day()
     finally:
@@ -181,7 +179,7 @@ def test_every_record_survives_a_real_recorder():
 
     kinds = {k for k, _ in rows}
     ok = check("the objective was written down", "objective" in kinds, str(sorted(kinds)))
-    for want in ("nav", "scout", "day_open", "day_close"):
+    for want in ("nav", "day_open", "day_close"):
         ok &= check(f"...and so was {want}", want in kinds)
     ok &= check("every line carries the sol it happened on",
                 all("day" in f for _, f in rows))

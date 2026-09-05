@@ -254,8 +254,7 @@ def test_the_sol_rolls_over():
     assert len(w.here.seen) >= seen, "the survey carries over"
     assert (10, 10) in w.here.marks, "and so do the marks"
     assert not w.log, "yesterday's messages do not"
-    assert w.history[-1] == {"day": day, "steps": steps, "seconds": 12.5, "scouts": 0}
-    assert w.scout_ready_at == 0, "the flyer charges overnight along with everything else"
+    assert w.history[-1] == {"day": day, "steps": steps, "seconds": 12.5}
 
 
 def test_gemma_mode_counts_steps():

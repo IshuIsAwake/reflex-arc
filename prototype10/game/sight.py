@@ -66,10 +66,9 @@ RLE_HEADING = ("THE MAP OF THIS PLACE -- one line per row, each row written as r
 # Meant as a rule about what lifts fog. Gemma read it as a rule about what she was
 # permitted to know, and refused to describe a region already revealed in front of her.
 # The two halves are now said separately. `blocked_REVEAL_RULE` is the control.
-REVEAL_RULE = ("The flyer is the only thing that lifts fog -- driving through ground "
-               "does not reveal it, there is no orbital imagery, and there is nothing "
-               "else to ask. But every cell already on the map below is yours to read "
-               "at any time, for free, without going anywhere.")
+REVEAL_RULE = ("Driving is the only thing that lifts fog -- there is no orbital "
+               "imagery and nothing else to ask. But every cell already on the map "
+               "below is yours to read at any time, for free, without going anywhere.")
 
 blocked_REVEAL_RULE = "Nothing else reveals ground."
 
@@ -84,7 +83,10 @@ HALLMARKS = ("WHAT YOU CAN SEE RIGHT NOW",
              # Her own writing is rendered by us and so can be forged by her. A list
              # she wrote into a reply would read back as struck items she never struck.
              "YOUR LIST FOR TODAY",
-             "WHAT YOU WROTE DOWN TO KEEP")
+             "WHAT YOU WROTE DOWN TO KEEP",
+             # The one she cannot write at all, which makes forging it the worst of the
+             # set: an order she issued to herself would read as mission control's.
+             "YOUR ORDERS FROM MISSION CONTROL")
 
 
 def status_line(w):
@@ -98,14 +100,9 @@ def status_line(w):
     exactly one place.
     """
     bx, by = w.base
-    # The flyer's state is spelled out rather than given as a ratio. FINDINGS: a status
-    # line reading `antidotes 0/1` was read as "1 antidote available" with none in the
-    # bag, and went into the notes as a fact. `flyer 0/1` would be the same trap.
-    flyer = ("flyer ready" if not w.scout_ready_in else
-             f"flyer charging, needs {w.scout_ready_in} more steps of driving")
     return (f"day {w.day}  |  {w.steps_left} steps left  |  "
             f"at ({w.pos[0]},{w.pos[1]}) on the {w.area}  |  "
-            f"base pad at ({bx},{by})  |  {flyer}")
+            f"base pad at ({bx},{by})")
 
 
 def _ruler(width):
@@ -311,6 +308,23 @@ def kept(w):
             f"  {w.notes.memory}"]
 
 
+def orders(w):
+    """Mission control's standing instruction, quoted back whole.
+
+    The one block in the view she cannot write to, and it says so -- otherwise the
+    obvious response to an order she has finished is to strike it, and the only tool
+    that looks like it would is `remember`, which would delete mission control instead.
+
+    Omitted entirely when there are none. An empty block here would be an invitation,
+    and there is no call behind it to accept.
+    """
+    if not w.notes.orders:
+        return []
+    return ["YOUR ORDERS FROM MISSION CONTROL -- the operator wrote these and only the "
+            "operator can change them. They stand until she replaces them.",
+            f"  {w.notes.orders}"]
+
+
 def neighbours(w):
     """The four cells you could drive into, named, without reading the grid.
 
@@ -394,8 +408,8 @@ def view(w):
         status_line(w),
         f"The {a.name} is {a.w} cells wide and {a.h} tall, and you have seen "
         f"{seen} of its {a.w * a.h} cells. {AXES}",
-        f"The rover is blind: it reveals nothing by driving, and a cell stays known "
-        f"once seen. {REVEAL_RULE}",
+        f"The rover sees {S.VISION_RADIUS} cells in every direction as it drives, and "
+        f"a cell stays known once seen. {REVEAL_RULE}",
         *([weather(w)] if w.here.storm else []),
         "",
         *map_block(w),
@@ -411,9 +425,12 @@ def view(w):
         "You have not found any objectives yet. They are out there under the fog.",
         *(f"  {t}" for t in todo),
         "",
-        # Last, and in this order, because the list is the thing to act on and the doc
-        # is the thing to correct. Everything above is the world talking; these two are
-        # hers, and they are the only part of the block she wrote.
+        # Last, and in this order: the orders are what she is here to do, the doc is the
+        # thing to correct, and the list is the thing to act on. Everything above is the
+        # world talking. The orders are the operator's and the other two are hers, which
+        # is the distinction the wording of each block has to carry on its own.
+        *orders(w),
+        *([""] if w.notes.orders else []),
         *kept(w),
         "",
         *todo_list(w),

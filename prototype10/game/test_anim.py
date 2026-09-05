@@ -13,7 +13,6 @@ import sys
 
 import anim
 import config as C
-import flyer
 import nav
 import settings as S
 from world import SOLID, World

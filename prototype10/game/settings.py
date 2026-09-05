@@ -12,11 +12,11 @@ DAY_SECONDS = 300
 DAY_STEPS = 150
 
 TIME_SCALE = 1.0        # 2.0 makes the day run twice as fast
-# Driving opens fog again, a disc this wide around every cell reached. Prototype 8 blinded
-# the rover because Ingenuity was the better eye; with the flyer cut, a blind rover cannot
-# answer the geology question by driving, which is the only way it is meant to be answered.
+# Driving opens fog, a disc this wide around every cell reached, and it is the only thing
+# that does -- Ingenuity is cut, and a blind rover cannot answer the geology question by
+# driving, which is the only way it is meant to be answered.
 # **A guess sized to the smaller arena, not a swept value.** Two is roughly a fifth of the
-# 30's width per sortie-free sol; three made a single crossing hand over most of the map.
+# 30's width a sol; three made a single crossing hand over most of the map.
 VISION_RADIUS = 2
 BASE_REVEAL = 6         # the landing site, opened once on arrival -- the only free map
 
@@ -38,8 +38,12 @@ BASE_REVEAL = 6         # the landing site, opened once on arrival -- the only f
 MAP_FORMAT = "grid"
 
 # --- the model -------------------------------------------------------------
-# Measured on a 6 GB RTX 3050: ~20 tokens/sec, 3.6 GB VRAM, flat to 16k context.
-MODEL = "gemma4:e4b"
+# The planner for a multi-sol run. `gemma4:31b-cloud` is rate-limited per-model on
+# Ollama cloud, so a long day can stall part-way through -- `--model` swaps it without
+# editing this file, and `gemma4:e4b` is the local fallback that always answers.
+# Measured on a 6 GB RTX 3050: e4b runs ~20 tokens/sec, 3.6 GB VRAM, flat to 16k.
+MODEL = "gemma4:31b-cloud"
+MODEL_FALLBACK = "gemma4:e4b"
 OLLAMA_HOST = "http://localhost:11434/api/chat"
 MODEL_CTX = 16384       # Ollama defaults to 4096 and truncates silently. Never unset.
 MODEL_THINK = False     # measured: ~46s a turn and no better at reading the grid
@@ -51,6 +55,10 @@ MODEL_TIMEOUT = 600
 # None sends no sampler at all, which is what `--think` does -- greedy decoding over a
 # long reasoning trace has no noise to break a repeating chain.
 MODEL_TEMP = 0.0
+# Sent with every request. Pins the sampler's own noise and nothing else: the model
+# still cannot be made to repeat itself, because inference batches requests and float
+# addition is not associative. `None` sends no seed. See DESIGN.md's determinism ledger.
+MODEL_SEED = 0
 SHOW_THINKING = True    # whether the pane displays the trace; the tape records it anyway
 
 CHAT_W = 1000           # pixel width of the pane, before the screen has a say
@@ -135,7 +143,6 @@ ANIM_PROBE = 0.022      # a cell of a blue distance probe
 ANIM_STEP = 0.070       # a cell of actual driving; 76 steps is about 5.3s
 ANIM_BLOCK = 0.30       # the pause on an outcrop before the plan withdraws
 ANIM_PRUNE = 0.008      # a cell of it retracting back to the rover
-ANIM_SCOUT = 0.55       # the scout window sits drawn this long before its fog lifts
 REEL_MAX = 12           # pending reels kept when nothing is drawing them
 
 # The rover sits still this long after a drive before the planner is allowed to think
@@ -143,28 +150,6 @@ REEL_MAX = 12           # pending reels kept when nothing is drawing them
 # teleports with no drive legible between them. It is weight, not simulation -- nothing
 # in the world changes during it.
 SETTLE_SECONDS = 2.0
-
-# --- the flyer -------------------------------------------------------------
-# Scouting reveals a box of ground the rover has not driven. Three knobs, each shutting
-# a different door: range stops knowledge teleporting, recharge stops it being spammed
-# from one spot, cost makes it compete with driving. Any two leave a hole.
-#
-# One currency on purpose -- a separate flyer budget competes with nothing, so every
-# sortie is free at the margin and there is no decision in it.
-#
-# **The sweep behind these numbers was run in prototype 7 and does not carry over.** It
-# measured the flyer against a drive-only baseline of 66.4% of the arena mapped; here
-# that baseline is the landing site and nothing else, so every "+10.7pp" it produced is
-# a comparison against a world that no longer exists. The values are inherited, not
-# justified, and re-sweeping them is the first real work this prototype owes.
-#
-# What does carry over: range and value fought each other because a window near the
-# rover covered ground the rover was going to reveal anyway. Nothing reveals ground by
-# driving now, so that tension is gone and SCOUT_RANGE is a pure reach limit.
-SCOUT_BOX = 6        # radius, so 6 -> a 13x13 window, 169 cells at full size
-SCOUT_RANGE = 10     # how far from the rover the window may be centred
-SCOUT_COST = 20      # steps, out of the same day the rover drives on
-SCOUT_RECHARGE = 25  # steps of driving owed before the next sortie
 
 # --- what she writes down ---------------------------------------------------
 # Both stores ride in the view on every request, so both are a flat tail cost paid every
@@ -181,6 +166,11 @@ TODO_CHARS = 200        # one line. Longer is a retelling, and the tape already 
 # truncating a rewrite silently loses the end, which is usually the part she has just
 # changed her mind about.
 MEMORY_CHARS = 600
+#
+# The operator's store, and the third of the three. Refused rather than cut for the same
+# reason as `remember`. Larger than a memory because an order may place work and say why
+# in one breath, and smaller than a page because it is read on every single call.
+ORDERS_CHARS = 800
 
 # --- the weather -----------------------------------------------------------
 # One dust storm a sol, lasting the sol, visible from the moment it exists. Impassable
@@ -223,9 +213,12 @@ PLAN_FILE = "runs/plan.txt"
 # The bridge reporting back for itself replaces both and is Abhishek's. `nav._await_rover`
 # is the only thing that changes when it lands; the file format does not.
 #
-# A sol is six legs a `goto` at worst, so "key" is a great deal of pressing. Recording
-# is what "none" is for.
-ROVER_PAUSE = "none"
+# **"key" is the default because the pause is the thing being demonstrated.** A sol is
+# six legs a `goto` at worst, so it is a great deal of pressing -- but a run with the
+# pause off writes `plan.txt` and wipes it with nothing on the other end, which is the
+# architecture claimed and not shown. `--pause none` is there for recording a tape with
+# no rover attached, and for a long unattended sol.
+ROVER_PAUSE = "key"
 
 # What a `goto` from the model actually does. `main.py --executor` sets it.
 #   teleport  step cell to cell, writing the route as it goes (the default)

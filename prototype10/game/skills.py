@@ -5,12 +5,10 @@ this is the file the rover implementation swaps while both sides stay put.
 
     goto(x, y, why, avoid=...)       drive there. Costs a step a tile
     distance(x, y, why, avoid=...)   what it would cost. Costs nothing
-    scout(x, y, why)                 the flyer's window. Costs steps, moves nothing
     execute(why)                     the work at the objective you are beside
 
-`scout` is the one skill that changes the map without changing the position, which is
-the fact about it a model gets backwards -- so the schema says so before the first call
-and the answer says so again after it. `flyer.py` owns it; this file only dispatches.
+`scout` is gone with Ingenuity. Driving is the only thing that lifts fog now, so there
+is no skill that changes the map without changing the position.
 
 `avoid="auto"` is not offered: it skips cells gemma has marked, and there is no way to
 mark one until `mark()` lands. Described loosely as "optional", she volunteered it
@@ -26,7 +24,6 @@ string must never reach a `frozenset()`.
 
 import re
 
-import flyer
 import nav
 import settings as S
 from world import centre_of
@@ -169,25 +166,6 @@ TOOLS = [
                       "cells to treat as impassable, like '(3,4),(5,6)'. Usually omit."},
         }, "required": ["x", "y"]}}},
     {"type": "function", "function": {
-        "name": "scout",
-        "description": (
-            "Send the flyer up to look at a square of ground you have not driven "
-            "through, and put whatever it sees onto your map. Coordinates are "
-            "ABSOLUTE and name the CENTRE of the window. It reveals a square "
-            f"{2 * S.SCOUT_BOX + 1} cells across, costs {S.SCOUT_COST} steps out of "
-            f"the same day the rover drives on, and does NOT move the rover. The "
-            f"centre must be within {S.SCOUT_RANGE} cells of where the rover is "
-            f"standing, and after a sortie the flyer must charge on the ground for "
-            f"{S.SCOUT_RECHARGE} steps of driving before it can go up again. Aim it "
-            "at ? -- a window over ground you have already mapped costs the same and "
-            "reveals nothing."),
-        "parameters": {"type": "object", "properties": {
-            "x": {"type": "integer", "description": "absolute column of the centre"},
-            "y": {"type": "integer", "description": "absolute row of the centre"},
-            "why": {"type": "string", "description":
-                    "optional: one line on what you expect to be under there"},
-        }, "required": ["x", "y"]}}},
-    {"type": "function", "function": {
         "name": "execute",
         "description": (
             "Do the work at the objective the rover is standing next to. Drive to the "
@@ -238,7 +216,7 @@ TOOLS = [
             "steps. The whole list is wiped when the sol ends."),
         "parameters": {"type": "object", "properties": {
             "text": {"type": "string", "description":
-                     "the item, in one line -- 'scout the fog north-east of R4'"},
+                     "the item, in one line -- 'drive the fog north-east of R4'"},
             "why": {"type": "string", "description":
                     "optional: one line on what put this on the list"},
         }, "required": ["text"]}}},
@@ -451,14 +429,13 @@ def _stuck(c, history):
     scold**: driving home to the pad is a gainless drive on purpose, and so is any
     deliberate repositioning.
 
-    **The window is sorties only, because driving can no longer buy map by
-    construction.** In prototype 7 it was every call that spent steps. Here a drive
-    reveals nothing however well aimed, so gainless steps are not evidence of waste --
-    and scolding them would land hardest on the trip that carries the rover into range
-    of the fog it means to scout, which is the whole loop this prototype is for.
+    **The window is every call that spends steps**, which is prototype 7's rule back
+    again. Prototype 9 narrowed it to sorties because a drive there revealed nothing
+    however well aimed, so gainless steps were not evidence of waste. Driving buys map
+    again, so they are.
 
-    `distance` never enters the window either way; it spends no steps. Asking for the
-    same price over and over is caught by the first rule, which is where it belongs.
+    `distance` never enters the window; it spends no steps. Asking for the same price
+    over and over is caught by the first rule, which is where it belongs.
     """
     if not c.gained:
         # The same question, asked again, having learned nothing in between. Covers
@@ -475,20 +452,20 @@ def _stuck(c, history):
                     f"answer cannot change either. Do something different, or say what "
                     f"you are trying to achieve.")
 
-    # Sorties only. The flyer is the one thing that can buy map, so it is the only thing
-    # whose failure to buy any is evidence of anything.
-    if c.name != "scout":
+    # A call that spent nothing cannot have wasted anything, so it is neither evidence
+    # nor an alibi. `distance` spends nothing and is excluded for the same reason.
+    if not c.steps or c.name == "distance":
         return ""
-    window = [p for p in list(history) + [c] if p.name == "scout"][-WINDOW:]
+    window = [p for p in list(history) + [c] if p.steps and p.name != "distance"][-WINDOW:]
     if len(window) < WINDOW:
         return ""
     spent = sum(p.steps for p in window)
     wasted = sum(p.steps for p in window if not p.gained)
     if spent and wasted * 2 >= spent:
-        return (f" Of your last {spent} steps flown, {wasted} bought no new map at all "
-                f"-- you are scouting ground you have already mapped. Somewhere on this "
-                f"arena is still unexplored: aim the window at the ? and say what you "
-                f"are trying to achieve.")
+        return (f" Of your last {spent} steps, {wasted} bought no new map at all -- you "
+                f"are going back over ground you have already covered. Somewhere on this "
+                f"arena is still unexplored: aim at the ? and say what you are trying to "
+                f"achieve.")
     return ""
 
 
@@ -684,7 +661,7 @@ def call(world, name, args, history=()):
 
     try:
         c.why = _why(c.args.get("why"))
-        if name in ("goto", "distance", "count_cells", "scout"):
+        if name in ("goto", "distance", "count_cells"):
             x = _int("x", c.args.get("x"))
             y = _int("y", c.args.get("y"))
         if name in ("goto", "distance"):
@@ -719,12 +696,6 @@ def call(world, name, args, history=()):
         # Doing the work is the point of the sol, so it counts as gain even though it
         # reveals nothing -- otherwise `_stuck` reads the whole mission as waste.
         c.gained = 1 if len(world.here.objectives) < left else 0
-    elif name == "scout":
-        r, advice = flyer.scout(world, x, y)
-        # Counted as gain the same way a drive is, so `_stuck` catches a run of sorties
-        # over ground already mapped without needing to know what a sortie is.
-        c.gained = r.new or 0
-        c.result = f"{r} -- {advice}" if advice else str(r)
     elif name == "goto":
         r = nav.goto(world, x, y, avoid)
         c.gained = r.new or 0

@@ -9,7 +9,6 @@ Otherwise a goto through fog reads as teleporting.
     step     the rover moving, fog opening as it goes
     block    the cell that refused -- flashed, then the yellow is torn up
     probe    `distance` only, in blue: priced, never driven
-    scout    the flyer's window: the square lands, holds, and then its fog lifts
 
 The frame after `block` is the interesting one: the yellow ran through an outcrop nobody
 had seen, and it comes back a different shape. That is the fog lying, made visible.
@@ -42,15 +41,6 @@ def frames(timeline):
             # it back reads as the planner giving up on ground it had committed to.
             out.append(("block", data, S.ANIM_BLOCK))
             out.append(("prune", None, S.ANIM_PRUNE))
-        elif kind == "scout":
-            # Two frames, and the order is the point: the window lands *before* the
-            # fog under it lifts. Revealing and drawing at once reads as the map
-            # having always been that way, which is the one thing this file exists to
-            # stop -- the same reason a drive's fog is peeled back in step with it
-            # rather than opened along the whole route before the rover sets off.
-            centre, revealed = data
-            out.append(("scoutbox", centre, S.ANIM_SCOUT))
-            out.append(("scoutlift", revealed, S.ANIM_BLOCK))
     return out
 
 
@@ -75,7 +65,6 @@ class Reel:
         self.probe = []       # the route being priced, blue
         self.trail = []       # cells driven so far this reel
         self.bump = None      # the cell that refused, flashed
-        self.scout = None     # the flyer's window, as a centre cell
         self.hidden = set()   # revealed already, held shut until the drive reaches it
 
     @property
@@ -113,10 +102,8 @@ class Reel:
         self._clear()
         self.frames = frames(timeline)
         # Everything this call revealed starts hidden and is handed back as the reel
-        # reaches it. Without it the fog is already gone before the rover sets off --
-        # and for a sortie, before the window has even been drawn.
+        # reaches it. Without it the fog is already gone before the rover sets off.
         self.hidden = {c for kind, d in timeline if kind == "step" for c in d[1]}
-        self.hidden |= {c for kind, d in timeline if kind == "scout" for c in d[1]}
 
     def _apply(self, kind, data):
         if kind == "at":
@@ -130,10 +117,6 @@ class Reel:
             self.at = cell
             self.trail.append(cell)
             self.hidden.difference_update(revealed)
-        elif kind == "scoutbox":
-            self.scout = data
-        elif kind == "scoutlift":
-            self.hidden.difference_update(data)
         elif kind == "block":
             self.bump = data
         elif kind == "prune":

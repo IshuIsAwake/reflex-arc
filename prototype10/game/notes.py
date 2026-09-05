@@ -1,7 +1,14 @@
-"""What she writes down. Two stores, and the difference between them is the lifetime.
+"""What is written down. Three stores, and they differ by who holds the pen.
 
+    orders    mission control's, typed by the operator at nightfall. She cannot write it
     todos     her own items, added and struck. Wiped by `World.next_day`.
-    memory    one paragraph, replaced whole. The only thing that crosses the night.
+    memory    one paragraph, replaced whole. Hers, and it crosses the night.
+
+**Orders need their own store rather than a corner of an existing one.** `next_day`
+clears the message log and the todos, so anything typed at nightfall is gone by morning
+unless it lives somewhere that survives -- and the only other such place is `memory`,
+which `remember` replaces wholesale. Put orders there and she deletes mission control on
+her next call. So it sits here, written only through `order()`, which no skill reaches.
 
 This is the write path. Everything else in the prototype hands her facts and takes them
 back; nothing she produced used to outlive her own turn, which makes the planner
@@ -35,10 +42,25 @@ class Notes:
     def __init__(self):
         self.todos = []       # [text, struck], in the order written. Ids are 1-based.
         self.memory = ""
+        self.orders = ""      # the operator's. Read-only to her, and it outlives the sol
 
     def new_day(self):
-        """Nightfall. The list goes and the memory stays, which is the whole design."""
+        """Nightfall. The list goes; the memory and the orders stay.
+
+        Orders last until replaced rather than for a sol, so a run where the operator
+        types nothing on sol 3 is one where sol 2's orders still stand -- which is what
+        standing orders are. Clearing them would make silence mean "do nothing".
+        """
         self.todos = []
+
+    def order(self, text):
+        """Mission control, replacing whatever stood before. The operator's door in.
+
+        Deliberately not a skill and deliberately not `remember`: the one store she can
+        read and cannot touch is the only place a standing instruction is safe from her
+        own next rewrite.
+        """
+        self.orders = text.strip()
 
     @property
     def open(self):

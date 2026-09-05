@@ -1,19 +1,30 @@
 """Run me:  .venv/bin/python game/main.py [--arena 30|50] [--map grid|rle]
-                                        [--prompt blind] [--think]
+                                        [--prompt sighted] [--think]
+                                        [--replay runs/<stamp>]
 
 WASD drive (hold to keep going)   M map   X mark   T console
 TAB talk to the planner   V what it sees   H hide/show its reasoning
 N next sol (once one has ended)   Q end the sol   ESC quit
+SPACE the rover has finished the leg -- pressed at every pause
 
 A Martian plain, a landing pad at the centre, and gemma in the pane on the right. The
-rover is blind: fog lifts only where Ingenuity flies, and driving through ground reveals
-nothing about it.
+rover maps what it drives past, out to `VISION_RADIUS`, and that is the only thing that
+lifts fog -- Ingenuity is cut, so a sol of driving is the only way the map fills in.
 
-**She can write, which is the whole difference from prototype 8.** A list for today that
-`todo` adds to and `strike` crosses off, and one note that `remember` rewrites and the
-night does not take. Everything else she produces -- the conversation, the reasoning,
-the day's plan -- is gone by morning. Press Q to end the sol and N to open the next one,
-and the note is what she wakes up with.
+**Three things are written down, and they differ by who holds the pen.** She keeps a
+list for today that `todo` adds to and `strike` crosses off, wiped at nightfall, and one
+note that `remember` rewrites and the night does not take. The third is the operator's,
+typed at TAB and read-only to her:
+
+    /orders finish objective 3 today      her standing job. Stands until replaced;
+                                          `/orders` alone clears it
+    /place 21 8 high 40                   work put on the map: cell, priority, cost.
+                                          Refused if the rover could never reach it
+    /status                               the status line, as she reads it
+
+**Live and replay.** Live, the model decides. `--replay` re-issues a kept run's calls
+with no model in the loop and halts if the world stops matching the tape -- so a sol
+that came out well is the demo, played back exactly. `replay.py` says why.
 
 No human-only mode: the planner is the point.
 """
@@ -34,6 +45,7 @@ import console
 import logs
 import nav
 import render
+import replay
 import settings as S
 import sight
 from world import World
@@ -65,7 +77,13 @@ def read_flags(argv):
                         f"(default: {S.EXECUTOR})")
     p.add_argument("--think", action="store_true",
                    help="reasoning trace on, and the sampler left to the model")
+    p.add_argument("--pause", choices=("key", "none"), default=S.ROVER_PAUSE,
+                   help=f"who says the rover finished a leg; 'key' is SPACE at every "
+                        f"pause (default: {S.ROVER_PAUSE})")
+    p.add_argument("--replay", metavar="RUN_DIR",
+                   help="re-issue a kept run's calls with no model in the loop")
     args = p.parse_args(argv)
+    S.ROVER_PAUSE = args.pause
     S.MAP_FORMAT = args.map
     S.EXECUTOR = args.executor
     # A flag rather than an edit to `settings.py`, so the two arms of a size comparison
@@ -84,14 +102,18 @@ def read_flags(argv):
 
 
 def main():
-    read_flags(sys.argv[1:])
+    args = read_flags(sys.argv[1:])
+    # Loaded before pygame opens a window: a run directory that is missing or has no
+    # calls in it should say so at the prompt, not behind a window that then closes.
+    script = replay.load(pathlib.Path(args.replay)) if args.replay else None
     pygame.init()
     # The map format is in the title bar because the two arms are told apart by nothing
     # else on screen -- the pane shows a one-line summary either way. The arena is there
     # for the opposite reason: it is obvious on screen and easy to forget in a note.
     pygame.display.set_caption(
-        f"Reflex Arc -- prototype 9  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
-        f"  ·  {S.MODEL}"
+        f"Reflex Arc -- prototype 10  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
+        + (f"  ·  replay of {pathlib.Path(args.replay).name}" if args.replay else
+           f"  ·  {S.MODEL}")
         + ("  ·  thinking, sampler unpinned" if S.MODEL_THINK else ""))
     # Before anything asks how big anything is: every other size is derived from
     # C.TILE and S.CHAT_W, so this has to run ahead of set_mode and the subsurfaces.
@@ -119,7 +141,8 @@ def main():
     # `arena` is here for the same reason -- it is a flag now, so a tape without it would
     # not say which of the two the run happened on.
     run.record("run", map_format=S.MAP_FORMAT, model=S.MODEL, temp=S.MODEL_TEMP,
-               think=S.MODEL_THINK, ctx=S.MODEL_CTX, vision=S.VISION_RADIUS,
+               seed=S.MODEL_SEED, think=S.MODEL_THINK, ctx=S.MODEL_CTX,
+               vision=S.VISION_RADIUS,
                replans=S.NAV_REPLANS, day_steps=S.DAY_STEPS, host=S.OLLAMA_HOST,
                todo_max=S.TODO_MAX, memory_chars=S.MEMORY_CHARS,
                arena=f"{C.VIEW_W}x{C.VIEW_H}",
@@ -127,7 +150,19 @@ def main():
     w = World(recorder=run.record)
     nav.clear_plan(w)   # this session's route file starts empty, never yesterday's
     tape = chat.Tape(run.chat_path)
-    conv = chat.Conversation(w, tape)
+
+    def talker():
+        """The thing on the other end of the pane: Ollama, or a kept run.
+
+        One function so the two construction sites below cannot drift -- a replay whose
+        second sol quietly went back to asking the model would be the hardest kind of
+        wrong to see, because it would look exactly right until the bill arrived.
+        """
+        if script:
+            return replay.Replay(w, script, tape)
+        return chat.Conversation(w, tape)
+
+    conv = talker()
     conv.open_day(w)
 
     reel = anim.Reel(w)
@@ -165,6 +200,56 @@ def main():
         run.keep() if keep else run.discard()
         pygame.quit()
         sys.exit()
+
+    def place(world, text):
+        """`/place X Y [high|medium|low] [cost]` -- work put on the map at nightfall.
+
+        Priority and cost default to medium and 30, which is a crossing of the 30 and
+        therefore the objective that is worth exactly one sol's travelling. Both are
+        facts mission control hands over, so both are the operator's to say.
+
+        The refusal wording comes back from `world.place_objective` rather than being
+        written again here: the guard and the explanation of the guard belong together,
+        and this is a console that types them out.
+        """
+        words = text.split()
+        nums = [t for t in words if t.lstrip("-").isdigit()]
+        if len(nums) < 2:
+            return "PLACE NEEDS A CELL -- try  /place 21 8 high 40"
+        cell = (int(nums[0]), int(nums[1]))
+        priority = next((t for t in words if t.lower() in ("high", "medium", "low")),
+                        "medium")
+        cost = int(nums[2]) if len(nums) > 2 else 30
+        if cost <= 0:
+            return f"PLACE REFUSED -- {cost} steps of work is not work."
+        o, why = world.place_objective(cell, priority.lower(), cost)
+        if not o:
+            return f"PLACE REFUSED -- {why}"
+        return (f"PLACED -- objective {o.glyph} at ({cell[0]},{cell[1]}), "
+                f"{o.priority} priority, {o.cost} steps of work. It is under fog until "
+                f"she drives to it.")
+
+    def orders(world, text):
+        """`/orders ...` -- mission control writes, and the line the operator sees back.
+
+        Typed at nightfall, read every request after it, and never cleared by a sol
+        rolling over. Refused rather than cut when it is too long, for the same reason
+        `remember` is: truncating an instruction loses the end, which is where the thing
+        actually being asked for tends to sit.
+
+        It goes on the tape as its own event. A replay has to reissue it, and an order
+        recovered by parsing the message log would be indistinguishable from the
+        operator having simply said something.
+        """
+        text = text.strip()
+        if len(text) > S.ORDERS_CHARS:
+            return (f"ORDERS REFUSED -- {len(text)} characters, and the cap is "
+                    f"{S.ORDERS_CHARS}. Nothing changed. Say it shorter.")
+        world.notes.order(text)
+        world.record("orders", text=text)
+        if not text:
+            return "ORDERS CLEARED -- she has no standing instruction now."
+        return f"ORDERS SET -- she reads this on every call until it is replaced: {text}"
 
     def await_rover(world, dirs):
         """Hold everything until the operator says the rover has driven the leg.
@@ -236,6 +321,15 @@ def main():
                     text = said.strip()
                     if text == "/status":
                         conv.send(sight.status_line(w), who="status")
+                    elif text.startswith("/place"):
+                        conv.send(place(w, text[len("/place"):]), who="status")
+                    elif text.startswith("/orders"):
+                        # Mission control, not conversation. It goes to the store rather
+                        # than the message log, because the log is cleared at nightfall
+                        # and an order typed at nightfall would be the first thing lost.
+                        # `/orders` alone clears them; that has to be possible or a
+                        # survey sol can never follow a sol with an objective on it.
+                        conv.send(orders(w, text[len("/orders"):]), who="status")
                     elif text:
                         conv.send(text)
                     said, scroll = "", 0
@@ -298,8 +392,14 @@ def main():
                 # rather than carried, so anything gemma wanted to keep had to be said
                 # while the sol it belonged to was still open. Carrying it is item 7.
                 elif e.key == pygame.K_n and w.day_over:
+                    # A replay does the operator's half itself, and does it *before*
+                    # the rollover: she typed at nightfall, so orders written now are
+                    # what the next sol opens holding.
+                    if script:
+                        for line in script.operator(w, w.day):
+                            conv.write("status", f"operator, sol {w.day} -- {line}")
                     w.next_day()
-                    conv = chat.Conversation(w, tape)
+                    conv = talker()
                     conv.open_day(w)
                     scroll = 0
                 # V overlays the view block; V again puts it away. A thing you open to

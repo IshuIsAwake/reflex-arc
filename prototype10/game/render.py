@@ -216,17 +216,6 @@ def _reel(surf, reel, ox, oy):
     for cell in reel.probe:
         pygame.draw.circle(surf, C.PATH, _cell_rect(ox, oy, cell).center, r)
 
-    if reel.scout:
-        # Outline only, and drawn over the fog without lifting it -- for the half
-        # second before `scoutlift` fires, the window sits framing black. That frame
-        # is the one worth having: a square of nothing, and then it is ground.
-        cx, cy = reel.scout
-        rr = S.SCOUT_BOX
-        rect = _cell_rect(ox, oy, (cx - rr, cy - rr))
-        rect.width = rect.height = (2 * rr + 1) * C.TILE
-        pygame.draw.rect(surf, C.SCOUT, rect, 2)
-        pygame.draw.circle(surf, C.SCOUT, _cell_rect(ox, oy, (cx, cy)).center, 3)
-
     if reel.bump:
         box = _cell_rect(ox, oy, reel.bump)
         pygame.draw.rect(surf, C.BUMP, box, 2)

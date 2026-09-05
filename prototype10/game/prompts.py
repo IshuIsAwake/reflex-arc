@@ -6,14 +6,14 @@ by changing a flag. `main.py --prompt NAME` picks; `chat.Conversation` reads wha
 `SYSTEM` holds at the moment it is built, and `main.py` writes the hash of that exact
 string onto the tape.
 
-**There is one prompt.** Prototype 7 carried three and two of them taught the rover to
-map by driving, which is not something it can do here. Deleted rather than kept as
-controls: a prompt measured against different physics is not a baseline.
+**There is one prompt.** It descends from prototype 7's `terse`, because prototype 7 is
+the last arena whose physics match this one: the rover maps what it drives past. The
+blind prompt prototype 9 left here described a machine with no cameras and a flyer for
+an eye, and neither is true now -- it was still the default after sight came back.
 
-Nothing in a prompt may state a number the game owns. The arena size and the flyer's
-window, range and cost are substituted in from `config` and `settings`; a literal
-`50 x 50` here is a claim that goes silently wrong the moment a flag changes it, which
-has already cost two runs.
+Nothing in a prompt may state a number the game owns. The arena size is substituted in
+from `config` and `settings`; a literal `50 x 50` here is a claim that goes silently
+wrong the moment a flag changes it, which has already cost two runs.
 """
 
 import config as C
@@ -46,14 +46,14 @@ def _map_para():
     raise ValueError(f"settings.MAP_FORMAT is {S.MAP_FORMAT!r}, not 'grid' or 'rle'")
 
 
-def blind():
+def sighted():
     """The only prompt here, and the only one that can be true of this arena.
 
-    Prototype 7 shipped three. `old` and `terse_sweep` were built on the rover mapping
-    what it drove past -- aim far, maximise the footprint, space parallel sweeps a band
-    apart -- and none of that is a tactic here, it is a description of a machine that
-    does not exist. They are gone rather than kept for comparison: their measurements
-    were taken in a world with different physics.
+    Prototype 7's `terse`, carried forward: the sight paragraph is its, because the
+    rover maps what it drives past again. What is added over it is the two places to
+    write, which came in with prototype 9 and are the one thing from that line worth
+    keeping. `terse_sweep`'s sweep arithmetic is still out -- it was measured on the
+    50x50 and this arena is a 30.
     """
     return f"""\
 You are the first language model deployed to the surface of Mars. You are the planner:
@@ -72,11 +72,10 @@ the map of everything it has seen, and anything named that it has found. Only th
 copy exists. Keep your own notes short -- a few words on what you found, not a retelling
 of the whole sol.
 
-You have ten skills:
+You have nine skills:
 
   goto(x, y, why)       drive there. One call drives the whole way.
   distance(x, y, why)   what that drive would cost. Spends nothing.
-  scout(x, y, why)      fly the camera window there. Reveals ground, moves nothing.
   execute(why)          do the work at the objective you are standing beside.
   count(kind, why)      every rock formation and fog patch, with its size and middle.
   count_cells(x, y)     the exact cells one formation covers.
@@ -91,6 +90,14 @@ item on it and `strike` crosses it off. The night wipes it. `remember` writes th
 note that survives to tomorrow, and it replaces what is there rather than adding to it,
 so send the whole note every time. The map and the finished work carry themselves --
 copying those into the note wastes the only thing you get to keep.
+
+**There is a third place, and it is not yours.** YOUR ORDERS FROM MISSION CONTROL is
+written by the operator between sols and appears in your view when there is one. It is
+your standing job and it outlives the sol -- if it is still there tomorrow it still
+stands. You cannot write it, clear it, or strike it, and no skill you have will: do not
+try to acknowledge an order by putting it in the note that survives, because that note
+is the one you overwrite, and the order is not yours to move. Read it, do it, and say
+in your own words what you did.
 
 **Call one skill at a time.** A reply asking for several has the first run and the rest
 turned down: the second was chosen before you knew how the first turned out. The map
@@ -108,13 +115,6 @@ the sol. Going round costs steps and waiting costs a sol.
 Each carries a priority set by the mission and the steps its work costs, both listed in
 your view once seen. `goto` stops you alongside one, which is arriving; `execute` pays
 the cost. Which is worth the trip, and which to leave, is yours.
-
-**The flyer is the only thing that lifts fog.** `scout` reveals a square
-{2 * S.SCOUT_BOX + 1} cells across centred where you aim it, rock as well as open
-ground, and does not move the rover. It costs {S.SCOUT_COST} steps out of the same sol
-the driving comes from. The centre must be within {S.SCOUT_RANGE} cells of the rover,
-and after a flight it charges for {S.SCOUT_RECHARGE} steps of driving. The status line
-says whether it is ready.
 
 goto, distance and count_cells take ABSOLUTE coordinates -- a cell on the map, never an
 offset from where the rover stands. The block below the map names the compass direction
@@ -138,11 +138,9 @@ map, however far, and it costs you one turn whether the target is two cells away
 across the arena. There is no reason to be conservative with it and no reason to inch
 forward.
 
-**The rover is blind.** It has no cameras and driving reveals nothing: ground it has
-crossed stays ? on your map, and a sol of driving on its own ends with the map exactly
-as it started. Running into rock is the one exception -- the cell that stopped you
-becomes known, because the rover can tell it hit something. **A cell stays on the map
-once seen.**
+The view says how far the rover sees. That vision covers the entire route it drives, not
+just the end of it. **A cell stays on the map once seen** -- ground you have already
+crossed is already known, and crossing it again reveals nothing new.
 
 Ground never seen is marked ? and a route through it is a guess: `goto` assumes it is
 clear and drives until something refuses it. Being stopped by rock you could not have
@@ -163,8 +161,8 @@ you have already decided, since `goto` reports its own cost when it finishes.
 """
 
 
-PROMPTS = {"blind": blind}
-DEFAULT = "blind"
+PROMPTS = {"sighted": sighted}
+DEFAULT = "sighted"
 
 SYSTEM = None       # set by `use()`, below, at import and again from `main.read_flags`
 

@@ -217,10 +217,10 @@ class Result:
     took.
     """
 
-    GOOD = {"DONE", "SCOUTED", "PLANNED"}
+    GOOD = {"DONE", "PLANNED"}
 
     def __init__(self, code, steps=0, at=None, stopped=None, beside=None, walls=(),
-                 new=None, to=None, planned=None):
+                 new=None, planned=None):
         self.code = code
         self.steps = steps
         self.at = at
@@ -228,10 +228,6 @@ class Result:
         self.beside = beside
         self.walls = list(walls)
         self.new = new
-        # Where the call was *aimed*, when that differs from where anything ended up --
-        # a scout window has a centre and leaves the rover where it stands, so `at`
-        # alone cannot say what was asked for.
-        self.to = to
         # How long the route is, for a call that planned one and drove none of it.
         self.planned = planned
 
@@ -241,8 +237,6 @@ class Result:
 
     def __str__(self):
         bits = []
-        if self.to:
-            bits.append(f"to={_c(self.to)}")
         if self.at:
             bits.append(f"at={_c(self.at)}")
         if self.beside:

@@ -92,6 +92,12 @@ the prompt already tells her a human operator gives her work, and the rollover i
 keypress. What is new is that orders may **place an objective on the map** — a cell, a
 priority, a cost — and not only say things in words.
 
+**The guard is built.** `World.place_objective` refuses a cell with no approach the
+rover can reach, flooding from the spawn over the true grid rather than the fogged one —
+the operator can see the whole arena, and refusing placements into unmapped ground would
+refuse the one sol worth running. The storm is not consulted because it cannot bury one:
+`_weather` keeps it clear of every live objective, placed ones included.
+
 A run would typically go:
 
 | sol | orders |
@@ -143,11 +149,9 @@ anything that has to come out the same twice, take it out of the loop.
 
 ## Open
 
-- **A placed objective needs a reachability guard.** One behind the C's closed side or under
-  the storm is a broken sol that reads identically to a hard one in a transcript. Same failure
-  class as the sealed pocket `test_world.py` already checks for. This is the cost of letting
-  the operator place rather than only instruct.
 - **`VISION_RADIUS = 2` is untested.** Set it, run a sol, look.
+- **Two objectives may now share a priority.** The operator can place a second `high`, and
+  the view tells them apart by cell and cost alone. Untried on a model.
 - **Turns are free in the budget and slow in the room.** The day is charged one step per tile
   driven, so a turn-heavy route costs the same as a straight one in the sim and considerably
   more on hardware. Already true in prototype 9; it starts to matter once a physical rover is

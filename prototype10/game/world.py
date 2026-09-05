@@ -9,7 +9,9 @@ import hazards
 import notes
 import settings as S
 
-GLYPHS = "123"      # the objectives, in priority order
+# The objectives. `config` authors the first three in priority order; the rest are there
+# for the operator to place into at nightfall, which is why this is longer than that.
+GLYPHS = "123456789"
 SOLID = set("#H") | set(GLYPHS)   # everything you cannot drive through
 THINGS = SOLID - set("#")   # ...and just the things. A rock is not a destination
 
@@ -24,10 +26,7 @@ THINGS = SOLID - set("#")   # ...and just the things. A rock is not a destinatio
 # the console and the model.
 # No commas in a label: `sight.rle` joins a row's runs with ", ", so one here splits a
 # single run into two and the map quietly stops parsing.
-LABELS = {"H": "base pad",
-          "1": "high-priority objective",
-          "2": "medium-priority objective",
-          "3": "low-priority objective"}
+LABELS = {"H": "base pad"}
 
 
 class Objective:
@@ -157,10 +156,17 @@ class Survey:
 def label_for(w, ch):
     """What to call a tile, out loud, on screen and in the view.
 
-    A pass-through today -- prototype 1 used it to make terminal names something you
-    had to walk up to and earn. Kept because `interact` brings that rule straight
-    back, and because it is the one place a name is decided.
+    An objective is named from the priority it actually carries rather than from a
+    table keyed by glyph. The operator places objectives now, so the glyph no longer
+    implies the priority -- `4` is whatever she said it was -- and a table would have
+    to be rewritten every time she placed one.
+
+    This is the one place a name is decided. `prototype1` used it to make terminal
+    names something you had to walk up to and earn, and `interact` brings that back.
     """
+    if ch in GLYPHS:
+        o = next((o for o in w.here.objectives.values() if o.glyph == ch), None)
+        return f"{o.priority}-priority objective" if o else None
     return LABELS.get(ch)
 
 
@@ -202,6 +208,27 @@ class Area:
     def visible(self, x, y):
         return (x, y) in self.seen
 
+    def reachable(self, start=None):
+        """Every cell the rover could drive to from `start`, over the true grid.
+
+        Ground truth on purpose, and the storm deliberately not consulted: this answers
+        whether the arena permits a journey, not whether today does. `nav` is the one
+        that plans over fog and weather. Used by `place_objective` to refuse work the
+        operator can see and the rover could never reach.
+        """
+        start = start or C.SPAWN
+        seen, edge = {start}, [start]
+        while edge:
+            x, y = edge.pop()
+            for cell in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+                cx, cy = cell
+                if (cell in seen or not (0 <= cx < self.w and 0 <= cy < self.h)
+                        or self.at(cx, cy) in SOLID):
+                    continue
+                seen.add(cell)
+                edge.append(cell)
+        return seen
+
     def disc(self, px, py, r=None):
         """Every in-bounds cell the rover would see standing at (px, py).
 
@@ -215,17 +242,6 @@ class Area:
                 for x in range(max(0, px - r), min(self.w, px + r + 1))
                 if (x - px) ** 2 + (y - py) ** 2 <= r * r}
 
-    def box(self, cx, cy, r):
-        """The square window the overhead camera crops, clamped at the arena edge.
-
-        A rectangle and not a disc because that is what the real thing is: one fixed
-        camera above the map, and a region revealed by cutting that window out of the
-        picture. Clamping is why a corner is the worst place to scout from, not the
-        best -- the window costs full price and half of it falls off the map.
-        """
-        return {(x, y)
-                for y in range(max(0, cy - r), min(self.h, cy + r + 1))
-                for x in range(max(0, cx - r), min(self.w, cx + r + 1))}
 
     def reveal_all(self):
         """Lift the whole fog. Never used by the game, where driving and contact with
@@ -291,11 +307,6 @@ class World:
         # Her own writing. The list dies at nightfall and the memory does not, which is
         # the only difference between the two stores; `notes.py` says why.
         self.notes = notes.Notes()
-        # The flyer recharges on the ground between sorties, the way Ingenuity did, so
-        # this is the step count at which it may go up again. Same currency as
-        # everything else: a capability that competes with nothing is always worth using.
-        self.scout_ready_at = 0
-        self.scouts = 0         # sorties flown today, for the log
         self._weather()
         # The landing site is visible on arrival. You can see where you came down.
         self.here.reveal(*self.pos, r=S.BASE_REVEAL)
@@ -380,16 +391,6 @@ class World:
     def steps_left(self):
         return max(0, S.DAY_STEPS - self.steps)
 
-    @property
-    def scout_ready_in(self):
-        """Steps of driving still owed before the flyer can go up again. 0 means now.
-
-        Counted in steps rather than seconds so it cannot be waited out by thinking --
-        the rover has to actually go somewhere, which is what stops a sol being spent
-        parked and scouting outwards.
-        """
-        return max(0, self.scout_ready_at - self.steps)
-
     def next_day(self):
         """The rover wakes at the pad. Everything it has mapped carries over; the
         message log does not -- yesterday's messages are noise once the day is shut.
@@ -403,9 +404,8 @@ class World:
         journey.
         """
         self.history.append({"day": self.day, "steps": self.steps,
-                             "seconds": round(self.elapsed, 1), "scouts": self.scouts})
-        self.record("day_close", steps=self.steps, seconds=round(self.elapsed, 1),
-                    scouts=self.scouts)
+                             "seconds": round(self.elapsed, 1)})
+        self.record("day_close", steps=self.steps, seconds=round(self.elapsed, 1))
         self.day += 1
         self.day_over = False
         self.time_left = float(S.DAY_SECONDS)
@@ -416,10 +416,6 @@ class World:
         self.last_path = ("", [])
         self.last_walk = ("", [])
         self.reel.clear()       # nobody wants to watch yesterday's drive
-        # The flyer charges overnight along with everything else, so a sol never opens
-        # owing a recharge it did not earn.
-        self.scout_ready_at = 0
-        self.scouts = 0
         self.pos = C.SPAWN
         self._weather()         # yesterday's storm has blown out; today gets its own
         self._arrive()
@@ -432,10 +428,14 @@ class World:
         the transcript distinguishes from a hard one.
 
         The objectives go in by cell. `hazards` keeps the storm off each of them and
-        leaves at least one approach open, which is all a solid target needs."""
+        leaves at least one approach open, which is all a solid target needs.
+
+        The live objectives, not `C.OBJECTIVES` -- an objective the operator placed last
+        night is as buriable as an authored one, and reading the config would protect
+        only the three that shipped."""
         self.here.storm = hazards.spawn_for_day(
             self.here, self.day, C.SPAWN,
-            keep_clear=(self.base, *C.OBJECTIVES))
+            keep_clear=(self.base, *self.here.objectives))
         if self.here.storm:
             s = self.here.storm
             self.record("storm", weather=s.kind, at=s.centre, cells=len(s),
@@ -446,6 +446,62 @@ class World:
     def objectives(self):
         """Every objective on this arena, done or not. Ordered as `config` wrote them."""
         return list(self.here.objectives.values())
+
+    def place_objective(self, cell, priority, cost):
+        """The operator puts work on the map at nightfall. Returns (Objective, None)
+        or (None, why not).
+
+        **The guard is the point of this method.** An objective is solid, so the rover
+        works it from a neighbour -- which means placeable is not "the cell is open", it
+        is "at least one of its four neighbours can be driven to". A cell whose every
+        approach is rock is a sol that ends in BLOCKED after a long drive, and a
+        transcript of that is indistinguishable from an objective that was merely hard.
+        The same failure the sealed-pocket check in `test_world.py` exists to stop, and
+        the C -- four wide, six tall, open only along its east face -- is the shape on
+        this arena that produces it.
+
+        Reachability is judged over the true grid, not the fogged one. The operator can
+        see the whole arena and the rover cannot; refusing a placement because the rover
+        has not been there yet would refuse exactly the interesting sol, the one where
+        work is put in ground nobody has driven.
+
+        The storm is not consulted. It is reseeded every sol and `_weather` keeps it off
+        every objective, so a cell that is placeable tonight cannot be buried tomorrow.
+        """
+        a = self.here
+        x, y = cell
+        if not (0 <= x < a.w and 0 <= y < a.h):
+            return None, f"({x},{y}) is off the {a.name}, which is {a.w} by {a.h}."
+        if cell in a.objectives:
+            return None, f"({x},{y}) already carries an objective."
+        if a.at(x, y) == "H":
+            return None, f"({x},{y}) is the base pad."
+        if a.at(x, y) == "#":
+            return None, (f"({x},{y}) is rock. An objective sits on drivable ground -- "
+                          f"the rover stops beside it, not on it.")
+        free = [g for g in GLYPHS if not any(o.glyph == g for o in a.objectives.values())]
+        if not free:
+            return None, f"all {len(GLYPHS)} objective markers are in use."
+
+        # The approach test. `reachable` is flooded from the spawn over the true grid,
+        # so this answers "can the rover get to a cell it could work from", which is a
+        # different question from whether the objective's own cell is open ground.
+        reach = a.reachable()
+        approaches = [c for c in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y))
+                      if c in reach]
+        if not approaches:
+            return None, (f"({x},{y}) has no approach the rover can reach -- every cell "
+                          f"beside it is rock, off the arena, or walled off. Work placed "
+                          f"there is a sol that ends in BLOCKED and reads like a hard "
+                          f"objective rather than an impossible one.")
+
+        o = Objective(cell, free[0], priority, cost)
+        a.objectives[cell] = o
+        # Placed cells are revealed for nobody: an objective under fog is found by
+        # driving, which is what makes placing one in unmapped ground a real sol.
+        self.record("placed", at=cell, glyph=o.glyph, priority=priority, cost=cost,
+                    approaches=len(approaches))
+        return o, None
 
     def adjacent_objective(self):
         """The unfinished objective the rover is standing next to, if any.

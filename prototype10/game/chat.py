@@ -192,7 +192,7 @@ class Conversation:
         """
         names = ["end"]
         if self.moves < S.MOVE_HOPS:
-            names += ["goto", "scout", "execute"]   # all three spend steps
+            names += ["goto", "execute"]   # both spend steps
         if self.frees < S.FREE_HOPS:
             # Writing is a look: it spends no steps, so nothing else would ever stop a
             # model that took to writing instead of driving. It stays offered after the
@@ -268,6 +268,12 @@ class Conversation:
         options = {"num_ctx": S.MODEL_CTX}
         if S.MODEL_TEMP is not None:
             options["temperature"] = S.MODEL_TEMP
+        # The last row of the determinism ledger that can be pinned at all. It does not
+        # make the model reproducible -- batching and non-associative float addition see
+        # to that, which is why replay exists -- but leaving it unset guarantees it is
+        # not, and costs one line to fix.
+        if S.MODEL_SEED is not None:
+            options["seed"] = S.MODEL_SEED
         payload = {
             "model": S.MODEL, "messages": messages, "stream": True,
             "think": S.MODEL_THINK, "keep_alive": S.MODEL_KEEP_ALIVE,
@@ -413,9 +419,9 @@ class Conversation:
             self._stop("she called end")
             return
 
-        # What spends steps, not what changes position: a sortie and a piece of work
-        # both cost the day even though neither moves the rover.
-        move = name in ("goto", "scout", "execute")
+        # What spends steps, not what changes position: a piece of work costs the day
+        # even though it leaves the rover where it stands.
+        move = name in ("goto", "execute")
         spent = self.moves >= S.MOVE_HOPS if move else self.frees >= S.FREE_HOPS
         if spent:
             self._deny(first, move)

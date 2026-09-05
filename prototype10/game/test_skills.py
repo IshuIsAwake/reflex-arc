@@ -110,16 +110,23 @@ def test_going_nowhere_twice_is_said_out_loud():
     return ok
 
 
-def test_sorties_that_buy_no_map_are_said_out_loud_and_drives_are_never_scolded():
-    """Who the waste rule is allowed to accuse, now that only the flyer can buy map.
+def test_drives_that_buy_no_map_are_said_out_loud_even_when_they_differ():
+    """The loop of 2026-08-29, and prototype 7's test for it, back again.
 
-    In prototype 7 this test drove four gainless drives and demanded a scold. Here a
-    drive cannot buy map however well aimed, so gainless steps are not evidence of
-    anything -- and the drive most likely to be accused is the one carrying the rover
-    into range of the fog it means to scout, which is the whole loop. The accusation
-    moves to the flyer, which is the only thing left that can waste an opportunity.
+    Gemma drove (0,49) to (0,10) and back, six times, then (0,49) to (45,49) three
+    times: 439 steps, 358 of them revealing nothing. Every call spent steps, so "spent
+    nothing" never fired -- and every call had a *different* target from the one before,
+    so no test of repetition would have fired either. What the two have in common is the
+    only thing worth saying: none of it bought any map.
+
+    Prototype 9 moved the accusation to the flyer, because a drive there could not buy
+    map however well aimed. Driving buys map again, so the accusation comes back to it.
+    Two separate things are said and this test keeps them apart:
+
+      "revealed nothing new"        -- `Result.advice`, on every gainless drive, at once
+      "bought no new map at all"    -- `_stuck`, only once there is a pattern
     """
-    print("sorties that buy nothing")
+    print("drives that buy nothing")
     w = World()
     w.here.seen = {(x, y) for y in range(w.here.h) for x in range(w.here.w)}  # nothing left
 
@@ -131,33 +138,20 @@ def test_sorties_that_buy_no_map_are_said_out_loud_and_drives_are_never_scolded(
                all(h.steps > 0 for h in hist), str([h.steps for h in hist]))
     ok &= check("...and really did learn nothing",
                 all(h.gained == 0 for h in hist))
-    ok &= check("no drive is told it revealed nothing -- none of them ever could",
-                not any("revealed nothing new" in h.result for h in hist))
-    ok &= check("and four of them are still not a habit",
-                not any("bought no new map" in h.result for h in hist))
-
-    # The flyer is the one that gets accused, and only once there is a pattern.
-    keep = S.SCOUT_RECHARGE
-    S.SCOUT_RECHARGE = 0        # four sorties without driving 25 steps between each
-    try:
-        w2 = World()
-        w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
-        flights = []
-        for x, y in ((15, 12), (15, 18), (15, 12), (15, 18)):
-            flights.append(skills.call(w2, "scout", {"x": x, "y": y, "why": "looking"},
-                                       history=flights))
-        ok &= check("every sortie really was flown",
-                    all(f.steps > 0 for f in flights), str([f.steps for f in flights]))
-        ok &= check("the first three are not accused of a habit",
-                    not any("bought no new map" in f.result for f in flights[:3]))
-        ok &= check("the fourth is", "bought no new map" in flights[3].result,
-                    flights[3].result[-110:])
-        ok &= check("and names what it cost", "steps flown," in flights[3].result)
-        # Alternating targets, so the identical-call rule is not what caught it.
-        ok &= check("the targets were never the same twice running",
-                    str(flights[2]) != str(flights[1]))
-    finally:
-        S.SCOUT_RECHARGE = keep
+    # The fact, immediately and every time. A drive that spends the day and buys no map
+    # must not read as an unqualified success.
+    ok &= check("each gainless drive says so on its own",
+                all("revealed nothing new" in h.result for h in hist))
+    # The pattern, only once there is one. Driving home to the pad is a gainless drive
+    # on purpose, so this must never be a first-offence scold.
+    ok &= check("the first three are not accused of a habit",
+                not any("bought no new map" in h.result for h in hist[:3]))
+    ok &= check("the fourth is", "bought no new map" in hist[3].result,
+                hist[3].result[-110:])
+    ok &= check("and names what it cost", "steps," in hist[3].result)
+    # Alternating targets, so the identical-call rule is not what caught it.
+    ok &= check("the targets were never the same twice running",
+                str(hist[2]) != str(hist[1]))
 
     # Pricing routes is the habit the arena wants more of, not less. Four price checks
     # in a row reveal no map by construction and must not read as being stuck.
@@ -461,25 +455,10 @@ def test_every_dialect_of_a_written_call_is_recovered():
 def test_the_schema_matches_what_is_wired_up():
     print("the schema is honest")
     names = {t["function"]["name"] for t in skills.TOOLS}
-    ok = check("exactly ten skills",
-               names == {"goto", "distance", "scout", "execute", "count", "count_cells",
+    ok = check("exactly nine skills",
+               names == {"goto", "distance", "execute", "count", "count_cells",
                          "todo", "strike", "remember", "end"}, str(names))
     blob = str(skills.TOOLS)
-    # `scout` changes the map and not the position, which is the one thing about it a
-    # model will get backwards -- the same shape as `DONE(beside=...)` reading as a
-    # failure to arrive. Say it in the schema, before the first call, not only after.
-    scout = next(t for t in skills.TOOLS if t["function"]["name"] == "scout")
-    desc = scout["function"]["description"]
-    ok &= check("scout says it does not move the rover",
-                "not move the rover" in desc.lower())
-    ok &= check("...and that the coordinate is the centre", "CENTRE" in desc)
-    # The numbers come out of settings rather than being typed here a second time. A
-    # schema promising a range the code does not enforce is the same lie as a prompt
-    # promising a skill that does not exist.
-    ok &= check("...and quotes the real range", str(S.SCOUT_RANGE) in desc)
-    ok &= check("...and the real cost", str(S.SCOUT_COST) in desc)
-    ok &= check("scout is offered no avoid list",
-                "avoid" not in scout["function"]["parameters"]["properties"])
     # Optional since 2026-09-01, and the schema has to say so or the model infers the
     # requirement from the shape and goes back to failing calls it never had to fail.
     ok &= check("why is offered on all of them",
@@ -491,7 +470,7 @@ def test_the_schema_matches_what_is_wired_up():
     # Only where a cell is what the call is *about*. `count` takes no coordinate and
     # `end` takes nothing at all, and a schema demanding x and y from them would have
     # the model inventing a pair to satisfy it.
-    placed = {"goto", "distance", "count_cells", "scout"}
+    placed = {"goto", "distance", "count_cells"}
     ok &= check("...and x and y are required exactly where a cell is meant",
                 all(({"x", "y"} <= set(t["function"]["parameters"]["required"]))
                     == (t["function"]["name"] in placed) for t in skills.TOOLS))
@@ -504,7 +483,10 @@ def test_the_schema_matches_what_is_wired_up():
     # Nothing may be promised that is not built. These are items 2 to 7.
     # `storm` is off this list now the weather exists, but no *skill* takes one as an
     # argument -- the schemas must still not mention it.
-    for absent in ("interact", "sample", "storm", "Ingenuity", "battery"):
+    # `scout` and the flyer join this list now Ingenuity is cut. A schema still offering
+    # it is exactly how prototype 10 spent a build telling the model it was blind.
+    for absent in ("interact", "sample", "storm", "Ingenuity", "battery",
+                   "scout", "flyer"):
         ok &= check(f"{absent} is not advertised", absent.lower() not in blob.lower())
     return ok
 
@@ -512,7 +494,7 @@ def test_the_schema_matches_what_is_wired_up():
 if __name__ == "__main__":
     S.DAY_MODE = "gemma"
     results = [test_a_plain_goto_drives(), test_going_nowhere_twice_is_said_out_loud(),
-               test_sorties_that_buy_no_map_are_said_out_loud_and_drives_are_never_scolded(),
+               test_drives_that_buy_no_map_are_said_out_loud_even_when_they_differ(),
                test_distance_spends_nothing(),
                test_a_missing_why_never_stops_the_call(),
                test_a_bad_avoid_never_becomes_an_empty_one(),

@@ -7,7 +7,6 @@ can drive it too.
 
 import re
 
-import flyer
 import nav
 import skills
 
@@ -16,7 +15,6 @@ HELP = [
     "goto X Y avoid=auto          ...dodging every X you marked. Visited only",
     "goto X Y avoid=(3,4),(5,6)   ...dodging these cells, this trip only",
     "distance X Y [avoid=...]     length floor and a reveal guess, costs no steps",
-    "scout X Y                    fly the window there. Centre, not corner",
     "execute                      do the work at the objective you are beside",
 ]
 
@@ -46,7 +44,7 @@ def run(world, text):
 
     if verb in ("", "help", "?"):
         return echo + [(line, "plain") for line in HELP]
-    if verb not in ("goto", "distance", "dist", "scout", "execute"):
+    if verb not in ("goto", "distance", "dist", "execute"):
         return echo + [(f"no such command: {verb}   (try help)", "bad")]
 
     if verb == "execute":
@@ -61,14 +59,6 @@ def run(world, text):
         return echo + [("needs an X and a Y -- try  goto 19 13", "bad")]
 
     x, y = cells[0]
-    if verb == "scout":
-        result, advice = flyer.scout(world, x, y)
-        world.say(str(result), result.tone)
-        out = [(str(result), result.tone)]
-        if advice:
-            out.append((f"   {advice}", result.tone))
-        return echo + out
-
     if verb == "goto":
         result = nav.goto(world, x, y, avoid)
         world.say(str(result), result.tone)   # so the HUD carries it too
