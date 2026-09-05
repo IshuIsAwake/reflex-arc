@@ -92,7 +92,7 @@ def _a_drive_is_recorded():
     # be rock, so there is nowhere else to re-route to and nav stops rather than
     # inventing a destination.
     w2 = World()
-    r2 = nav.goto(w2, 15, 7)       # the south face of the boulder due north
+    r2 = nav.goto(w2, 14, 9)       # the south face of the formation due north
     ok &= check("blocked *on* the target lays no second plan",
                 r2.code == "BLOCKED" and kinds(w2.reel[0]).count("plan") == 1, str(r2))
     return ok
@@ -158,7 +158,10 @@ def test_the_fog_opens_in_time_with_the_sortie():
 def test_the_plan_is_torn_up_when_it_is_wrong():
     print("yellow, then no yellow")
     w = World()
-    nav.goto(w, 15, 0)
+    # West across the C's mouth. The plan is drawn straight through the spine, which is
+    # fog until it is driven at, so the yellow really does cross rock and really is torn
+    # up. A route that merely passes a rectangle walks around it with nothing to see.
+    nav.goto(w, 2, 14)
     reel = anim.Reel(w)
 
     saw_plan_over_rock = saw_retracting = saw_pruned_to_rover = False

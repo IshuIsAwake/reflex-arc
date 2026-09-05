@@ -52,7 +52,7 @@ def test_a_run_is_on_disk_before_anyone_is_asked():
         ok &= check("and the first record is already readable",
                     lines(run.dir / "game.jsonl")[0]["kind"] == "day_open")
 
-        w.say("BLOCKED(at=(15,7))", "bad")
+        w.say("BLOCKED(at=(14,9))", "bad")
         ok &= check("every record lands as it happens",
                     len(lines(run.dir / "game.jsonl")) == 2)
         run.discard()
@@ -107,7 +107,7 @@ def test_the_game_log_carries_what_the_chat_log_cannot():
     print("game.jsonl")
     with tempfile.TemporaryDirectory() as d:
         run, w = rig(d)
-        nav.goto(w, 15, 7)          # driven at rock, so there is something to record
+        nav.goto(w, 14, 9)          # driven at rock, so there is something to record
         w.next_day()
         rows = lines(run.dir / "game.jsonl")
         kinds = [r["kind"] for r in rows]

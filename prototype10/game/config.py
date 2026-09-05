@@ -79,47 +79,53 @@ ARENA_NAME = "Jezero flats"
 # Run test_world.py after editing either. It fails on a sealed pocket, which is
 # invisible until someone has wasted a day walking to it.
 
-# 124 rock of 900 (13.8%), one connected region. Twelve boulders of nine cells and
-# exactly one of sixteen, none touching, at least two clear cells apart so the flood
-# fill can tell them apart and so can an eye. Generator seed 4.
+# 74 rock of 900 (8.2%), one connected region. Ten formations: six of six cells, three
+# of eight, and exactly one of twelve. At least two clear cells between any two, so the
+# flood fill and an eye agree on where one ends.
 #
-# **Every boulder is a square, and only one is 4x4.** A 3x3 cannot be seen from any
-# single row of `sight.rle` -- three rows each reading `x7-9 rock` have to be merged --
-# so "which formation is largest" is a question about merging rows and nothing else.
+# **The largest is a C, four wide and six tall, open along its east face.** Every other
+# formation here is a rectangle, and a rectangle is a question about merging rows of
+# `sight.rle` and nothing else. The C is not: it is the one shape whose size cannot be
+# read off a single row, and it is the one the geology question has as its answer.
 #
-# Boulders are allowed on the outer ring: keeping them off left a clear lap round the
+# It is also the only concavity on the map. A route planned west across its mouth goes
+# through the spine, which is fog until it is driven at, and the detour is round one of
+# the bars -- so `goto` can come back BLOCKED for the shape of the ground rather than
+# for having been pointed at a wall. The old 30 had nothing that did that.
+#
+# Formations are allowed on the outer ring: keeping them off left a clear lap round the
 # arena, and gemma ping-ponged along that free perimeter for 439 steps.
 FLATS_30 = [
     "..............................",
-    "........................###...",
-    "....###.................###...",
-    "....###.................###...",
-    "....###.......................",
-    "..............###.............",
-    "..............###.............",
-    "..............###.............",
-    ".........................###..",
-    "###....####..............###..",
-    "###....####........###...###..",
-    "###....####........###........",
-    ".......####........###........",
+    "..............................",
+    "....................##........",
+    ".........###........##........",
+    ".........###........##........",
+    "....................##........",
+    "..............................",
+    ".............##...............",
+    ".............##...............",
+    ".............##...............",
+    "........................##....",
+    "...####.................##....",
+    "...#....................##....",
+    "...#..........................",
+    "...#..........................",
+    "...#...........@..............",
+    "...####.......HHH.............",
+    "..............HHH........##...",
+    ".........................##...",
+    ".........................##...",
+    ".................###.....##...",
+    ".................###..........",
+    "..##..........................",
+    "..##..........................",
+    "..##......####................",
+    "..........####................",
+    ".....................###......",
+    ".....................###......",
     "..............................",
     "..............................",
-    "...............@..............",
-    ".......###....HHH.............",
-    ".......###....HHH.............",
-    ".......###....................",
-    "..............................",
-    "..........................###.",
-    "..........................###.",
-    "..................###.....###.",
-    "...###............###.........",
-    "...###............###.........",
-    "...###...###..................",
-    ".........###..................",
-    ".........###........###.......",
-    "....................###.......",
-    "....................###.......",
 ]
 
 # 440 rock of 2500 (17.6%), one connected region. One formation of thirty, twenty of

@@ -73,11 +73,13 @@ def test_the_whole_arena_is_one_region():
 # The thirteen boulders, as one cell of each and the size the finder must recover. Written
 # down rather than computed, because a test that recomputes the thing it is checking
 # agrees with any map at all.
-MEDIUM, LARGE = 9, 16
-BOULDERS = [(16, (7, 9)),
-            (9, (0, 9)), (9, (3, 23)), (9, (4, 2)), (9, (7, 16)), (9, (9, 25)),
-            (9, (14, 5)), (9, (18, 22)), (9, (19, 10)), (9, (20, 27)), (9, (24, 1)),
-            (9, (25, 8)), (9, (26, 20))]
+# Two medium classes now, not one. The 30 used to be twelve nines and a sixteen; it is
+# sixes and eights under a single twelve, which is the C.
+MEDIUM, LARGE = (6, 8), 12
+BOULDERS = [(12, (3, 11)),
+            (6, (2, 22)), (6, (9, 3)), (6, (13, 7)), (6, (17, 20)), (6, (21, 26)),
+            (6, (24, 10)),
+            (8, (10, 24)), (8, (20, 2)), (8, (25, 17))]
 
 
 # What each arena is made of, written down rather than computed, for the reason above.
@@ -86,7 +88,7 @@ BOULDERS = [(16, (7, 9)),
 # **Both arenas are guarded, and that is the point of this table.** Only the default one
 # used to be, so the 50x50 sat at twenty tied sixteens with no largest formation at all
 # and "which is the biggest rock" was put to a model four times before anyone checked.
-GEOLOGY = {"30": ((7, 9), {9: 12, 16: 1}),
+GEOLOGY = {"30": ((3, 11), {6: 6, 8: 3, 12: 1}),
            "50": ((30, 15), {9: 10, 16: 20, 30: 1})}
 
 
@@ -120,24 +122,23 @@ def test_every_arena_has_one_largest_formation():
 
 
 def test_the_geology_is_exactly_what_was_authored():
-    """Twelve medium boulders, exactly one large, and nothing else at all.
+    """Nine medium formations, exactly one large, and nothing else at all.
 
-    Boulder identity is not written on the map -- there is no tile character for it. It
-    is recovered by flood-filling the rock and reading sizes, so the map has to be
+    Formation identity is not written on the map -- there is no tile character for it.
+    It is recovered by flood-filling the rock and reading sizes, so the map has to be
     authored such that the answer is unambiguous.
 
-    **Dropping the ridges made that much stronger.** The previous arena mixed twelve
-    boulders with five long ridges and had to classify by a size *band*, where a ridge
-    segment landing in range became a thirteenth boulder nobody placed -- and on the
-    arena before that, 49 of 73 rock components sat in the band. With nothing but
-    boulders there is no band and no reclassification: every component is nine or
-    sixteen, so a merge (25) or a split fails outright.
+    **No size bands.** An older arena mixed boulders with ridges and had to classify by
+    a size *range*, where a ridge segment landing in it became a boulder nobody placed.
+    Every component here is six, eight or twelve, so a merge (14) or a split fails
+    outright rather than being absorbed as a legal size.
 
     **Exactly one large one** is the other half. Twenty tied sixteens made "the biggest
     formation" a question with no answer, and it was asked twice before anyone noticed.
 
     Checked by the size of the component *containing a named cell*, not just the
-    histogram, because two boulders merging while a third splits leaves the count right.
+    histogram, because two formations merging while a third splits leaves the count
+    right.
     """
     from world import components
     h, w = len(C.ARENA), len(C.ARENA[0])
@@ -148,7 +149,7 @@ def test_the_geology_is_exactly_what_was_authored():
 
     assert len(rock) == len(BOULDERS), \
         f"{len(rock)} components, not {len(BOULDERS)}: {sorted(len(c) for c in rock)}"
-    odd = sorted(len(c) for c in rock if len(c) not in (MEDIUM, LARGE))
+    odd = sorted(len(c) for c in rock if len(c) not in (*MEDIUM, LARGE))
     assert not odd, f"components that are neither medium nor large: {odd}"
     assert sorted(len(c) for c in rock) == sorted(n for n, _ in BOULDERS), \
         f"class counts are wrong: {sorted(len(c) for c in rock)}"
@@ -199,14 +200,14 @@ def test_a_move_into_rock_costs_nothing():
     """The exact test, because `nav` detects a refused drive by the step not being
     charged rather than by the position not changing."""
     w = World()
-    w.pos = (18, 11)                    # just west of the boulder at (19,10)
-    assert C.ARENA[11][19] == "#"
+    w.pos = (16, 20)                    # just west of the formation at (17,20)
+    assert C.ARENA[20][17] == "#"
     before = w.steps
     w.move(1, 0)
-    assert w.pos == (18, 11) and w.steps == before, (w.pos, w.steps)
+    assert w.pos == (16, 20) and w.steps == before, (w.pos, w.steps)
 
     w.move(0, -1)
-    assert w.pos == (18, 10) and w.steps == before + 1
+    assert w.pos == (16, 19) and w.steps == before + 1
 
 
 def test_driving_reveals_nothing_but_still_remembers_where_it_went():

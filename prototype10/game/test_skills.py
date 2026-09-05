@@ -83,8 +83,8 @@ def test_going_nowhere_twice_is_said_out_loud():
     # the invariant -- no steps spent means nothing changed means same answer.
     w2 = World()
     w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
-    w2.pos = (18, 11)
-    rock = {"x": 19, "y": 11, "why": "into the outcrop"}
+    w2.pos = (16, 20)
+    rock = {"x": 17, "y": 20, "why": "into the outcrop"}
     far = _repeat(w2, rock)
     ok &= check("an UNREACHABLE loop is caught too",
                 far[-1].result.startswith("UNREACHABLE")
