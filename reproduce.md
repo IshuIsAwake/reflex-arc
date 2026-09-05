@@ -140,6 +140,39 @@ Three things that will bite, all known:
 | `context 15000/16384 -- the morning is being dropped` | Normal after a long sol. The conversation is thrown away at nightfall; press `N`. |
 | A leftover `runs\pending-*` folder | Not an error. A run nobody answered `K` or `D` for, with everything still in it. |
 
+## 9 · Driving the real rover
+
+Everything above stays in the pygame window. This is the one step that leaves it — the live route
+file becomes real motor pulses, on the actual chassis.
+
+**Needs, before you start:**
+- The Pi's `rover_bridge/server.py` already running and reachable (IngenuitySim's
+  `rover_bridge/MANUAL.md` — usually `http://10.7.20.227:5000`, already up as a systemd service).
+- `settings.PLAN_FILE` set (it is by default) — `game/rover_link.py` reads whatever
+  `nav.plan_file()` resolves to, same file `main.py` is already writing.
+
+In a second terminal, alongside `main.py`, from `prototype8`:
+
+```bat
+.venv\Scripts\python.exe game\rover_link.py
+```
+
+It prints every plan change it picks up and drives it as it happens — nothing else to press. Leave
+`main.py` running in the first terminal exactly as before; this only ever reads the file it writes.
+
+**One route the rover physically cannot take yet:** a `LEFT` pivot needs the left motor to reverse,
+and that motor's DIR line is hardware-faulted right now (2026-09-05, IngenuitySim's
+`rover_bridge/MANUAL.md`). `rover_link.py` refuses the whole drive rather than run it out of order —
+you'll see `REFUSED: route needs a LEFT turn...` printed instead of the rover moving. Nothing to fix
+on this side; it clears once the motor is repaired.
+
+| what you see | what it is |
+|---|---|
+| `REFUSED: route needs a LEFT turn...` | Expected until the left motor is fixed — see above. |
+| `urlopen error [Errno 11001]` / `URLError` | Can't reach the Pi. Confirm the IP with `--pi`, and that `server.py` is actually running there. |
+| Nothing prints at all | `nav.plan_file()` resolved to `None`, or the file hasn't been written yet — drive somewhere in the game window first. |
+| Rover moves, but the wrong distance/angle | `ROVER_PULSE_SECONDS` in `rover_link.py` (0.5s) is a placeholder, not measured on this chassis yet. |
+
 ## What to try once it runs
 
 Press `T` and type `goto 2 2`. Watch the yellow route draw out into ground the rover has never seen,
