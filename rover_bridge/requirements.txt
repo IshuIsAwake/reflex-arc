@@ -1,0 +1,6 @@
+# NOTE: this Pi's OS is externally-managed (PEP 668) — `pip install -r
+# requirements.txt` refuses to run. Install these via apt instead:
+#   sudo apt install -y python3-flask python3-gpiozero python3-lgpio
+flask
+gpiozero
+lgpio

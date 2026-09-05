@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Rover Manual Test</title>
+  <style>
+    body {
+      font-family: sans-serif; text-align: center; margin-top: 60px;
+      background: #111; color: #eee; user-select: none;
+    }
+    .pad { display: flex; gap: 16px; justify-content: center; margin-top: 30px; }
+    button {
+      width: 140px; height: 140px; font-size: 20px; font-weight: bold; border-radius: 12px;
+      border: none; background: #2a6; color: white; cursor: pointer; user-select: none;
+    }
+    button:active, button.active { background: #1a4; }
+    #spin { background: #26a; }
+    #spin:active, #spin.active { background: #148; }
+    #status { margin-top: 24px; color: #aaa; font-family: monospace; }
+    #hint { margin-top: 8px; color: #666; font-size: 13px; max-width: 320px; margin-left: auto; margin-right: auto; }
+    #pulse { width: auto; height: auto; padding: 14px 24px; font-size: 16px; background: #a62; }
+    #pulse:active, #pulse.active { background: #741; }
+    #instr-text {
+      background: #1a1a1a; color: #eee; font-family: monospace; padding: 8px;
+      width: 320px;
+    }
+    #instr-run {
+      width: auto; height: auto; padding: 10px 20px; font-size: 15px;
+      background: #a62; margin-top: 10px;
+    }
+    #instr-run:disabled { background: #444; cursor: default; }
+    #instr-log {
+      margin-top: 14px; font-family: monospace; font-size: 13px; text-align: left;
+      max-width: 340px; margin-left: auto; margin-right: auto; white-space: pre-wrap;
+      color: #9c9;
+    }
+  </style>
+</head>
+<body>
+  <h2>Rover Manual Test</h2>
+  <p>Press and hold. Releasing sends stop automatically.</p>
+
+  <div class="pad">
+    <button id="fwd">&#8593;<br>FORWARD</button>
+    <button id="spin">&#8635;<br>TURN RIGHT</button>
+  </div>
+
+  <div style="margin-top: 20px;">
+    <button id="pulse">FORWARD 1s</button>
+  </div>
+
+  <div id="status">throttle: 0.00, turn: 0.00</div>
+  <div id="hint">
+    Left motor's DIR line is hardware-faulted (forward only, confirmed
+    2026-09-05 -- see MANUAL.md). Reverse and left-turn both need the left
+    motor to reverse, so only FORWARD and TURN RIGHT are wired up until
+    that's physically fixed. "FORWARD 1s" is a one-click timed pulse for
+    calibration -- measure distance covered, one press at a time, instead
+    of hand-timing a hold.
+  </div>
+
+  <hr style="margin: 40px auto; width: 320px; border-color: #333;">
+
+  <h3>Instructions</h3>
+  <p style="color:#666; font-size:13px; max-width:340px; margin:0 auto;">
+    Type a sequence -- FORWARD / LEFT / RIGHT / BACKWARD, separated by spaces
+    or newlines -- and Run drives it one action at a time, same 1s pulse as
+    above. LEFT can't turn that way directly (left motor still can't
+    reverse), so it's driven as three RIGHT pulses instead: 270&deg; right
+    lands on the same heading as 90&deg; left. BACKWARD is two RIGHTs and a
+    FORWARD.
+  </p>
+  <textarea id="instr-text" rows="5" placeholder="FORWARD FORWARD RIGHT FORWARD"></textarea>
+  <div>
+    <button id="instr-run">Run</button>
+  </div>
+  <div id="instr-log"></div>
+
+  <script>
+    const SPEED = 1.0;
+    const SEND_INTERVAL_MS = 200; // matches the Pi-side watchdog window
+
+    let sendTimer = null;
+
+    async function sendDrive(throttle, turn) {
+      document.getElementById("status").textContent =
+        `throttle: ${throttle.toFixed(2)}, turn: ${turn.toFixed(2)}`;
+      await fetch("/drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ throttle, turn }),
+      });
+    }
+
+    async function sendStop() {
+      if (sendTimer) { clearInterval(sendTimer); sendTimer = null; }
+      document.getElementById("status").textContent = "throttle: 0.00, turn: 0.00 (stopped)";
+      await fetch("/stop", { method: "POST" });
+    }
+
+    function holdToDrive(buttonId, throttle, turn) {
+      const el = document.getElementById(buttonId);
+      const start = (e) => {
+        e.preventDefault();
+        el.classList.add("active");
+        if (sendTimer) clearInterval(sendTimer);
+        sendDrive(throttle, turn);
+        // Re-send periodically while held -- the Pi-side watchdog auto-stops
+        // the motors if commands stop arriving.
+        sendTimer = setInterval(() => sendDrive(throttle, turn), SEND_INTERVAL_MS);
+      };
+      const end = () => {
+        el.classList.remove("active");
+        sendStop();
+      };
+      el.addEventListener("mousedown", start);
+      el.addEventListener("touchstart", start);
+      el.addEventListener("mouseup", end);
+      el.addEventListener("mouseleave", end);
+      el.addEventListener("touchend", end);
+    }
+
+    // FORWARD: both wheels forward -- left motor's only working direction.
+    holdToDrive("fwd", SPEED, 0.0);
+    // TURN RIGHT: left forward / right reverse. Right motor reverses fine,
+    // so this is the one pivot that actually works with the current fault.
+    holdToDrive("spin", 0.0, -SPEED);
+
+    // Safety: stop if the tab loses focus mid-press.
+    window.addEventListener("blur", sendStop);
+
+    // One timed pulse: drive, re-sending to beat the watchdog, then stop.
+    // Shared by the "FORWARD 1s" button and the instruction runner below --
+    // same idea as prototype8/game/rover_link.py's calibrated pulses.
+    const PULSE_MS = 1000;
+
+    async function pulse(throttle, turn, durationMs) {
+      if (sendTimer) clearInterval(sendTimer);
+      sendDrive(throttle, turn);
+      sendTimer = setInterval(() => sendDrive(throttle, turn), SEND_INTERVAL_MS);
+      await new Promise((r) => setTimeout(r, durationMs));
+      await sendStop();
+    }
+
+    document.getElementById("pulse").addEventListener("click", async () => {
+      const el = document.getElementById("pulse");
+      if (el.disabled) return;
+      el.disabled = true;
+      el.classList.add("active");
+      await pulse(SPEED, 0.0, PULSE_MS);
+      el.classList.remove("active");
+      el.disabled = false;
+    });
+
+    // --- typed instructions: FORWARD / LEFT / RIGHT / BACKWARD -----------
+    // Only FORWARD and RIGHT are ever actually sent -- the left motor can't
+    // reverse, so LEFT (a 90 deg turn that way) is driven as three RIGHT
+    // pulses instead: 270 deg right lands on the same heading as 90 deg
+    // left. Slower (3 pulses vs 1) and never touches the broken pivot.
+    const ACTION_DRIVE = { FORWARD: [SPEED, 0.0], RIGHT: [0.0, -SPEED] };
+
+    function parseInstructions(text) {
+      const tokens = text.trim().split(/\s+/).filter(Boolean).map((t) => t.toUpperCase());
+      const actions = [];
+      for (const t of tokens) {
+        if (t === "BACKWARD") actions.push("RIGHT", "RIGHT", "FORWARD");
+        else if (t === "LEFT") actions.push("RIGHT", "RIGHT", "RIGHT");
+        else if (t === "FORWARD" || t === "RIGHT") actions.push(t);
+        // anything else (typo, stray word) is silently dropped
+      }
+      return actions;
+    }
+
+    document.getElementById("instr-run").addEventListener("click", async () => {
+      const runBtn = document.getElementById("instr-run");
+      const log = document.getElementById("instr-log");
+      const actions = parseInstructions(document.getElementById("instr-text").value);
+
+      if (!actions.length) { log.textContent = "nothing to run"; return; }
+
+      runBtn.disabled = true;
+      for (let i = 0; i < actions.length; i++) {
+        log.textContent = `running ${i + 1}/${actions.length}: ${actions[i]}`;
+        await pulse(...ACTION_DRIVE[actions[i]], PULSE_MS);
+      }
+      log.textContent = `done -- ${actions.length} action(s)`;
+      runBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>
