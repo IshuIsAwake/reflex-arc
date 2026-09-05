@@ -85,8 +85,14 @@ def test_a_storm_never_walls_the_rover_in():
                 open_now = hazards._reach(w.here, C.SPAWN, s.cells)
                 open_clear = hazards._reach(w.here, C.SPAWN, frozenset())
                 share = len(open_now) / len(open_clear)
+                # Written here rather than read from settings: the knob this used to
+                # compare against went with the rejection loop in `hazards.py`, once a
+                # radius of 2 made it reject nothing. The property is what was worth
+                # keeping. A storm may cut a corner off the map, never the rover away
+                # from most of it -- a hard sol and a broken one read the same in a
+                # transcript, and this is the only thing that tells them apart.
                 ok &= check(f"{name} sol {w.day}: most of the arena is still reachable",
-                            share >= S.STORM_MAX_CUTOFF, f"{share:.0%} left")
+                            share >= 0.75, f"{share:.0%} left")
             w.next_day()
     C.use(C.DEFAULT_ARENA)
     return ok

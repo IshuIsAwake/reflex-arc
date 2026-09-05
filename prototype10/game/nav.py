@@ -560,9 +560,12 @@ def goto(world, x, y, avoid=None, executor=None):
 
             steps += 1
             walk.append(cell)
-            # No fog to peel back with the rover any more, but the reel still carries the
-            # per-step shape so `anim` does not need to know that.
-            reel.append(("step", (cell, [])))
+            # The disc this step opened. Unioned as we go because `world.revealed` holds
+            # one move's worth and is replaced by the next, and handed to the reel so the
+            # fog peels back in step with the rover being drawn rather than all at once
+            # the moment the call returns.
+            gained |= world.revealed
+            reel.append(("step", (cell, sorted(world.revealed))))
         else:
             return done("DONE")
 

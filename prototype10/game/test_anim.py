@@ -45,11 +45,10 @@ def kinds(timeline):
 
 def test_a_drive_is_recorded_as_it_happens():
     print("what nav writes down")
-    # Pinned above the shipped 5. A surprise reveals one cell here, not a radius-3 disc,
-    # so the rover feels its way round an outcrop instead of seeing it -- this diagonal
-    # needs seven replans where prototype 7 arrived inside five. The shipped value is
-    # left alone deliberately; this test is about what the reel records, not about the
-    # knob, and pinning it is how the two stop being one measurement.
+    # Pinned above the shipped 5, so the drive has room to be surprised as often as this
+    # route surprises it. The shipped value is left alone deliberately: this test is
+    # about what the reel records, not about the knob, and pinning it is how the two
+    # stop being one measurement.
     keep = S.NAV_REPLANS
     S.NAV_REPLANS = 10
     try:
@@ -60,7 +59,12 @@ def test_a_drive_is_recorded_as_it_happens():
 
 def _a_drive_is_recorded():
     w = World()
-    r = nav.goto(w, 29, 2)         # the long north-east diagonal, three boulders deep
+    # The long run west across the C and out to the far edge, three surprises deep. With
+    # the rover seeing again a short route mostly walks around what it meets, so the
+    # drive worth recording is a long one into ground the landing disc never lit. Open
+    # ground rather than an objective, because an objective is solid without being rock
+    # and the last block would not be an outcrop at all.
+    r = nav.goto(w, 0, 10)
     ok = check("it gets there", r.code == "DONE", str(r))
     ok &= check("one reel queued", len(w.reel) == 1, str(len(w.reel)))
 
@@ -112,46 +116,40 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
     # empty reel that would flash for a frame and mean nothing.
     w2 = World()
     w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
-    w2.pos = (32, 29)
-    nav.distance(w2, 33, 29)         # straight into a known outcrop
+    w2.pos = (16, 20)
+    nav.distance(w2, 17, 20)         # straight into a known outcrop
     ok &= check("an unreachable price draws nothing", not w2.reel)
     return ok
 
 
-def test_the_fog_opens_in_time_with_the_sortie():
-    """The reel holds revealed ground shut until the thing that revealed it is drawn.
+def test_the_fog_opens_in_time_with_the_drive():
+    """The reel holds revealed ground shut until the step that revealed it is drawn.
 
-    In prototype 7 that thing was the drive, and this test drove. Driving reveals
-    nothing here, so a drive has no fog to hold back at all -- the flyer does, and the
-    window has to stay veiled until the sortie plays or it appears before Ingenuity
-    does.
+    The world jumps and the screen lags it on purpose: `goto` returns with the whole
+    route driven and every disc along it already open in `seen`. If the reel showed that
+    straight away, the map would peel back before the rover had been drawn moving, and
+    the drive would explain nothing. So what the world has seen stays veiled until the
+    step that bought it plays.
+
+    Prototype 7 tested exactly this and prototype 8 could not -- a blind rover has no
+    fog to hold back. It is the drive's assertion again.
     """
     print("the fog is held shut")
     w = World()
     nav.goto(w, 15, 0)
     far = w.pos
-    ok = check("driving revealed nothing to hold back", not w.here.visible(*far))
+    ok = check("the world has already seen where it ended up", w.here.visible(*far))
+
     reel = anim.Reel(w)
     reel.tick(0.001)
-    ok &= check("so the drive veils nothing", not reel.veiled(far))
+    ok &= check("but the reel holds it back until the rover is drawn there",
+                reel.veiled(far),
+                "otherwise the map opens before the rover has left the pad")
     ok &= check("and it is drawn back at the pad", reel.where(w.pos) == C.SPAWN)
+
     play(reel)
-
-    # The sortie is the case that matters.
-    w2 = World()
-    target = (w2.pos[0], w2.pos[1] - S.SCOUT_RANGE)
-    flyer.scout(w2, *target)
-    ok &= check("the world has already seen the window", w2.here.visible(*target))
-
-    reel2 = anim.Reel(w2)
-    reel2.tick(0.001)
-    ok &= check("but the reel holds it back until Ingenuity is drawn",
-                reel2.veiled(target),
-                "otherwise the map opens before the flyer has left the ground")
-
-    play(reel2)
-    ok &= check("by the end nothing is veiled", not reel2.veiled(target))
-    ok &= check("and the rover never moved for it", reel2.where(w2.pos) == w2.pos)
+    ok &= check("by the end nothing is veiled", not reel.veiled(far))
+    ok &= check("and the rover has arrived", reel.where(w.pos) == w.pos)
     return ok
 
 
@@ -262,7 +260,7 @@ if __name__ == "__main__":
     S.DAY_MODE = "gemma"
     results = [test_a_drive_is_recorded_as_it_happens(),
                test_pricing_a_trip_is_blue_and_moves_nothing(),
-               test_the_fog_opens_in_time_with_the_sortie(),
+               test_the_fog_opens_in_time_with_the_drive(),
                test_the_plan_is_torn_up_when_it_is_wrong(),
                test_the_reel_never_changes_the_world(),
                test_skipping_lands_exactly_where_the_world_already_is(),

@@ -5,18 +5,19 @@
 # A wall clock for gemma is deferred -- it would make every run depend on machine speed.
 DAY_MODE = "gemma"
 DAY_SECONDS = 300
-# One per tile driven. Crossing is ~30 on the 30 and ~50 on the 50, so this has never
-# bound -- deliberately, and it is the balancing pass the final prototype owes. The
-# three things that now compete for it are driving, a 20-step sortie, and the work
-# itself; until the budget bites, none of them has to be chosen between.
-DAY_STEPS = 1000
+# One per tile driven, and it finally binds. Getting across the 30 is about 30 steps and
+# the objectives cost 40, 15 and 60, so the dearest one plus the drive to it is about 90
+# of the 150: one objective a sol with room left to explore, and a second only by giving
+# up the exploring. That trade is the balancing pass every prototype before this deferred.
+DAY_STEPS = 150
 
 TIME_SCALE = 1.0        # 2.0 makes the day run twice as fast
-# The rover is blind. Driving reveals nothing -- the flyer and running into rock are the
-# only two things that open fog, and that is the whole difference from prototype 7.
-# VISION_RADIUS survives as the renderer's lamp halo and as the disc `plan_txt --from`
-# opens around a start cell. Nothing in a live run reveals ground with it.
-VISION_RADIUS = 3
+# Driving opens fog again, a disc this wide around every cell reached. Prototype 8 blinded
+# the rover because Ingenuity was the better eye; with the flyer cut, a blind rover cannot
+# answer the geology question by driving, which is the only way it is meant to be answered.
+# **A guess sized to the smaller arena, not a swept value.** Two is roughly a fifth of the
+# 30's width per sortie-free sol; three made a single crossing hand over most of the map.
+VISION_RADIUS = 2
 BASE_REVEAL = 6         # the landing site, opened once on arrival -- the only free map
 
 # How the map is written into the view. "grid" is the picture, one character a cell.
@@ -186,14 +187,12 @@ MEMORY_CHARS = 600
 # rather than lethal: `nav` folds its cells into `avoid`, so a route goes round it or
 # is refused, and the rover never touches one. See `hazards.py`.
 STORM_ON = True
-STORM_RADIUS = 6        # a disc, so 6 is ~110 cells -- 4% of the 50, 12% of the 30
-# Placements are drawn until one is acceptable, then the sol gets no storm at all. A
-# missing storm is a duller sol; a badly placed one is an unplayable sol.
-STORM_TRIES = 40
-# A storm may cut a corner off the arena. It may not cut the rover off from this much
-# of what it could otherwise reach, which is the difference between a hard sol and a
-# broken one -- and the two look identical in a transcript.
-STORM_MAX_CUTOFF = 0.75
+# A disc, so 2 is 13 cells -- 1.6% of the 30's open ground. Enough to be worth planning
+# around on a 150-step day and too small to seal anything: measured over 500 sols, the
+# worst placement still left 97.4% of the arena reachable. `STORM_TRIES` and
+# `STORM_MAX_CUTOFF` guarded against the placement that walls the rover in and are gone
+# with them; `hazards.py` says what brings them back.
+STORM_RADIUS = 2
 
 # --- navigation ------------------------------------------------------------
 # A goto plans over fog as though it were empty, so it drives into outcrops it could not

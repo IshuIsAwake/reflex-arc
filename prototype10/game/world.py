@@ -228,9 +228,9 @@ class Area:
                 for x in range(max(0, cx - r), min(self.w, cx + r + 1))}
 
     def reveal_all(self):
-        """Lift the whole fog. Never used by the game -- the flyer and contact with rock
-        are the only two things that open the map there. This is for `plan_txt --survey`,
-        where seeing everything is the deliberate point rather than a bug."""
+        """Lift the whole fog. Never used by the game, where driving and contact with
+        rock open the map a disc at a time. This is for `plan_txt --survey`, where
+        seeing everything is the deliberate point rather than a bug."""
         self.seen |= {(x, y) for y in range(self.h) for x in range(self.w)}
 
     def reveal_cells(self, cells):
@@ -248,8 +248,8 @@ class Area:
     def reveal(self, px, py, r=None):
         """Open a disc of fog around a cell. Returns what was new.
 
-        The rover has no cameras, so driving never calls this -- the landing site and
-        `plan_txt --survey` are the only two callers left.
+        Driving is the main caller -- `World._arrive` opens `VISION_RADIUS` around every
+        cell the rover reaches -- alongside the landing site and `plan_txt --survey`.
         """
         return self.reveal_cells(self.disc(px, py, r))
 
@@ -322,13 +322,19 @@ class World:
             self.recorder(kind, day=self.day, **fields)
 
     def _arrive(self):
-        """Arriving reveals nothing. The rover has no cameras: only the flyer and
-        running into rock open fog, which is the whole difference from prototype 7.
+        """Arriving opens fog again, out to `VISION_RADIUS`.
 
-        `visited` is still tracked, because `avoid="auto"` is legal only for ground the
-        rover has actually stood on.
+        Prototype 8 blinded the rover on the grounds that Ingenuity was the only eye
+        worth having. Take the flyer away from that and nothing can see at all, and the
+        geology question -- which formation is largest -- stops being answerable by
+        driving, which is the only way it was ever meant to be answered.
+
+        `revealed` holds this move's worth and is replaced on the next, so a watcher
+        redrawing per step gets the cells that just opened rather than all of them.
+        `visited` is tracked separately: `avoid="auto"` is legal only for ground the
+        rover has actually stood on, which is a smaller set than what it has seen.
         """
-        self.revealed = set()
+        self.revealed = self.here.reveal(*self.pos)
         self.here.visited.add(self.pos)
 
     def play(self, timeline):

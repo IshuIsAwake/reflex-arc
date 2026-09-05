@@ -285,26 +285,30 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     assert w.last_walk[1] == [], "pricing a trip drives nothing and should show nothing"
 
 
-def test_a_drive_buys_no_map_at_all():
-    """`steps` says what it cost; `new` is the map it bought, and it is always zero
-    unless the rover ran into something.
+def test_a_drive_buys_the_map_it_drove_past():
+    """`steps` says what a drive cost; `new` is the map it bought.
 
-    This is prototype 7's assertion inverted. There, a drive that revealed nothing was
-    the failure worth catching. Here it is every drive, by construction, and the only
-    non-zero `new` a drive can produce is the cell it collided with.
+    With the rover seeing again, driving into fog is how the map grows, and `new` is
+    what makes that legible to the caller -- a drive worth its steps opened ground, and
+    one that opened none went somewhere already known. Prototype 8 pinned this at zero
+    by construction and the field said nothing; this is it earning its place back.
+
+    Ground already seen still buys nothing, which is the half that keeps the number
+    honest. `_stuck` reads exactly this to notice a run of calls going nowhere.
     """
     w = World()
     first = nav.goto(w, 15, 10)
-    assert first.code == "DONE" and first.new == 0, str(first)
+    assert first.code == "DONE" and first.new > 0, ("driving into fog buys map",
+                                                    str(first))
     assert "new=" in str(first), str(first)
     assert first.steps > 0, ("it really did drive there", str(first))
 
     again = nav.goto(w, 15, 10)
-    assert again.new == 0, ("standing still buys nothing either", str(again))
+    assert again.new == 0, ("standing still buys nothing", str(again))
 
     back = nav.goto(w, 15, 15)
     assert back.steps > 0, str(back)
-    assert back.new == 0, str(back)
+    assert back.new == 0, ("...and neither does driving back over seen ground", str(back))
 
     # A refused drive went nowhere and revealed nothing, and both are true, so the
     # field is 0 rather than absent.
@@ -325,25 +329,27 @@ def test_a_drive_buys_no_map_at_all():
     assert w2.nav_log[-1]["new"] == logged.new, w2.nav_log[-1]
 
 
-def test_running_into_rock_is_the_only_thing_driving_reveals():
-    """Contact reveals the cell hit, and nothing else. This is what stops the replan
-    loop deadlocking.
+def test_running_into_rock_reveals_the_cell_that_stopped_the_drive():
+    """Contact reveals the cell hit. That is what stops the replan loop deadlocking, and
+    it is a separate thing from the disc driving opens.
 
-    `_passable` treats fog as clear, so a rock the rover cannot see is a rock the
-    planner routes straight back into. With no reveal on contact the replan returns the
+    `_passable` treats fog as clear, so a rock the rover cannot see is a rock the planner
+    routes straight back into. Without the reveal on contact the replan returns the
     identical path, the rover bumps the same cell until NAV_REPLANS runs out, and every
     drive into unmapped ground dies at the first obstacle. The proof that it does not is
     a drive that hits *several distinct* walls and still arrives.
+
+    Vision alone does not cover this. A wall met head-on is by definition a cell the
+    rover was driven at rather than one it stood next to and looked at, and at
+    VISION_RADIUS 2 the disc trails the drive rather than leading it.
     """
     C.use("50")
     try:
         w = World()
-        before = set(w.here.seen)
         walls = set()
         for _ in range(12):
             r = nav.goto(w, 0, 0)
-            assert r.new == len(r.walls), ("a drive reveals its walls and nothing "
-                                           "else", str(r))
+            assert r.new >= len(r.walls), ("a drive reveals at least its walls", str(r))
             walls |= set(r.walls)
             if r.code == "DONE":
                 break
@@ -352,9 +358,6 @@ def test_running_into_rock_is_the_only_thing_driving_reveals():
                                  "bumping rock the next one still cannot see")
 
         assert len(walls) > 1, "the route through fog has to have hit something"
-        assert w.here.seen - before == walls, \
-            ("exactly the walls, and not one cell of the route it drove",
-             sorted(w.here.seen - before))
         for cell in walls:
             assert w.here.visible(*cell), f"{cell} was hit and is still fogged"
             assert cell not in w.here.visited, "hit, not stood on"

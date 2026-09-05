@@ -229,9 +229,11 @@ ARENAS = {"30": (FLATS_30, (15, 15), OBJECTIVES_30),
 # broke seven suites at once. This one is what anything gets that does not ask --
 # the tests and the probes, whose coordinates are all written against the 30.
 DEFAULT_ARENA = "30"
-# ...and this is what `main.py` opens on. The 50, because the flyer's window and range
-# were swept there: on the 30 a single sortie buys a fifth of the arena.
-APP_ARENA = "50"
+# ...and this is what `main.py` opens on. The 30 now: it is the size the real arena will
+# be, the C lives on it, and a 150-step day is budgeted against crossing it. The 50 was
+# the app arena while Ingenuity was in, because a sortie on the 30 bought a fifth of the
+# map in one go; with the flyer cut there is nothing left that needs the room.
+APP_ARENA = "30"
 
 
 def use(name):

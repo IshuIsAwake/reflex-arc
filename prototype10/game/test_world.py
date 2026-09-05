@@ -210,11 +210,13 @@ def test_a_move_into_rock_costs_nothing():
     assert w.pos == (16, 19) and w.steps == before + 1
 
 
-def test_driving_reveals_nothing_but_still_remembers_where_it_went():
+def test_driving_opens_fog_and_still_remembers_where_it_went():
     """Driving west across the landing plain. The route is not assumed to be clear --
     it stops where the ground does, and the assertions are about whatever it reached.
 
-    The rover is blind: this is the assertion prototype 7 made in reverse.
+    The rover can see again, so this is prototype 8's assertion back the right way up.
+    Seen and stood-on stay two different sets, and it is the *other* direction that
+    matters now: everything driven over has been seen, and a great deal more besides.
     """
     w = World()
     start = w.pos
@@ -226,13 +228,14 @@ def test_driving_reveals_nothing_but_still_remembers_where_it_went():
             break
     assert w.pos[0] < start[0] - 8, f"only got to {w.pos}, expected an open plain west"
 
-    assert w.here.seen == seen_before, "driving must not lift one cell of fog"
-    assert not w.here.visible(*w.pos), \
-        "not even the cell it is standing on -- the flyer is the only eye"
+    assert w.here.seen > seen_before, "driving has to lift fog"
+    assert w.here.visible(*w.pos), "starting with the cell it is standing on"
     assert w.pos in w.here.visited, \
-        "stood-on is tracked anyway, because avoid=auto depends on it"
-    assert w.here.visited - w.here.seen, \
-        "seen and stood-on are now different sets in the other direction"
+        "stood-on is tracked separately, because avoid=auto depends on it"
+    assert w.here.visited <= w.here.seen, \
+        "it cannot have stood somewhere it never saw"
+    assert w.here.seen - w.here.visited, \
+        "...and it has seen a good deal it never stood on, which is what the disc buys"
 
 
 def test_the_sol_rolls_over():

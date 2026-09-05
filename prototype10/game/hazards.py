@@ -80,14 +80,23 @@ def spawn_for_day(area, day, start, keep_clear=()):
     if not before:
         return None                     # nowhere to drive from anyway
 
-    for _ in range(S.STORM_TRIES):
+    # Redrawn when a placement lands on the pad or an objective, which is the only reason
+    # left to draw twice. Twenty is far more than enough for a disc of thirteen cells, and
+    # it is a local number rather than a setting because nobody tunes it.
+    #
+    # There used to be a second rejection here -- a storm may cut a corner off the map but
+    # not seal the rover away from most of it -- with `STORM_TRIES` and `STORM_MAX_CUTOFF`
+    # in settings to drive it. Both went when the radius came down to 2. Measured over 500
+    # sols on the 30: the worst placement left 97.4% of the arena reachable and the 75%
+    # cutoff rejected nothing at all. **Raise STORM_RADIUS much past 2 and that guard has
+    # to come back.** `test_a_storm_never_walls_the_rover_in` is what notices, and it
+    # checks the property rather than the knob.
+    for _ in range(20):
         cx, cy = rng.randrange(area.w), rng.randrange(area.h)
         cells = _disc(cx, cy, S.STORM_RADIUS, area.w, area.h)
         if not cells or cells & keep:
             continue
-        # It may cut a corner off the map; it may not cut the rover off from most of it.
-        if len(_reach(area, start, frozenset(cells))) >= len(before) * S.STORM_MAX_CUTOFF:
-            return Storm(cells, (cx, cy), day)
+        return Storm(cells, (cx, cy), day)
     return None
 
 
