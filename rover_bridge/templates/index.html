@@ -1,191 +1,390 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Rover Manual Test</title>
-  <style>
-    body {
-      font-family: sans-serif; text-align: center; margin-top: 60px;
-      background: #111; color: #eee; user-select: none;
-    }
-    .pad { display: flex; gap: 16px; justify-content: center; margin-top: 30px; }
-    button {
-      width: 140px; height: 140px; font-size: 20px; font-weight: bold; border-radius: 12px;
-      border: none; background: #2a6; color: white; cursor: pointer; user-select: none;
-    }
-    button:active, button.active { background: #1a4; }
-    #spin { background: #26a; }
-    #spin:active, #spin.active { background: #148; }
-    #status { margin-top: 24px; color: #aaa; font-family: monospace; }
-    #hint { margin-top: 8px; color: #666; font-size: 13px; max-width: 320px; margin-left: auto; margin-right: auto; }
-    #pulse { width: auto; height: auto; padding: 14px 24px; font-size: 16px; background: #a62; }
-    #pulse:active, #pulse.active { background: #741; }
-    #instr-text {
-      background: #1a1a1a; color: #eee; font-family: monospace; padding: 8px;
-      width: 320px;
-    }
-    #instr-run {
-      width: auto; height: auto; padding: 10px 20px; font-size: 15px;
-      background: #a62; margin-top: 10px;
-    }
-    #instr-run:disabled { background: #444; cursor: default; }
-    #instr-log {
-      margin-top: 14px; font-family: monospace; font-size: 13px; text-align: left;
-      max-width: 340px; margin-left: auto; margin-right: auto; white-space: pre-wrap;
-      color: #9c9;
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rover Plan Runner</title>
+<style>
+  :root {
+    --bg: #0e1113; --panel: #171b1e; --line: #262c31;
+    --ink: #e6e9ea; --dim: #8b969c; --faint: #5d686e;
+    --go: #2f9e6b; --go-hi: #38b87e;
+    --pivot: #3b7dd8; --pivot-hi: #4a8ee9;
+    --stop: #c4483f;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 16px 60px; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 13px; margin: 0 0 20px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--faint); margin: 0 0 12px; font-weight: 600;
+  }
+  label { display: block; font-size: 13px; color: var(--dim); margin-bottom: 5px; }
+  textarea, select, input[type=number] {
+    width: 100%; background: #0b0e10; color: var(--ink); font-family: var(--mono);
+    font-size: 14px; border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px;
+  }
+  textarea { resize: vertical; min-height: 84px; }
+  textarea:focus, select:focus, input:focus { outline: none; border-color: #3d4a52; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; min-width: 0; }
+  button {
+    font: inherit; font-weight: 600; color: #fff; border: none; border-radius: 8px;
+    padding: 11px 14px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  button:disabled { background: #2a3136 !important; color: var(--faint); cursor: default; }
+  .go { background: var(--go); } .go:active, .go.on { background: var(--go-hi); }
+  .pivot { background: var(--pivot); } .pivot:active, .pivot.on { background: var(--pivot-hi); }
+  .ghost { background: #2b3238; } .ghost:active { background: #364046; }
+  .stop { background: var(--stop); }
+  .hold { height: 96px; font-size: 15px; }
+  .arrow { display: block; font-size: 22px; line-height: 1.1; }
+  #conn { float: right; font: 12px var(--mono); color: var(--faint); }
+  #conn.up { color: var(--go-hi); } #conn.down { color: var(--stop); }
+  .readout {
+    display: flex; gap: 14px; font: 13px var(--mono); color: var(--dim);
+    border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px;
+  }
+  .readout b { color: var(--ink); font-weight: 600; }
+  #log {
+    font: 12.5px/1.65 var(--mono); color: var(--dim); white-space: pre-wrap;
+    max-height: 220px; overflow-y: auto; margin-top: 12px;
+    border-top: 1px solid var(--line); padding-top: 12px;
+  }
+  #log .now { color: var(--go-hi); }
+  #log .bad { color: var(--stop); }
+  .note {
+    font-size: 12.5px; line-height: 1.6; color: var(--faint);
+    border-left: 2px solid var(--line); padding-left: 12px; margin-top: 14px;
+  }
+  .note b { color: var(--dim); font-weight: 600; }
+  code { font-family: var(--mono); font-size: 0.92em; color: var(--dim); }
+</style>
 </head>
 <body>
-  <h2>Rover Manual Test</h2>
-  <p>Press and hold. Releasing sends stop automatically.</p>
+<div class="wrap">
 
-  <div class="pad">
-    <button id="fwd">&#8593;<br>FORWARD</button>
-    <button id="spin">&#8635;<br>TURN RIGHT</button>
+  <span id="conn">checking&hellip;</span>
+  <h1>Rover Plan Runner</h1>
+  <p class="sub">Drives a <code>plan.txt</code> of absolute headings on the real rover.</p>
+
+  <div class="panel">
+    <h2>Plan</h2>
+    <label for="plan">N / E / S / W &mdash; one per line, or separated by spaces</label>
+    <textarea id="plan" spellcheck="false" placeholder="N&#10;N&#10;N&#10;E"></textarea>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label for="heading">Rover currently faces</label>
+        <select id="heading">
+          <option value="0">N &mdash; north</option>
+          <option value="1">E &mdash; east</option>
+          <option value="2">S &mdash; south</option>
+          <option value="3">W &mdash; west</option>
+        </select>
+      </div>
+      <div>
+        <label for="file">&hellip;or load a file</label>
+        <button class="ghost" style="width:100%" id="pick">Choose plan.txt</button>
+        <input type="file" id="file" accept=".txt,text/plain" hidden>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="preview">Preview</button>
+      <button class="go" id="run">Run plan</button>
+    </div>
+    <button class="stop" id="abort" style="width:100%; margin-top:10px" disabled>Abort &mdash; stop now</button>
+
+    <div class="readout">
+      <span>heading <b id="r-head">N</b></span>
+      <span>step <b id="r-step">0/0</b></span>
+      <span>throttle <b id="r-thr">0.00</b></span>
+      <span>turn <b id="r-turn">0.00</b></span>
+    </div>
+    <div id="log">idle.</div>
   </div>
 
-  <div style="margin-top: 20px;">
-    <button id="pulse">FORWARD 1s</button>
+  <div class="panel">
+    <h2>Manual &middot; calibration</h2>
+    <div class="row">
+      <button class="go hold" id="m-fwd"><span class="arrow">&#8593;</span>FORWARD</button>
+      <button class="pivot hold" id="m-left"><span class="arrow">&#8634;</span>LEFT 90&deg;</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="ghost" id="p-fwd">Pulse forward</button>
+      <button class="ghost" id="p-left">Pulse left</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label for="ms-fwd">one cell (ms)</label>
+        <input type="number" id="ms-fwd" value="1000" min="100" max="10000" step="50">
+      </div>
+      <div>
+        <label for="ms-turn">90&deg; left (ms)</label>
+        <input type="number" id="ms-turn" value="1000" min="100" max="10000" step="50">
+      </div>
+    </div>
+    <p class="note">
+      Neither number is calibrated. Pulse forward, measure how far it went, and set
+      <b>one cell</b> to the time that covers one grid cell. Same for the turn: adjust
+      until a single pulse lands on a quarter turn. Every plan is driven out of these two.
+    </p>
   </div>
 
-  <div id="status">throttle: 0.00, turn: 0.00</div>
-  <div id="hint">
-    Left motor's DIR line is hardware-faulted (forward only, confirmed
-    2026-09-05 -- see MANUAL.md). Reverse and left-turn both need the left
-    motor to reverse, so only FORWARD and TURN RIGHT are wired up until
-    that's physically fixed. "FORWARD 1s" is a one-click timed pulse for
-    calibration -- measure distance covered, one press at a time, instead
-    of hand-timing a hold.
-  </div>
-
-  <hr style="margin: 40px auto; width: 320px; border-color: #333;">
-
-  <h3>Instructions</h3>
-  <p style="color:#666; font-size:13px; max-width:340px; margin:0 auto;">
-    Type a sequence -- FORWARD / LEFT / RIGHT / BACKWARD, separated by spaces
-    or newlines -- and Run drives it one action at a time, same 1s pulse as
-    above. LEFT can't turn that way directly (left motor still can't
-    reverse), so it's driven as three RIGHT pulses instead: 270&deg; right
-    lands on the same heading as 90&deg; left. BACKWARD is two RIGHTs and a
-    FORWARD.
+  <p class="note">
+    <b>The rover can only go forward and pivot anticlockwise.</b> One motor's DIR line is
+    faulted and spins forward whatever it is told, so any command asking it to reverse
+    produces straight-line motion instead of a pivot &mdash; which is what
+    <code>turn&nbsp;=&nbsp;-1</code> did on the old page, and why it drove forward when
+    the button said spin. Only <code>turn&nbsp;=&nbsp;+1</code> pivots, because that asks
+    the <em>healthy</em> motor to reverse. So <code>turn&nbsp;=&nbsp;-1</code> is never
+    sent from this page. A right turn is three lefts; a reversal is two lefts, a forward,
+    then two lefts to restore the heading.
   </p>
-  <textarea id="instr-text" rows="5" placeholder="FORWARD FORWARD RIGHT FORWARD"></textarea>
-  <div>
-    <button id="instr-run">Run</button>
-  </div>
-  <div id="instr-log"></div>
 
-  <script>
-    const SPEED = 1.0;
-    const SEND_INTERVAL_MS = 200; // matches the Pi-side watchdog window
+</div>
 
-    let sendTimer = null;
+<script>
+"use strict";
 
-    async function sendDrive(throttle, turn) {
-      document.getElementById("status").textContent =
-        `throttle: ${throttle.toFixed(2)}, turn: ${turn.toFixed(2)}`;
-      await fetch("/drive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ throttle, turn }),
-      });
+// The rover's whole vocabulary. turn = -1 is deliberately absent: it asks the
+// faulted motor to reverse, and a stuck-forward motor answers that by driving
+// both wheels forward. It looks like a pivot on the wire and is a straight line
+// on the floor.
+const SPEED = 1.0;
+const FORWARD = [SPEED, 0.0];
+const LEFT    = [0.0, SPEED];   // anticlockwise, the one pivot that works
+
+const HEADINGS = ["N", "E", "S", "W"];   // clockwise, so a left turn is -1 mod 4
+const WATCHDOG_MS = 200;                 // Pi stops the motors after 500ms of silence
+
+const $ = (id) => document.getElementById(id);
+const msFwd  = () => Math.max(100, +$("ms-fwd").value  || 1000);
+const msTurn = () => Math.max(100, +$("ms-turn").value || 1000);
+
+let timer = null;      // watchdog re-send
+let running = false;   // a plan is being driven
+let aborted = false;
+
+// --- talking to the Pi ------------------------------------------------------
+
+async function drive(throttle, turn) {
+  $("r-thr").textContent  = throttle.toFixed(2);
+  $("r-turn").textContent = turn.toFixed(2);
+  await fetch("/drive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ throttle, turn }),
+  });
+}
+
+async function halt() {
+  if (timer) { clearInterval(timer); timer = null; }
+  $("r-thr").textContent = "0.00";
+  $("r-turn").textContent = "0.00";
+  await fetch("/stop", { method: "POST" });
+}
+
+// One timed pulse, re-sent every 200ms so the Pi's 500ms watchdog never fires
+// mid-move. Resolves once the motors are stopped again.
+async function pulse(action, ms) {
+  if (timer) clearInterval(timer);
+  await drive(action[0], action[1]);
+  timer = setInterval(() => drive(action[0], action[1]), WATCHDOG_MS);
+  await new Promise((r) => setTimeout(r, ms));
+  await halt();
+}
+
+// --- the plan ---------------------------------------------------------------
+
+// Absolute headings in, pulses out. Turning is this side's business: the plan
+// file says where to end up, never how to get the nose round.
+function parsePlan(text) {
+  const tokens = text.trim().split(/[\s,]+/).filter(Boolean);
+  const steps = [], bad = [];
+  tokens.forEach((t, i) => {
+    const d = HEADINGS.indexOf(t.toUpperCase());
+    if (d < 0) bad.push('line ' + (i + 1) + ': "' + t + '"');
+    else steps.push(d);
+  });
+  return { steps: steps, bad: bad };
+}
+
+// From `heading`, the moves that walk `steps`. A left turn is one step
+// anticlockwise, so facing `to` from `from` costs (from - to) mod 4 lefts:
+// N->W is one, N->E is three the long way round, N->S is two.
+function expand(steps, heading) {
+  const out = [];
+  for (const to of steps) {
+    const lefts = (heading - to + 4) % 4;
+    for (let i = 0; i < lefts; i++) {
+      out.push({ move: "LEFT", face: (heading - i - 1 + 4) % 4 });
     }
+    heading = to;
+    out.push({ move: "FORWARD", face: heading });
+  }
+  return { moves: out, heading: heading };
+}
 
-    async function sendStop() {
-      if (sendTimer) { clearInterval(sendTimer); sendTimer = null; }
-      document.getElementById("status").textContent = "throttle: 0.00, turn: 0.00 (stopped)";
-      await fetch("/stop", { method: "POST" });
-    }
+function say(text, cls) {
+  const log = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
 
-    function holdToDrive(buttonId, throttle, turn) {
-      const el = document.getElementById(buttonId);
-      const start = (e) => {
-        e.preventDefault();
-        el.classList.add("active");
-        if (sendTimer) clearInterval(sendTimer);
-        sendDrive(throttle, turn);
-        // Re-send periodically while held -- the Pi-side watchdog auto-stops
-        // the motors if commands stop arriving.
-        sendTimer = setInterval(() => sendDrive(throttle, turn), SEND_INTERVAL_MS);
-      };
-      const end = () => {
-        el.classList.remove("active");
-        sendStop();
-      };
-      el.addEventListener("mousedown", start);
-      el.addEventListener("touchstart", start);
-      el.addEventListener("mouseup", end);
-      el.addEventListener("mouseleave", end);
-      el.addEventListener("touchend", end);
-    }
+function clearLog() { $("log").textContent = ""; }
 
-    // FORWARD: both wheels forward -- left motor's only working direction.
-    holdToDrive("fwd", SPEED, 0.0);
-    // TURN RIGHT: left forward / right reverse. Right motor reverses fine,
-    // so this is the one pivot that actually works with the current fault.
-    holdToDrive("spin", 0.0, -SPEED);
+function read() {
+  const parsed = parsePlan($("plan").value);
+  if (parsed.bad.length) {
+    clearLog();
+    say("REFUSED — not a heading: " + parsed.bad.join(", "), "bad");
+    say("Nothing sent. A plan is N, E, S or W and nothing else.");
+    return null;
+  }
+  if (!parsed.steps.length) {
+    clearLog();
+    say("nothing to run — the plan is empty.");
+    return null;
+  }
+  return parsed.steps;
+}
 
-    // Safety: stop if the tab loses focus mid-press.
-    window.addEventListener("blur", sendStop);
+$("preview").addEventListener("click", () => {
+  const steps = read();
+  if (!steps) return;
+  const plan = expand(steps, +$("heading").value);
+  const lefts = plan.moves.filter((m) => m.move === "LEFT").length;
+  const fwds = plan.moves.length - lefts;
+  const secs = fwds * msFwd() / 1000 + lefts * msTurn() / 1000;
+  clearLog();
+  say(steps.length + " cell(s): " + steps.map((d) => HEADINGS[d]).join(" "));
+  say(plan.moves.length + " pulse(s): " + plan.moves.map((m) => m.move[0]).join(" "));
+  say(lefts + " turn(s), " + fwds + " forward(s) — about " + secs.toFixed(1) + "s");
+  say("ends facing " + HEADINGS[plan.heading] + ". Nothing sent.");
+});
 
-    // One timed pulse: drive, re-sending to beat the watchdog, then stop.
-    // Shared by the "FORWARD 1s" button and the instruction runner below --
-    // same idea as prototype8/game/rover_link.py's calibrated pulses.
-    const PULSE_MS = 1000;
+$("run").addEventListener("click", async () => {
+  if (running) return;
+  const steps = read();
+  if (!steps) return;
 
-    async function pulse(throttle, turn, durationMs) {
-      if (sendTimer) clearInterval(sendTimer);
-      sendDrive(throttle, turn);
-      sendTimer = setInterval(() => sendDrive(throttle, turn), SEND_INTERVAL_MS);
-      await new Promise((r) => setTimeout(r, durationMs));
-      await sendStop();
-    }
+  let heading = +$("heading").value;
+  const moves = expand(steps, heading).moves;
 
-    document.getElementById("pulse").addEventListener("click", async () => {
-      const el = document.getElementById("pulse");
-      if (el.disabled) return;
-      el.disabled = true;
-      el.classList.add("active");
-      await pulse(SPEED, 0.0, PULSE_MS);
-      el.classList.remove("active");
-      el.disabled = false;
-    });
+  running = true;
+  aborted = false;
+  $("run").disabled = true;
+  $("preview").disabled = true;
+  $("abort").disabled = false;
+  clearLog();
+  say("driving " + moves.length + " pulse(s) from " + HEADINGS[heading] + ".");
 
-    // --- typed instructions: FORWARD / LEFT / RIGHT / BACKWARD -----------
-    // Only FORWARD and RIGHT are ever actually sent -- the left motor can't
-    // reverse, so LEFT (a 90 deg turn that way) is driven as three RIGHT
-    // pulses instead: 270 deg right lands on the same heading as 90 deg
-    // left. Slower (3 pulses vs 1) and never touches the broken pivot.
-    const ACTION_DRIVE = { FORWARD: [SPEED, 0.0], RIGHT: [0.0, -SPEED] };
+  for (let i = 0; i < moves.length; i++) {
+    if (aborted) break;
+    const m = moves[i];
+    $("r-step").textContent = (i + 1) + "/" + moves.length;
+    say(String(i + 1).padStart(3) + "  " + m.move, "now");
+    await pulse(m.move === "FORWARD" ? FORWARD : LEFT,
+                m.move === "FORWARD" ? msFwd() : msTurn());
+    heading = m.face;
+    $("r-head").textContent = HEADINGS[heading];
+    $("heading").value = heading;   // survives an abort, so a re-run starts true
+  }
 
-    function parseInstructions(text) {
-      const tokens = text.trim().split(/\s+/).filter(Boolean).map((t) => t.toUpperCase());
-      const actions = [];
-      for (const t of tokens) {
-        if (t === "BACKWARD") actions.push("RIGHT", "RIGHT", "FORWARD");
-        else if (t === "LEFT") actions.push("RIGHT", "RIGHT", "RIGHT");
-        else if (t === "FORWARD" || t === "RIGHT") actions.push(t);
-        // anything else (typo, stray word) is silently dropped
-      }
-      return actions;
-    }
+  await halt();
+  if (aborted) {
+    say("ABORTED at " + $("r-step").textContent + ". Facing " + HEADINGS[heading] +
+        " — check before re-running.", "bad");
+  } else {
+    say("DONE — " + moves.length + " pulse(s), facing " + HEADINGS[heading] + ".");
+  }
 
-    document.getElementById("instr-run").addEventListener("click", async () => {
-      const runBtn = document.getElementById("instr-run");
-      const log = document.getElementById("instr-log");
-      const actions = parseInstructions(document.getElementById("instr-text").value);
+  running = false;
+  $("run").disabled = false;
+  $("preview").disabled = false;
+  $("abort").disabled = true;
+});
 
-      if (!actions.length) { log.textContent = "nothing to run"; return; }
+$("abort").addEventListener("click", async () => { aborted = true; await halt(); });
 
-      runBtn.disabled = true;
-      for (let i = 0; i < actions.length; i++) {
-        log.textContent = `running ${i + 1}/${actions.length}: ${actions[i]}`;
-        await pulse(...ACTION_DRIVE[actions[i]], PULSE_MS);
-      }
-      log.textContent = `done -- ${actions.length} action(s)`;
-      runBtn.disabled = false;
-    });
-  </script>
+// --- loading a file ---------------------------------------------------------
+
+$("pick").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  $("plan").value = await f.text();
+  clearLog();
+  say("loaded " + f.name + " — " + f.size + " bytes. Preview before running.");
+  e.target.value = "";
+});
+
+// --- manual -----------------------------------------------------------------
+
+function holdToDrive(id, action) {
+  const el = $(id);
+  const start = (e) => {
+    e.preventDefault();
+    if (running) return;
+    el.classList.add("on");
+    if (timer) clearInterval(timer);
+    drive(action[0], action[1]);
+    timer = setInterval(() => drive(action[0], action[1]), WATCHDOG_MS);
+  };
+  const end = () => { el.classList.remove("on"); halt(); };
+  el.addEventListener("mousedown", start);
+  el.addEventListener("touchstart", start, { passive: false });
+  ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach((ev) =>
+    el.addEventListener(ev, end));
+}
+
+holdToDrive("m-fwd", FORWARD);
+holdToDrive("m-left", LEFT);
+
+async function onePulse(btn, action, ms) {
+  const el = $(btn);
+  if (el.disabled || running) return;
+  el.disabled = true;
+  await pulse(action, ms);
+  el.disabled = false;
+}
+$("p-fwd").addEventListener("click", () => onePulse("p-fwd", FORWARD, msFwd()));
+$("p-left").addEventListener("click", () => onePulse("p-left", LEFT, msTurn()));
+
+// A tab that loses focus mid-press would otherwise never send its stop.
+window.addEventListener("blur", () => { if (!running) halt(); });
+
+// --- is the bridge there? ---------------------------------------------------
+
+async function ping() {
+  const el = $("conn");
+  try {
+    const r = await fetch("/status", { cache: "no-store" });
+    if (!r.ok) throw new Error("status " + r.status);
+    el.textContent = "bridge up";
+    el.className = "up";
+  } catch (err) {
+    el.textContent = "bridge unreachable";
+    el.className = "down";
+  }
+}
+ping();
+setInterval(ping, 4000);
+</script>
 </body>
 </html>
