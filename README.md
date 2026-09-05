@@ -49,6 +49,8 @@ schedule.
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the three layers fit together |
 | [`work_division.md`](work_division.md) | who owns what |
 | [`reproduce.md`](reproduce.md) | run the simulation on your own machine — Windows, no GPU needed |
+| [`rover_bridge/`](rover_bridge/) | the Flask server on the rover's Pi — `/drive`, `/stop`, and the browser control page |
+| [`prototype10/RUNNING.md`](prototype10/RUNNING.md) | **Ventral Root** — running the planner against the real rover |
 | [`repo_rules.md`](repo_rules.md) | git, context budget, and how ideas get written down |
 | [`docs/course.md`](docs/course.md) | the Hollow Knight implementation — the coursework track |
 | [`docs/sih-decision.md`](docs/sih-decision.md) | which SIH entry to make — open, closes 6 Sept |

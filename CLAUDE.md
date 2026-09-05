@@ -22,6 +22,8 @@ ARCHITECTURE.md                  the three layers and how a decision reaches the
 work_division.md                 who owns what — allocated, with the detail linked
 repo_rules.md                    the rules everyone shares — git, context, writing things down
 reproduce.md                     how to run it on Windows, with or without a GPU
+rover_bridge/                    the Pi-side motor server — the far end of Ventral Root
+rover_drive_logic/               Nithin's calibrated ROS2 node, where the duty numbers came from
 prototype1/                      the experiments lab — code, DESIGN.md, FINDINGS.md, AUDIT.md
 prototype2/                      the rover arena, and the demo build — results.md is what it closed
 prototype3/                      the active work — the map encoding and the missing skills
@@ -35,9 +37,11 @@ docs/00-raw-transcript.md        original ideation, verbatim
 docs/critique/                   source critiques (mostly untracked binaries)
 ```
 
-The two implementations sit at the root; everything else is in `docs/`. Code lives in numbered
-`prototypeN/` directories — a lab rather than a deliverable, where the rules above bend and things
-get messed with.
+The two implementations sit at the root; everything else is in `docs/`. Simulation code lives in
+numbered `prototypeN/` directories — a lab rather than a deliverable, where the rules above bend
+and things get messed with. `rover_bridge/` is the exception and is not a prototype: it is the
+one piece that runs on the rover's Pi rather than on a laptop, it is deployed by `scp` from that
+path, and the Pi expects it at `~/rover_bridge`, so it keeps its name and its place at the root.
 `00-raw-transcript.md` is history and is never edited; everything else is rewritten in place
 rather than superseded by a new numbered file. Rejected ideas stay in the document that rejected
 them, with the reasoning, so they don't get rediscovered.
