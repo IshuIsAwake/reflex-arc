@@ -65,11 +65,14 @@ def spawn_for_day(area, day, start, keep_clear=()):
     and the one connectivity is measured from. It has to be open ground: measuring
     from the pad would measure from inside a wall and quietly accept every placement.
 
-    `keep_clear` is anything else it must not sit on.
+    `keep_clear` is everything the storm must neither sit on nor cut off -- the pad and
+    every objective. An objective is solid, so what it needs is one open neighbour the
+    rover can still reach; sitting next to it is fair weather, sealing all four sides is
+    not.
 
-    Placement is rejected rather than adjusted when it would wall the rover in. A storm
-    that seals off most of the arena is not a harder sol, it is a broken one, and the
-    difference is invisible from a transcript.
+    Placement is rejected rather than adjusted. A sol whose objective cannot be reached
+    is not a harder sol, it is a broken one, and the two are indistinguishable from a
+    transcript -- the model reports STORM_BLOCKED either way and nothing says which.
     """
     if not S.STORM_ON:
         return None
@@ -80,24 +83,38 @@ def spawn_for_day(area, day, start, keep_clear=()):
     if not before:
         return None                     # nowhere to drive from anyway
 
-    # Redrawn when a placement lands on the pad or an objective, which is the only reason
-    # left to draw twice. Twenty is far more than enough for a disc of thirteen cells, and
-    # it is a local number rather than a setting because nobody tunes it.
+    # Twenty draws, which is far more than enough for a disc of thirteen cells, and a
+    # local number rather than a setting because nobody tunes it.
     #
-    # There used to be a second rejection here -- a storm may cut a corner off the map but
-    # not seal the rover away from most of it -- with `STORM_TRIES` and `STORM_MAX_CUTOFF`
-    # in settings to drive it. Both went when the radius came down to 2. Measured over 500
-    # sols on the 30: the worst placement left 97.4% of the arena reachable and the 75%
-    # cutoff rejected nothing at all. **Raise STORM_RADIUS much past 2 and that guard has
-    # to come back.** `test_a_storm_never_walls_the_rover_in` is what notices, and it
-    # checks the property rather than the knob.
+    # `STORM_TRIES` and `STORM_MAX_CUTOFF` used to live in settings and drove a coarser
+    # version of this: reject anything sealing off more than a quarter of the arena.
+    # Measured over 500 sols on the 30, that rejected nothing at all -- the worst
+    # placement left 97.4% reachable -- while sol 1 quietly buried objective 2 and made
+    # it STORM_BLOCKED all day. A share of the arena was never the thing worth measuring.
+    # What matters is whether the places the rover has to get to are still gettable.
     for _ in range(20):
         cx, cy = rng.randrange(area.w), rng.randrange(area.h)
         cells = _disc(cx, cy, S.STORM_RADIUS, area.w, area.h)
         if not cells or cells & keep:
             continue
+        if not _all_approachable(area, start, frozenset(cells), keep_clear):
+            continue
         return Storm(cells, (cx, cy), day)
     return None
+
+
+def _all_approachable(area, start, blocked, targets):
+    """Every target still has an open neighbour reachable from `start`.
+
+    Targets are solid -- the pad and the objectives -- so reachability is asked about the
+    ring around them rather than the cell itself, which is never reachable at all.
+    """
+    reach = _reach(area, start, blocked)
+    for tx, ty in targets:
+        ring = {(tx, ty - 1), (tx, ty + 1), (tx - 1, ty), (tx + 1, ty)}
+        if not ring & reach:
+            return False
+    return True
 
 
 def _reach(area, start, blocked):

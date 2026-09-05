@@ -426,10 +426,16 @@ class World:
         self.record("day_open", at=self.pos, steps_left=self.steps_left)
 
     def _weather(self):
-        """Today's storm. One a sol, lasting the sol, and never over the pad or the
-        landing site -- a storm the rover wakes up inside is not a decision."""
+        """Today's storm. One a sol, lasting the sol, and never over the pad, the landing
+        site or an objective -- a storm the rover wakes up inside is not a decision, and
+        one sitting on the work is a sol that cannot be finished for a reason nothing in
+        the transcript distinguishes from a hard one.
+
+        The objectives go in by cell. `hazards` keeps the storm off each of them and
+        leaves at least one approach open, which is all a solid target needs."""
         self.here.storm = hazards.spawn_for_day(
-            self.here, self.day, C.SPAWN, keep_clear=(self.base,))
+            self.here, self.day, C.SPAWN,
+            keep_clear=(self.base, *C.OBJECTIVES))
         if self.here.storm:
             s = self.here.storm
             self.record("storm", weather=s.kind, at=s.centre, cells=len(s),

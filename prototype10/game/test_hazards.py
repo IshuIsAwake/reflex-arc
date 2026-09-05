@@ -72,12 +72,20 @@ def test_the_same_sol_gets_the_same_storm():
 
 
 def test_a_storm_never_walls_the_rover_in():
+    """A hard sol and a broken one read identically in a transcript -- the model reports
+    STORM_BLOCKED either way and nothing says which it was. These are the two properties
+    that keep the difference real.
+
+    The second one is the one that actually bit. On the rebuilt 30, sol 1 put the storm
+    squarely on objective 2 and it was unreachable all day, while the share-of-the-arena
+    check sailed through at 97%. The objectives were not in `keep_clear` at all.
+    """
     print("the sol stays playable")
     ok = True
     for name in ("30", "50"):
         C.use(name)
         w = World()
-        for _ in range(12):
+        for _ in range(30):
             s = w.here.storm
             if s:
                 ok &= check(f"{name} sol {w.day}: not on the landing site",
@@ -85,14 +93,19 @@ def test_a_storm_never_walls_the_rover_in():
                 open_now = hazards._reach(w.here, C.SPAWN, s.cells)
                 open_clear = hazards._reach(w.here, C.SPAWN, frozenset())
                 share = len(open_now) / len(open_clear)
-                # Written here rather than read from settings: the knob this used to
-                # compare against went with the rejection loop in `hazards.py`, once a
-                # radius of 2 made it reject nothing. The property is what was worth
-                # keeping. A storm may cut a corner off the map, never the rover away
-                # from most of it -- a hard sol and a broken one read the same in a
-                # transcript, and this is the only thing that tells them apart.
+                # Written here rather than read from settings: the knob this compared
+                # against went with the rejection loop in `hazards.py`, once a radius of
+                # 2 made it reject nothing. The property was worth keeping even so.
                 ok &= check(f"{name} sol {w.day}: most of the arena is still reachable",
                             share >= 0.75, f"{share:.0%} left")
+                # ...and the part a share of the arena can never see. An objective is
+                # solid, so what it needs is one open neighbour still reachable.
+                for cell, (n, _, _) in sorted(C.OBJECTIVES.items(),
+                                              key=lambda kv: kv[1][0]):
+                    x, y = cell
+                    ring = {(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)}
+                    ok &= check(f"{name} sol {w.day}: objective {n} can still be reached",
+                                bool(ring & open_now), f"{cell} sealed off")
             w.next_day()
     C.use(C.DEFAULT_ARENA)
     return ok
