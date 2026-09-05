@@ -66,13 +66,30 @@ KEEPALIVE_SECONDS = 0.2
 HEADINGS = nav.HEADING_NAMES   # ("N", "E", "S", "W"), clockwise
 
 
+# The link to the Pi is routed wifi, not a cable, and it drops for a second or
+# two at a time -- one such drop killed a run mid-leg. Retrying is safe: a gap in
+# commands is self-protecting, because the Pi stops the motors after 500ms of
+# silence, so re-stating a pulse can never resume a rover that ran on unwatched.
+POST_TRIES = 3
+POST_TIMEOUT = 3
+
+
 def _post(pi, path, payload=None):
     data = json.dumps(payload or {}).encode("utf-8")
-    req = urllib.request.Request(f"{pi}{path}", data=data,
-                                 headers={"Content-Type": "application/json"},
-                                 method="POST")
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        return json.loads(resp.read())
+    last = None
+    for attempt in range(POST_TRIES):
+        req = urllib.request.Request(f"{pi}{path}", data=data,
+                                     headers={"Content-Type": "application/json"},
+                                     method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=POST_TIMEOUT) as resp:
+                return json.loads(resp.read())
+        except (urllib.error.URLError, OSError) as e:
+            last = e
+            if attempt + 1 < POST_TRIES:
+                print(f"         {path} did not answer ({e}) -- retrying")
+                time.sleep(0.3)
+    raise last
 
 
 def headings_from_file(path):
