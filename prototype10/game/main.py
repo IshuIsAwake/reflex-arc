@@ -166,6 +166,43 @@ def main():
         pygame.quit()
         sys.exit()
 
+    def await_rover(world, dirs):
+        """Hold everything until the operator says the rover has driven the leg.
+
+        `nav.goto` runs on this thread -- `chat._run` is deliberately main-thread, so a
+        drive cannot land halfway through a redraw -- which means waiting here stops the
+        game loop, redraw and events included. So this runs its own: it draws each frame
+        and reads the keyboard itself, and takes only the key that ends the wait. The
+        world must not change while the robot is a leg behind it, and refusing every
+        other key is what guarantees that rather than hoping nothing is pressed.
+
+        The screen still shows the rover where it was before this `goto`: the drive is
+        animated from `world.reel` once the call returns. On the floor the machine is
+        moving, which is the thing actually worth watching, and the HUD says what it
+        was sent.
+        """
+        world.awaiting_rover = list(dirs)
+        try:
+            while True:
+                for e in pygame.event.get():
+                    if e.type == pygame.QUIT:
+                        leave(False)
+                    if e.type == pygame.KEYDOWN:
+                        if e.key == pygame.K_SPACE:
+                            return
+                        if e.key == pygame.K_ESCAPE:
+                            leave(False)
+                clock.tick(C.FPS)
+                render.draw_world(game, w, fonts, reel)
+                render.draw_chat(pane, conv, w, fonts, said, typing, scroll,
+                                 show_thinking, reel, None)
+                pygame.display.flip()
+        finally:
+            world.awaiting_rover = None
+
+    if S.ROVER_PAUSE == "key":
+        nav._await_rover = await_rover
+
     while True:
         dt = clock.tick(C.FPS) / 1000.0
         now = pygame.time.get_ticks()

@@ -279,6 +279,10 @@ class World:
         # neither -- which is the confusion these two exist to end.
         self.last_path = ("", [])
         self.last_walk = ("", [])
+        # The leg the robot is out driving right now, as directions, or None. Only the
+        # operator-stands-in-for-the-rover pause sets it, and only so the HUD can say
+        # what the machine on the floor is supposed to be doing.
+        self.awaiting_rover = None
         self.log = []
         self.recorder = recorder
         self.revealed = set()   # what the last move opened up, for the playback

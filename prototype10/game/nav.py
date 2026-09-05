@@ -393,19 +393,17 @@ def publish(world, dirs):
         write_plan(out, dirs)
 
 
-def _await_rover(world):
-    """Block until the robot has replayed the leg on the file and stopped.
+def _await_rover(world, dirs):
+    """Block until the robot has driven `dirs` off the file and stopped.
 
-    **The protocol is not decided.** The pause is the demo -- the planner is not
-    allowed to think again until the rover has actually moved -- but how the robot
-    says "done" is an open question with real options: it deletes the file it just
-    drove, it writes a report beside it, it answers an HTTP call, or the operator
-    watches it stop and presses a key.
+    A no-op here, and replaced from outside: `main.py` swaps in a wait on the
+    operator, and the tests swap in a spy. Keeping the default empty is what lets a
+    suite drive thousands of legs without anything to press, and keeps pygame out of
+    this file -- the same injection `main.py` already does for `Conversation.ready`.
 
-    A no-op until that is settled, which makes the simulation behave exactly as it
-    did before: the file is written and wiped, nothing waits. Everything on the sim's
-    side of the seam is finished and testable without it, and picking wrong here
-    costs more than leaving it named and empty.
+    The operator standing in for the robot is temporary. The rover bridge reporting
+    back for itself is Abhishek's, and none of the file format changes when it lands:
+    this is the only function that has to know the difference.
     """
     return
 
@@ -516,8 +514,9 @@ def goto(world, x, y, avoid=None, executor=None):
         cells = walk[leg_start:]
         if len(cells) < 2 or not live_file(world):
             return
-        publish(world, route_actions(cells))
-        _await_rover(world)
+        dirs = route_actions(cells)
+        publish(world, dirs)
+        _await_rover(world, dirs)
         publish(world, [])
 
     def done(code, **kw):

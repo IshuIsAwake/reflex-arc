@@ -204,17 +204,29 @@ STORM_MAX_CUTOFF = 0.75
 NAV_REPLANS = 5
 
 # --- the route file --------------------------------------------------------
-# The live route: the current plan, and only ever the current one. Rewritten on every
-# fresh `goto` and on every replan inside one, so a reader holds the rover's present
-# intention rather than a queue of stale ones. Emptied when there is no route -- the
-# dangerous failure is a reader still executing the last good plan after the planner
-# has given up on it.
+# The live route: one leg, already driven in the simulation, as one of N/E/S/W a line
+# and nothing else. Written after the drive rather than before it, so the robot is only
+# ever handed ground the simulation has proved and cannot be sent into rock. Wiped once
+# the leg has been replayed -- the dangerous failure is a reader still executing a route
+# after the planner has moved on from it.
 #
-# This is the seam to Unity and to the learned policy: they read this file and drive
-# the physical rover from it. Relative paths resolve against the prototype directory,
-# not the shell's. Only a live run writes it (`nav.publish` checks `world.recorder`),
-# so importing nav in a test puts nothing on disk. None turns it off altogether.
+# This is the seam to the physical rover: it reads this file and drives it. Relative
+# paths resolve against the prototype directory, not the shell's. Only a live run writes
+# it (`nav.live_file` checks `world.recorder`), so importing nav in a test puts nothing
+# on disk. None turns it off altogether.
 PLAN_FILE = "runs/plan.txt"
+
+# How the planner finds out the rover has finished the leg on disk. The pause is the
+# architectural claim -- nothing is replanned until the body has caught up -- so this
+# chooses who says so, never whether anyone does.
+#   "none"  do not wait. For testing, and for recording a tape with no rover attached.
+#   "key"   the operator watches the rover stop and presses SPACE. A stand-in.
+# The bridge reporting back for itself replaces both and is Abhishek's. `nav._await_rover`
+# is the only thing that changes when it lands; the file format does not.
+#
+# A sol is six legs a `goto` at worst, so "key" is a great deal of pressing. Recording
+# is what "none" is for.
+ROVER_PAUSE = "none"
 
 # What a `goto` from the model actually does. `main.py --executor` sets it.
 #   teleport  step cell to cell, writing the route as it goes (the default)

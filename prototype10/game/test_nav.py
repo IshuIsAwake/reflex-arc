@@ -587,8 +587,13 @@ def _legs_handed_over(w, *goto_args, **kw):
     seen = []
     real = nav._await_rover
 
-    def spy(world):
-        seen.append(open(nav.plan_file(), encoding="utf-8").read().split())
+    def spy(world, dirs):
+        on_disk = open(nav.plan_file(), encoding="utf-8").read().split()
+        # What the pause is handed and what is actually on the file are two ways of
+        # saying the same thing, and a demo that showed one while the robot drove the
+        # other would be lying on screen.
+        assert on_disk == list(dirs), (on_disk, dirs)
+        seen.append(on_disk)
 
     nav._await_rover = spy
     try:

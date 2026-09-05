@@ -316,6 +316,17 @@ def _hud(surf, w, f, reel=None):
     surf.blit(f.tiny.render(hint + "TAB talk   H thinking   Q end sol   ESC quit",
                             True, C.FAINT), (MARGIN, y0 + 84))
 
+    # The rover is out on the floor driving a leg and everything here is held until it
+    # is done. Say what it was given, or the operator is being asked to confirm
+    # something they have no way to check.
+    if w.awaiting_rover is not None:
+        leg = " ".join(w.awaiting_rover)
+        surf.blit(f.hud.render(f"ROVER DRIVING  {leg[:40]}", True, C.GOOD),
+                  (MARGIN + 300, y0 + 14))
+        surf.blit(f.tiny.render("SPACE when it has stopped", True, C.INK),
+                  (MARGIN + 300, y0 + 38))
+        return
+
     for i, (msg, tone) in enumerate(reversed(w.log[-3:])):
         col = {"good": C.GOOD, "bad": C.BAD}.get(tone, C.INK)
         shade = tuple(min(255, int(v * (1 - i * 0.3))) for v in col)
