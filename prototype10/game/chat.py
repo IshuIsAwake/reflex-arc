@@ -486,7 +486,10 @@ class Conversation:
             name = fn.get("name") or "unknown"
             args = {k: v for k, v in (_args(fn.get("arguments")) or {}).items()
                     if k != "why"}
-            self.write("call", f"{name}({args}) REFUSED", full=f"{name}({args})  {note}")
+            # `ran=False`: this one was turned down and nothing happened. Replay must
+            # not re-issue it, or the run it plays back is not the run that happened.
+            self.write("call", f"{name}({args}) REFUSED", full=f"{name}({args})  {note}",
+                       name=name, args=args, ran=False)
             self.messages.append({"role": "tool", "tool_name": name, "content": note})
 
     def _left(self):
@@ -530,7 +533,11 @@ class Conversation:
         self.calls.append(c)
         if c.result.startswith("BAD_ARGS"):
             self.bad_args += 1
-        self.write("call", f"{c}   why: {c.why or '--'}")
+        # Name and arguments ride as fields, not only inside the sentence. Replay
+        # re-issues these calls with no model in the loop, and a call parsed back out
+        # of its own display string is exactly the worse record `write` warns about.
+        self.write("call", f"{c}   why: {c.why or '--'}",
+                   name=c.name, args=c.args, ran=True)
         self.write("result", c.result)
         self.messages.append({"role": "tool", "tool_name": c.name,
                               "content": c.result + skills.budget_note(self.world,
