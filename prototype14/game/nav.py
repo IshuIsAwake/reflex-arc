@@ -288,6 +288,59 @@ def _log(world, area_name, start, goal, planned, result):
     return result
 
 
+def why_unreachable(area, start, goal, asked):
+    """There is no route: say whether the storm or the avoid list is what sealed it."""
+    if area.storm and plan(area, start, goal, asked):
+        return "STORM_BLOCKED"
+    if asked and plan(area, start, goal, frozenset()):
+        return "UNREACHABLE(avoid)"
+    return "UNREACHABLE"
+
+
+def _drive_leg(world, path, walk, reel, walls, gained):
+    """Drive along `path` until it arrives, hits rock, or the battery or the day runs out.
+    Adds each cell driven to `walk`, what it drew to `reel`, the rock it hit to `walls`
+    and the cells it revealed to `gained`. Returns (how it ended, the cell that refused)."""
+    area = world.here
+    for cell in path[1:]:
+        # Checked before the move: world.move refuses a flat battery the same way it refuses
+        # rock, and the check below would log it as rock.
+        if world.battery <= 0:
+            return "BATTERY_FLAT", None
+        if world.day_over:
+            return "OUT_OF_TIME", None
+
+        was_steps = world.steps
+        world.move(cell[0] - world.pos[0], cell[1] - world.pos[1])
+
+        # A refused move is one that wasn't charged a step.
+        if world.steps == was_steps:
+            # Bumping into rock reveals it, or the replan would return the same path.
+            gained.update(area.reveal_cells({cell}))
+            # An interest found a step ago stops the plan too, and it is not rock.
+            if cell not in walls and known(area, *cell) == "#":
+                walls.append(cell)
+            reel.append(("block", cell))
+            return "ROCK", cell
+
+        walk.append(cell)
+        gained.update(world.revealed)
+        # Handed to the reel, so the fog opens in step with the drawn rover.
+        reel.append(("step", (cell, sorted(world.revealed))))
+    return "DONE", None
+
+
+def _hand_over(world, cells):
+    """Hand one driven leg to the rover and wait for it, then empty the file. Skipped for a
+    leg that didn't move, and when there is no route file."""
+    if len(cells) < 2 or not live_file(world):
+        return
+    dirs = route_actions(cells)
+    publish(world, dirs)
+    _await_rover(world, dirs)
+    publish(world, [])
+
+
 def goto(world, x, y, avoid=None):
     """Drive to (x, y) over the known map. Returns a Result.
 
@@ -296,116 +349,72 @@ def goto(world, x, y, avoid=None):
 
     The drive stops at the first refused step, reveals that rock, and replans, up to
     NAV_REPLANS times. Each leg driven is handed to the rover before any replan."""
-    area, area_name, goal, start = world.here, world.area, (x, y), world.pos
+    area = world.here
+    goal = (x, y)
+    start = world.pos
 
     # Every cell actually driven over. The world holds it by reference, so it grows as the drive does.
     walk = [start]
-    world.last_walk = (area_name, walk)
-
+    world.last_walk = (world.area, walk)
     # What the drive did, in order, for anim.py to draw afterwards.
     reel = [("start", start)]
 
     if avoid == "auto":
         if goal not in area.visited:
-            world.last_path = (area_name, [])
-            return _log(world, area_name, start, goal, None,
+            world.last_path = (world.area, [])
+            return _log(world, world.area, start, goal, None,
                         Result("NOT_VISITED", at=start, new=0))
         avoid = frozenset(area.marks)
     else:
         avoid = frozenset(avoid or ())
-    asked, avoid = avoid, with_storm(area, avoid)
+    asked = avoid
+    avoid = with_storm(area, avoid)
 
     path = plan(area, start, goal, avoid)
     if path is None:
-        # No route: say whether the storm or the avoid list is what sealed it.
-        code = "UNREACHABLE"
-        if area.storm and plan(area, start, goal, asked):
-            code = "STORM_BLOCKED"
-        elif asked and plan(area, start, goal, frozenset()):
-            code = "UNREACHABLE(avoid)"
-        world.last_path = (area_name, [])
-        return _log(world, area_name, start, goal, None, Result(code, at=start, new=0))
+        world.last_path = (world.area, [])
+        code = why_unreachable(area, start, goal, asked)
+        return _log(world, world.area, start, goal, None, Result(code, at=start, new=0))
 
     planned = len(path) - 1
-    world.last_path = (area_name, list(path))
+    world.last_path = (world.area, list(path))
     reel.append(("plan", list(path)))
 
-    walls, steps, replans = [], 0, settings.NAV_REPLANS
-    # What the drive revealed. world.revealed holds one move's worth, so it is gathered as we go.
+    walls = []
     gained = set()
-    # Where in `walk` the current leg started. The rover is handed one leg at a time.
-    leg_start = 0
-
-    def hand_over():
-        """Hand the leg just driven to the rover and wait, then empty the file. Skipped for a leg
-        that didn't move, and when there is no route file."""
-        cells = walk[leg_start:]
-        if len(cells) < 2 or not live_file(world):
-            return
-        dirs = route_actions(cells)
-        publish(world, dirs)
-        _await_rover(world, dirs)
-        publish(world, [])
-
-    def done(code, **kw):
-        kw.setdefault("at", world.pos)
-        kw.setdefault("new", len(gained))
-        if code == "DONE" and world.pos != goal:
-            # The target was solid, so this is as close as it gets. Say so.
-            kw["beside"] = goal
-        world.play(reel)
-        hand_over()
-        return _log(world, area_name, start, goal, planned,
-                    Result(code, steps=steps, walls=walls, **kw))
-
+    replans = settings.NAV_REPLANS
     while True:
-        wall = None
         leg_start = len(walk) - 1
-        for cell in path[1:]:
-            # Checked before the move: world.move refuses a flat battery the same way it refuses
-            # rock, and the check below would log it as rock.
-            if world.battery <= 0:
-                return done("BATTERY_FLAT")
-            if world.day_over:
-                return done("OUT_OF_TIME", closed=world.time_left > 0)
-
-            was_pos, was_steps = world.pos, world.steps
-            world.move(cell[0] - was_pos[0], cell[1] - was_pos[1])
-
-            # A refused move is one that wasn't charged a step.
-            if world.steps == was_steps:
-                wall = cell
-                # Bumping into rock reveals it, or the replan would return the same path.
-                gained |= area.reveal_cells({cell})
-                # An interest found a step ago stops the plan too, and it is not rock.
-                if cell not in walls and known(area, *cell) == "#":
-                    walls.append(cell)
-                reel.append(("block", cell))
-                break
-
-            steps += 1
-            walk.append(cell)
-            # Handed to the reel, so the fog opens in step with the drawn rover.
-            gained |= world.revealed
-            reel.append(("step", (cell, sorted(world.revealed))))
-        else:
-            return done("DONE")
-
+        ended, wall = _drive_leg(world, path, walk, reel, walls, gained)
+        if ended != "ROCK":
+            break
         # The leg ended on rock. The rover drives what worked before anything is replanned.
-        hand_over()
-
+        _hand_over(world, walk[leg_start:])
+        ended = "BLOCKED"
         if replans <= 0:
             break
         replans -= 1
         path = plan(area, world.pos, goal, avoid)
         if path is None:
             break  # the model calls goto again from wherever it is
-        world.last_path = (area_name, list(path))
+        world.last_path = (world.area, list(path))
         reel.append(("plan", list(path)))
 
-    # `done` hands over too, and this leg has already gone, so make the next slice empty.
-    leg_start = len(walk) - 1
-    return done("BLOCKED", at=wall, stopped=world.pos)
+    details = {"at": world.pos, "new": len(gained)}
+    if ended == "DONE" and world.pos != goal:
+        # The target was solid, so this is as close as it gets. Say so.
+        details["beside"] = goal
+    if ended == "OUT_OF_TIME":
+        details["closed"] = world.time_left > 0
+    if ended == "BLOCKED":
+        details["at"] = wall
+        details["stopped"] = world.pos
+    world.play(reel)
+    if ended != "BLOCKED":  # a blocked leg was handed over before the replan
+        _hand_over(world, walk[leg_start:])
+    steps = len(walk) - 1
+    return _log(world, world.area, start, goal, planned,
+                Result(ended, steps=steps, walls=walls, **details))
 
 
 def price(world, x, y, avoid=None):

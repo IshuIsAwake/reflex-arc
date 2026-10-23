@@ -267,21 +267,29 @@ def tools_for(names=None):
     return [t for t in TOOLS if t["function"]["name"] in keep]
 
 
+# Read off each skill's schema: what it requires, its arguments in order, and their types.
+REQUIRED = {}
+ORDER = {}
+TYPES = {}
+for tool in TOOLS:
+    skill = tool["function"]["name"]
+    params = tool["function"]["parameters"]
+    REQUIRED[skill] = set(params.get("required", ()))
+    ORDER[skill] = list(params["properties"])
+    TYPES[skill] = {}
+    for arg, spec in params["properties"].items():
+        TYPES[skill][arg] = spec["type"]
+
 # A call the model typed into its reply instead of making it. It writes them as
 # `goto(35, 25)` or as `call:goto{x:35,y:25}`, so both brackets and both `:` and `=` count.
-#
-# What each skill needs, read off its own schema.
-REQUIRED = {t["function"]["name"]: set(t["function"]["parameters"].get("required", ()))
-            for t in TOOLS}
-
 # A skill that needs arguments looks like a call when one has a digit in it, or starts
 # with a quote. One that needs none must have empty brackets or a `:` or `=` in them, so
 # "at the end (of the sweep)" isn't read as `end`.
-_needy = [n for n in NAMES if REQUIRED[n]]
-_free = [n for n in NAMES if not REQUIRED[n]]
-CALL_SHAPED = re.compile("|".join(
-    ([r"\b(?:" + "|".join(_needy) + r")\s*[({]\s*(?:[^)}]*\d|[\"'])"] if _needy else [])
-    + ([r"\b(?:" + "|".join(_free) + r")\s*[({]\s*(?:[)}]|[^)}]*[:=])"] if _free else [])))
+NEEDY = [n for n in NAMES if REQUIRED[n]]
+FREE = [n for n in NAMES if not REQUIRED[n]]
+NEEDY_CALL = r"\b(?:" + "|".join(NEEDY) + r")\s*[({]\s*(?:[^)}]*\d|[\"'])"
+FREE_CALL = r"\b(?:" + "|".join(FREE) + r")\s*[({]\s*(?:[)}]|[^)}]*[:=])"
+CALL_SHAPED = re.compile(NEEDY_CALL + "|" + FREE_CALL)
 
 
 def looks_like_a_call(text):
@@ -291,13 +299,6 @@ def looks_like_a_call(text):
 
 # Where each typed call opens. Where it closes is `_closes`'s job.
 OPENS = re.compile(r"\b(" + "|".join(NAMES) + r")\s*[({]")
-
-# Each skill's arguments in schema order, which is the order a call typed without keywords gives them.
-ORDER = {t["function"]["name"]: list(t["function"]["parameters"]["properties"])
-         for t in TOOLS}
-TYPES = {t["function"]["name"]: {k: v["type"] for k, v in
-                                 t["function"]["parameters"]["properties"].items()}
-         for t in TOOLS}
 
 
 def _quote_opens(text, i):
@@ -312,7 +313,8 @@ def _closes(text, start):
     for i in range(start, len(text)):
         ch = text[i]
         if quote:
-            quote = "" if ch == quote else quote
+            if ch == quote:
+                quote = ""
         elif ch in "\"'" and _quote_opens(text, i):
             quote = ch
         elif ch in "({":
@@ -330,14 +332,19 @@ def _fields(inside):
     for i, ch in enumerate(inside):
         if quote:
             cur += ch
-            quote = "" if ch == quote else quote
+            if ch == quote:
+                quote = ""
         elif ch in "\"'" and _quote_opens(inside, i):
-            quote, cur = ch, cur + ch
+            quote = ch
+            cur += ch
         elif ch == "," and not depth:
             out.append(cur)
             cur = ""
         else:
-            depth += (ch in "({") - (ch in ")}")
+            if ch in "({":
+                depth += 1
+            elif ch in ")}":
+                depth -= 1
             cur += ch
     out.append(cur)
     return [f.strip() for f in out if f.strip()]
@@ -345,7 +352,9 @@ def _fields(inside):
 
 def _unquote(v):
     v = v.strip()
-    return v[1:-1] if len(v) > 1 and v[0] == v[-1] and v[0] in "\"'" else v
+    if len(v) > 1 and v[0] == v[-1] and v[0] in "\"'":
+        return v[1:-1]
+    return v
 
 
 def written_call(text):
@@ -359,17 +368,24 @@ def written_calls(text):
     They are run, not refused: about 3 turns in 10 type the call out, and a typed call is
     still her decision. skills.call still checks it. Complete means the skill's own
     required arguments are there."""
-    out, text, at = [], text or "", 0
-    while m := OPENS.search(text, at):
+    out = []
+    text = text or ""
+    at = 0
+    while True:
+        m = OPENS.search(text, at)
+        if m is None:
+            break
         end = _closes(text, m.end())
         if end is None:
             at = m.end()
             continue
+        name = m.group(1)
+        inside = text[m.end():end]
         # Carry on past it, so a skill named inside quoted text isn't read as a call too.
-        name, inside, at = m.group(1), text[m.end():end], end + 1
-        args, positional = {}, []
-        # Blank fields dropped, so `end()` has no arguments.
-        for field in (f for f in _fields(inside) if f.strip()):
+        at = end + 1
+        args = {}
+        positional = []  # (value, whether it was quoted)
+        for field in _fields(inside):
             key, eq, val = field.partition("=")
             if not eq:
                 # `x:49` is the brace dialect; isidentifier stops a positional string with a colon being read as a keyword.
@@ -386,7 +402,8 @@ def written_calls(text):
         if (positional and free and TYPES[name][free[0]] == "string"
                 and not positional[0][1]):
             continue
-        args.update(zip(free, (v for v, _ in positional)))
+        for key, field in zip(free, positional):
+            args[key] = field[0]
         if REQUIRED[name] <= set(args):
             out.append((name, args))
     return out
@@ -430,7 +447,11 @@ def _stuck(c, history):
     # A call that spent nothing wasted nothing, so it doesn't count either way.
     if not c.steps or c.name == "distance":
         return ""
-    window = [p for p in list(history) + [c] if p.steps and p.name != "distance"][-WINDOW:]
+    window = []
+    for p in list(history) + [c]:
+        if p.steps and p.name != "distance":
+            window.append(p)
+    window = window[-WINDOW:]
     if len(window) < WINDOW:
         return ""
     spent = sum(p.steps for p in window)
@@ -480,10 +501,12 @@ def _count(world, kind):
     if want in ("fog", "both"):
         blobs = s.fog(area)
         blobs.sort(key=lambda c: (centre_of(c)[1], centre_of(c)[0]))
-        fog = [f"  {len(c)} cells, middle {centre_of(c)}" for c in blobs]
-        lines.append(f"FOG -- {len(blobs)} patches still unseen:" if blobs
-                     else "FOG -- none left, you have seen the whole arena.")
-        lines += fog
+        if blobs:
+            lines.append(f"FOG -- {len(blobs)} patches still unseen:")
+        else:
+            lines.append("FOG -- none left, you have seen the whole arena.")
+        for c in blobs:
+            lines.append(f"  {len(c)} cells, middle {centre_of(c)}")
     # A formation she may have named must not simply vanish.
     for gone, kept in s.take_merges():
         lines.append(f"  NOTE: R{gone} and R{kept} turned out to be one formation. "
@@ -514,8 +537,10 @@ def _count_cells(world, x, y):
 def _work_line(o, short=False):
     """One piece of work as she reads it. An interest's text is never in it."""
     at = f"({o.cell[0]},{o.cell[1]})"
+    if o.kind == "objective" and short:
+        return f"{o.priority} priority at {at}, {o.cost} steps"
     if o.kind == "objective":
-        return f"{o.priority} priority at {at}, {o.cost} steps" + ("" if short else " of work")
+        return f"{o.priority} priority at {at}, {o.cost} steps of work"
     return f"an interest at {at}, {o.cost} steps to examine"
 
 
@@ -559,9 +584,10 @@ def _execute(world):
                 f"the battery ran flat after {spent}. It is not done and those steps are "
                 f"gone. Start it with more in hand.")
     rest = [p for p in left if p is not o]
-    tail = (" " + _nothing_waiting(world, "No other work you know of is waiting")
-            if not rest else
-            " Still to do: " + ", ".join(_work_line(p, short=True) for p in rest) + ".")
+    if rest:
+        tail = " Still to do: " + ", ".join(_work_line(p, short=True) for p in rest) + "."
+    else:
+        tail = " " + _nothing_waiting(world, "No other work you know of is waiting")
     if o.kind == "objective":
         return (f"EXECUTED(at={at}, priority={o.priority}, steps={spent}) -- the work is "
                 f"done and the objective is off the map." + tail)
@@ -574,9 +600,11 @@ def _todo(world, text):
     n = world.notes
     for i, (t, struck) in enumerate(n.todos, 1):
         if t.lower() == text.lower():
-            return (f'ALREADY_ON_IT({i}) -- "{t}" is item {i} on your list'
-                    f'{" and already crossed off" if struck else ""}, so nothing was '
-                    f'added and nothing was spent.')
+            crossed = ""
+            if struck:
+                crossed = " and already crossed off"
+            return (f'ALREADY_ON_IT({i}) -- "{t}" is item {i} on your list{crossed}, so '
+                    f'nothing was added and nothing was spent.')
     if len(n.todos) >= settings.TODO_MAX:
         return (f"LIST_FULL -- your list already holds {settings.TODO_MAX} items today and "
                 f"this one was not added. {n.open} of them are still open: do one of "
@@ -601,9 +629,11 @@ def _strike(world, i):
                 f'nothing happened.')
     n.strike(i)
     world.record("strike", n=i, text=n.text(i))
-    return (f'STRUCK({i}) -- "{n.text(i)}" is crossed off. '
-            + (f"{n.open} still open on your list." if n.open else
-               _nothing_waiting(world, "Nothing is left open on your list")))
+    if n.open:
+        left = f"{n.open} still open on your list."
+    else:
+        left = _nothing_waiting(world, "Nothing is left open on your list")
+    return f'STRUCK({i}) -- "{n.text(i)}" is crossed off. ' + left
 
 
 def _remember(world, name, text):
@@ -615,9 +645,11 @@ def _remember(world, name, text):
                 f"that covers it: {', '.join(n.memory)}.")
     had = n.remember(name, text)
     world.record("remember", name=name, chars=len(text), text=text)
-    return (f"REMEMBERED({name}, {len(text)} characters) -- "
-            + (f"this replaced the {had} characters that were there. " if had is not None
-               else f"a new entry: {len(n.memory)} of {settings.MEMORY_ENTRIES}. ")
+    if had is None:
+        what = f"a new entry: {len(n.memory)} of {settings.MEMORY_ENTRIES}. "
+    else:
+        what = f"this replaced the {had} characters that were there. "
+    return (f"REMEMBERED({name}, {len(text)} characters) -- " + what
             + "It will still be in your memory tomorrow morning.")
 
 
@@ -651,10 +683,12 @@ def call(world, name, args, history=()):
             avoid = _avoid(c.args.get("avoid"))
         if name == "strike":
             n = _int("n", c.args.get("n"))
-        if name in ("todo", "remember", "radio"):
-            text = _text("text", c.args.get("text"),
-                         {"todo": settings.TODO_CHARS, "remember": settings.MEMORY_CHARS}.get(
-                             name, settings.RADIO_CHARS))
+        if name == "todo":
+            text = _text("text", c.args.get("text"), settings.TODO_CHARS)
+        if name == "remember":
+            text = _text("text", c.args.get("text"), settings.MEMORY_CHARS)
+        if name == "radio":
+            text = _text("text", c.args.get("text"), settings.RADIO_CHARS)
         if name in ("remember", "forget"):
             entry = _text("name", c.args.get("name"), 40)
     except BadArgs as e:
@@ -668,18 +702,7 @@ def call(world, name, args, history=()):
         return c
 
     if name == "radio":
-        # Whether anyone answers is autopilot's business; the result is the same whoever replays it.
-        if world.phase != "day" or world.day_over:
-            c.result = ("NOT_NEEDED -- it is not day, so nothing was sent and nothing was "
-                        "spent. At dawn and night just say it; at dusk your last words "
-                        "are your report.")
-            return c
-        world.drain(settings.RADIO_STEPS)
-        world.record(name, text=text, at=list(world.pos), cost=settings.RADIO_STEPS)
-        c.result = (f"RADIOED -- mission control has it, and it cost {settings.RADIO_STEPS} steps "
-                    f"of battery. Your turn is over: their answer, if they give one, is "
-                    f"your next message, and while the line is open every reply you speak "
-                    f"costs the same. The day's clock does not stop for it.")
+        c.result = _radio(world, text)
         return c
 
     if name == "count":
@@ -694,21 +717,10 @@ def call(world, name, args, history=()):
         left = len(world.here.work())
         c.result = _execute(world)
         # Doing the work counts as gain, though it reveals nothing.
-        c.gained = 1 if len(world.here.work()) < left else 0
-    elif name == "goto":
-        world.just_found = []
-        r = nav.goto(world, x, y, avoid)
-        c.gained = r.new or 0
-        # A drive that ends beside work still to do counts as gain too.
-        if not c.gained and world.adjacent_work():
+        if len(world.here.work()) < left:
             c.gained = 1
-        c.result = f"{r} -- {r.advice}" if r.advice else str(r)
-        if world.just_found:
-            found = ", ".join(f"({x_},{y_})" for x_, y_ in world.just_found)
-            c.result += (f" On the way the rover came within sight of something worth a "
-                         f"closer look at {found}, marked {INTEREST} on your map. Examine "
-                         f"it to find out what it is.")
-            c.gained = max(c.gained, 1)
+    elif name == "goto":
+        c.result, c.gained = _goto(world, x, y, avoid)
     elif name == "todo":
         c.result = _todo(world, text)
     elif name == "strike":
@@ -718,23 +730,66 @@ def call(world, name, args, history=()):
     elif name == "forget":
         c.result = _forget(world, entry)
     else:
-        # A floor, not a quote, said in words.
-        steps = nav.price(world, x, y, avoid)
-        c.result = (f"UNREACHABLE(to=({x},{y})) -- no route even assuming every "
-                    f"unseen cell is clear" if steps is None else
-                    f"DISTANCE(to=({x},{y}), steps>={steps}) -- planned as though the "
-                    f"fog were clear, so the drive takes at least that many steps and "
-                    f"more if there is rock in the way. {_left_today(world)}")
+        c.result = _distance(world, x, y, avoid)
 
     c.steps = world.steps - before
     c.result += _stuck(c, list(history))
     return c
 
 
+def _radio(world, text):
+    """A call to the desk. Whether anyone answers is autopilot's business, so the result is
+    the same whoever replays it."""
+    if world.phase != "day" or world.day_over:
+        return ("NOT_NEEDED -- it is not day, so nothing was sent and nothing was "
+                "spent. At dawn and night just say it; at dusk your last words "
+                "are your report.")
+    world.drain(settings.RADIO_STEPS)
+    world.record("radio", text=text, at=list(world.pos), cost=settings.RADIO_STEPS)
+    return (f"RADIOED -- mission control has it, and it cost {settings.RADIO_STEPS} steps "
+            f"of battery. Your turn is over: their answer, if they give one, is "
+            f"your next message, and while the line is open every reply you speak "
+            f"costs the same. The day's clock does not stop for it.")
+
+
+def _goto(world, x, y, avoid):
+    """Drive there. Returns (result, gained): the cells revealed, or 1 for a drive that
+    ended beside work or found an interest."""
+    world.just_found = []
+    r = nav.goto(world, x, y, avoid)
+    gained = r.new or 0
+    if not gained and world.adjacent_work():
+        gained = 1
+    result = str(r)
+    if r.advice:
+        result = f"{r} -- {r.advice}"
+    if world.just_found:
+        found = ", ".join(f"({cx},{cy})" for cx, cy in world.just_found)
+        result += (f" On the way the rover came within sight of something worth a "
+                   f"closer look at {found}, marked {INTEREST} on your map. Examine "
+                   f"it to find out what it is.")
+        gained = max(gained, 1)
+    return result, gained
+
+
+def _distance(world, x, y, avoid):
+    """What the drive would cost: a floor, not a quote, said in words."""
+    steps = nav.price(world, x, y, avoid)
+    if steps is None:
+        return (f"UNREACHABLE(to=({x},{y})) -- no route even assuming every "
+                f"unseen cell is clear")
+    return (f"DISTANCE(to=({x},{y}), steps>={steps}) -- planned as though the "
+            f"fog were clear, so the drive takes at least that many steps and "
+            f"more if there is rock in the way. {_left_today(world)}")
+
+
 def _left_today(world):
-    clock = (f"the day has {world.time_left:.0f} seconds left" if world.phase == "day"
-             else f"the day's {world.time_left:.0f} seconds start when it does"
-             if world.phase == "dawn" else "the day is over")
+    if world.phase == "day":
+        clock = f"the day has {world.time_left:.0f} seconds left"
+    elif world.phase == "dawn":
+        clock = f"the day's {world.time_left:.0f} seconds start when it does"
+    else:
+        clock = "the day is over"
     return f"The battery holds {world.battery} steps and {clock}."
 
 
