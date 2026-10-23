@@ -189,7 +189,7 @@ def main():
         """The map format is here because nothing else on screen tells the two arms
         apart. Rewritten at nightfall, when the model or the format may change."""
         pygame.display.set_caption(
-            f"ANGARAKA -- prototype 11  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
+            f"ANGARAKA -- prototype 13  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
             + (f"  ·  replay of {pathlib.Path(args.replay).name}" if args.replay else
                f"  ·  {S.MODEL}")
             + ("  ·  thinking" if S.MODEL_THINK else "")

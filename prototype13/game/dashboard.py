@@ -12,6 +12,9 @@ AMBER = (190, 177, 148)
 CYAN = (111, 190, 183)
 PANEL = (30, 34, 39)
 BORDER = (53, 60, 67)
+# The rover pause's hint, here and in her chat. Level 3 sets it, since there the rover
+# says when it has stopped.
+ROVER_HINT = 'SPACE once the rover has stopped'
 
 
 def text(surf, font, value, pos, color=None, width=None):
@@ -153,7 +156,7 @@ def bottom(surf, w, f, reel):
     left = controls_width(surf.get_width())
     text(surf, f.tiny, 'WASD drive   X mark   TAB chat   ESC quit', (28, rect.y + 48),
          C.MUTED, left)
-    hint = 'SPACE confirm rover stopped' if w.awaiting_rover is not None else (
+    hint = ROVER_HINT if w.awaiting_rover is not None else (
         'SPACE skip animation' if reel and reel.busy else 'Q end day   C comms   H reasoning   P memory')
     text(surf, f.tiny, hint, (28, rect.y + 65), CYAN, left)
     x = 27 + left + 20

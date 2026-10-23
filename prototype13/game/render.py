@@ -554,7 +554,7 @@ def _draw_transcript(surf, conv, w, f, line, focused, scroll, show_thinking=True
     # hang rather than the round trip it is.
     if w.awaiting_rover is not None:
         leg = " ".join(w.awaiting_rover)[:40]
-        state, tone = f"ROVER DRIVING {leg}  ·  SPACE when it has stopped", C.CHAT_GOOD
+        state, tone = f"ROVER DRIVING {leg}  ·  {D.ROVER_HINT}", C.CHAT_GOOD
     elif conv.waiting and conv.link.hold:
         state, tone = f"checking whether {S.MODEL} is back...", C.CHAT_SKILL
     elif reel and reel.work:

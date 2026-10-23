@@ -1,27 +1,29 @@
-"""Level 3 -- prototype 10d's mission, with every leg it drives sent to the real rover.
+"""Level 3 -- the simulation's mission, with every leg it drives sent to the real rover.
 
     python level3.py --rover 10.7.12.41
-    python level3.py --rover 127.0.0.1 --arena 50 --sols 3      anything after --rover goes to 10d
+    python level3.py --rover 127.0.0.1 --arena 50 --sols 3   anything after --rover goes to the game
 
-The simulation is prototype12's own copy of 10d, in `prototype12/game/` (see
-`prototype12/COPIED_FROM.md`), and its files are not changed. This imports it and wraps, in
-memory, `nav.publish` -- where 10d hands a driven leg to the robot as N/E/S/W lines --
-and `pygame.event.get`, for the SPACE guard below. When a leg comes
-through, it goes to the rover over the link, and 10d is held at its rover pause
+The simulation is prototype13's `game/`, prototype 11's. This imports it and wraps, in
+memory, `nav.publish` -- where the game hands a driven leg to the robot as N/E/S/W
+lines -- and `pygame.event.get`, for the SPACE guard below. When a leg comes
+through, it goes to the rover over the link, and the game is held at its rover pause
 (`--pause key`, forced on here) until the rover reports the leg finished. Then this
 presses SPACE for you. If the link fails, nothing is pressed: the HUD keeps waiting,
 you put the rover where the screen says it should be, and press SPACE yourself.
 
 With no LiDAR the simulation is the truth: the map, the fog and the battery all come
-from 10d, and the rover replays what 10d already drove. Nothing measures where the
-floor disagrees with the screen; that is Level 4, deferred.
+from the game, and the rover replays what the game already drove. Nothing measures where
+the floor disagrees with the screen; that is Level 4, deferred.
 
 A stop from the control pad ends the leg there and hands the rover to you, the same as
-a failed link. The terminal says where the leg ends, counted from home, and which way
-to face it; put it there and press SPACE. The rover is then told it is there.
+a failed link. The screen and the terminal say where the leg ends, counted from home,
+and which way to face it; put it there and press SPACE. The rover is then told it is
+there.
 
-Before starting: rover on the cell that stands for 10d's landing cell, facing grid
-north (up on 10d's screen).
+The arena is the 30 unless `--arena` says otherwise: 3 m across at 10 cm a cell.
+
+Before starting: rover on the cell that stands for the landing cell, facing grid
+north (up on the screen).
 """
 
 import argparse
@@ -32,20 +34,20 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype12/game, the copy
+GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype13/game
 sys.path.insert(0, HERE)
 
 from link import LinkError, RoverLink, RoverStopped  # noqa: E402
 
-STEP = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}   # 10d's frame and the rover's
+STEP = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}   # the game's frame and the rover's
+DRIVING = "the rover says when it has stopped"      # the pause's hint while a leg drives
 
 
 class Guard:
-    """While the rover is driving, a SPACE from the keyboard is dropped, so 10d's pause
-    ends when the rover says so and not when a thumb does. 10d's HUD still reads "SPACE
-    when it has stopped" -- that is its own text, written for a person standing in for
-    the robot. Our SPACE carries `rover=True` and always gets through. After a FAILED
-    leg the guard is off, so a person can put the rover right and release 10d by hand.
+    """While the rover is driving, a SPACE from the keyboard is dropped, so the game's
+    pause ends when the rover says so and not when a thumb does. Our SPACE carries
+    `rover=True` and always gets through. After a FAILED leg the guard is off, so a
+    person can put the rover right and release the game by hand.
     """
 
     def __init__(self):
@@ -94,23 +96,24 @@ def from_home(x, y, cell_m=None):
 
 
 def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=None,
-            start=None, cell_m=None):
-    """Wrap `nav.publish` so every leg 10d hands over is also driven by `rover`, and
-    `finished()` is called once the rover has done it. 10d calls `publish` with the
+            start=None, cell_m=None, tell=lambda hint: None):
+    """Wrap `nav.publish` so every leg the game hands over is also driven by `rover`, and
+    `finished()` is called once the rover has done it. The game calls `publish` with the
     leg, then waits at its rover pause, then calls it again with [] -- so the wait is
     the window the rover drives in.
 
-    Legs go through one queue and one worker, in order. If 10d is let go early -- a
+    Legs go through one queue and one worker, in order. If the game is let go early -- a
     SPACE typed by hand ends its pause too -- the next leg waits its turn instead of
     reaching a rover that is still driving and being refused, so every direction is
-    still driven. `finished()` only fires while 10d is still waiting on that same leg
-    (`still_waiting`); a SPACE posted after a hand-released pause would otherwise
+    still driven. `finished()` only fires while the game is still waiting on that same
+    leg (`still_waiting`); a SPACE posted after a hand-released pause would otherwise
     land in the next one, or in the chat.
 
     A leg that does not finish -- stopped, or the link failed -- leaves the rover to a
-    person. When they release 10d's pause, the rover is told it stands where that leg
-    ends (`start` is the rover's pose before the first leg; `cell_m` puts centimetres in
-    what the person is told). Returns a function that undoes the wrap.
+    person. When they release the game's pause, the rover is told it stands where that
+    leg ends (`start` is the rover's pose before the first leg; `cell_m` puts centimetres
+    in what the person is told). `tell` puts the pause's hint on the screen. Returns a
+    function that undoes the wrap.
     """
     original = nav.publish
     legs = queue.Queue()
@@ -119,13 +122,13 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
     owed = [None]                 # the pose to tell it once a person has put it right
 
     def release(world, dirs):
-        # 10d marks its pause just after `publish` returns; a short leg can beat it.
+        # The game marks its pause just after `publish` returns; a short leg can beat it.
         for _ in range(20):
             if still_waiting(world, dirs):
                 finished()
                 return
             time.sleep(0.05)
-        print("[rover] (10d had already moved on -- no SPACE sent)")
+        print("[rover] (the game had already moved on -- no SPACE sent)")
 
     def worker():
         while True:
@@ -157,8 +160,9 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
                 if not ok:
                     owed[0] = leg_end(at[0], dirs)
                     x, y, h = owed[0]
-                    print(f"[rover] the rover is yours: put it {from_home(x, y, cell_m)}, "
-                          f"facing {h}, then press SPACE in the game")
+                    where = f"put it {from_home(x, y, cell_m)}, facing {h}"
+                    print(f"[rover] the rover is yours: {where}, then press SPACE in the game")
+                    tell(f"STOPPED: {where}, then SPACE")
                     guard.driving = 0     # hand control back to the person
 
     threading.Thread(target=worker, daemon=True).start()
@@ -168,7 +172,8 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
         if not nav.live_file(world):
             return
         if dirs:
-            guard.driving += 1            # before 10d's pause starts reading keys
+            guard.driving += 1            # before the game's pause starts reading keys
+            tell(DRIVING)
             legs.put(("leg", (world, list(dirs))))
         elif owed[0]:
             # The pause is over and a person put the rover right; it goes through the same
@@ -199,8 +204,9 @@ def main():
     print(f"rover connected ({'fake' if hi['fake'] else 'REAL'} motors).")
 
     sys.path.insert(0, GAME)
-    os.chdir(os.path.dirname(GAME))           # 10d's own working directory
+    os.chdir(os.path.dirname(GAME))           # the game's own working directory
     import pygame
+    import dashboard
     import nav
     import main as game
 
@@ -211,18 +217,22 @@ def main():
         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE, mod=0,
                                              unicode=" ", scancode=0, rover=True))
 
-    # Every pygame.event.get() 10d makes -- its main loop and its rover pause -- goes
-    # through the guard. 10d's code is not touched; the function it calls is wrapped.
+    # Every pygame.event.get() the game makes -- its main loop and its rover pause --
+    # goes through the guard. The game's code is not touched; the function it calls is
+    # wrapped.
     guard = Guard()
     real_get = pygame.event.get
     pygame.event.get = lambda *a, **k: guard.filter(real_get(*a, **k))
 
-    # 10d sets `world.awaiting_rover` to the leg for exactly as long as it holds on it.
+    # The game sets `world.awaiting_rover` to the leg for exactly as long as it holds on it.
     install(nav, rover, press_space,
             still_waiting=lambda world, dirs: getattr(world, "awaiting_rover", None) == dirs,
-            guard=guard, start=start, cell_m=hi.get("cell_m"))
+            guard=guard, start=start, cell_m=hi.get("cell_m"),
+            tell=lambda hint: setattr(dashboard, "ROVER_HINT", hint))
     if "--pause" not in theirs:
         theirs += ["--pause", "key"]
+    if "--arena" not in theirs:
+        theirs += ["--arena", "30"]           # 3 m of floor; the game alone opens on the 50
     sys.argv = ["game/main.py"] + theirs
     try:
         game.main()
