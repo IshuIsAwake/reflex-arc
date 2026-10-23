@@ -1,0 +1,945 @@
+"""The skill interface: what gemma may ask for, and what it gets back.
+
+The seam. `chat.py` knows nothing about `nav`, `nav` knows nothing about the model, and
+this is the file the rover implementation swaps while both sides stay put.
+
+    goto(x, y, why, avoid=...)       drive there. Costs a step a tile
+    distance(x, y, why, avoid=...)   what it would cost. Costs nothing
+    execute(why)                     the work at the objective or interest you are beside
+
+`scout` is gone with Ingenuity. Driving is the only thing that lifts fog now, so there
+is no skill that changes the map without changing the position.
+
+`avoid="auto"` is not offered: it skips cells gemma has marked, and there is no way to
+mark one until `mark()` lands. Described loosely as "optional", she volunteered it
+unasked and would have got NOT_VISITED for a reason she never intended.
+
+Arguments are coerced generously and rejected noisily. An `avoid` list that quietly
+parses to "avoid nothing" walks gemma through the cell she asked to dodge and never
+says why. She emits the literal `'<nil>'` for an argument she means to omit, so that
+string must never reach a `frozenset()`.
+
+`BAD_ARGS` spends no steps -- a malformed call is a mistake, not an action.
+"""
+
+import re
+
+import nav
+import settings as S
+from world import INTEREST, centre_of
+
+NIL = {"<nil>", "nil", "none", "null", "undefined", ""}
+
+# How many step-spending calls `_stuck` weighs together. 4 so that a single deliberate
+# repositioning is never a first-offence scold; half or more of the window's steps
+# buying nothing is what it fires on.
+WINDOW = 4
+
+
+class BadArgs(Exception):
+    """Loud on purpose. Caught in `call` and handed back as BAD_ARGS(...)."""
+
+
+def _int(name, v):
+    """Accept 7, "7", " 7 " and 7.0. Refuse everything else by name."""
+    if isinstance(v, bool):
+        raise BadArgs(f"{name} must be a whole number, got {v!r}")
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        if v != int(v):
+            raise BadArgs(f"{name} must be a whole number, got {v!r}")
+        return int(v)
+    if isinstance(v, str):
+        t = v.strip()
+        if t.lstrip("-").isdigit():
+            return int(t)
+    raise BadArgs(f"{name} must be a whole number, got {v!r}")
+
+
+def _why(v):
+    """One line if it is offered, and None if it is not.
+
+    A rationale recorded before the outcome is a prediction; one offered afterwards is a
+    story. The world never reads it -- its job is to sit on the tape with a timestamp
+    earlier than the result.
+
+    Not required. `chat.without_why` keeps it out of history, which also removed every
+    example gemma had of a call carrying one, so she stopped sending it: 0 of 79 calls
+    missing before, 16 of 21 after, each refusal costing a hop. The tape was what made
+    the field useful, not the requirement.
+    """
+    if not isinstance(v, str) or v.strip().lower() in NIL:
+        return None
+    return " ".join(v.split())[:200]
+
+
+def _text(name, v, limit):
+    """Words she meant to write, or a loud refusal. Never a silent empty string.
+
+    Refused rather than truncated at the limit. `remember` replaces the whole doc, so
+    cutting the end off would silently drop what she wrote last -- which is usually the
+    part she has just changed her mind about, and the only part worth reading.
+    """
+    if not isinstance(v, str) or v.strip().lower() in NIL:
+        raise BadArgs(f"{name} needs some words, got {v!r}")
+    t = " ".join(v.split())
+    if len(t) > limit:
+        raise BadArgs(f"{name} is {len(t)} characters and the limit is {limit} -- "
+                      f"nothing was written and what you had is unchanged. Shorten it "
+                      f"and send the whole thing again")
+    return t
+
+
+def _avoid(v):
+    """None, or a frozenset of cells. Never a silent empty set.
+
+    "(3,4),(5,6)", "3,4 5,6" and [[3,4],[5,6]] all mean the same thing -- gemma
+    punctuates differently every time and this is not a parser exercise. But an odd
+    number of coordinates, or a string with no numbers in it at all, is a typo that
+    would otherwise become a trip through the very cell it named.
+    """
+    if v is None:
+        return None
+    if isinstance(v, str):
+        t = v.strip()
+        if t.lower() in NIL:
+            return None            # meant to omit it. The only silent empty.
+        if t.lower().startswith("auto"):
+            raise BadArgs("avoid=auto is not available yet -- you cannot mark cells. "
+                          "Pass the cells themselves, like (3,4),(5,6)")
+        n = [int(m) for m in re.findall(r"-?\d+", t)]
+        if not n:
+            raise BadArgs(f"avoid needs cells like (3,4),(5,6), got {v!r}")
+        if len(n) % 2:
+            raise BadArgs(f"avoid has an odd number of coordinates: {v!r}")
+        return frozenset(zip(n[::2], n[1::2]))
+    if isinstance(v, (list, tuple)):
+        if not v:
+            return None
+        try:
+            return frozenset((_int("avoid x", c[0]), _int("avoid y", c[1])) for c in v)
+        except (TypeError, IndexError, KeyError):
+            raise BadArgs(f"avoid must be a list of (x, y) pairs, got {v!r}")
+    raise BadArgs(f"avoid must be cells like (3,4),(5,6), got {v!r}")
+
+
+# Sent to Ollama as `tools`. Every sentence here was paid for: without "walks the whole
+# way" gemma stepped one tile per call for a run, and without "absolute" it cannot turn
+# "go ten north" into a coordinate.
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "goto",
+        "description": (
+            "Drive to a cell in the arena. Coordinates are ABSOLUTE cells on the map "
+            "in your view, never offsets from where you stand -- to move ten cells "
+            "south, add ten to your own y and pass that. One call drives the whole "
+            "way, however far it is: each tile is one step off the battery, and the "
+            "day's clock runs while the rover drives. "
+            "It plans over the map you have seen and assumes unseen ground is clear, "
+            "so rock you have never met will stop you: that is not a bug, it is how "
+            "the map fills in, and the rock you hit comes back in the answer. Aiming "
+            "at something solid such as the base pad puts you next to it, which "
+            "counts as arriving."),
+        "parameters": {"type": "object", "properties": {
+            "x": {"type": "integer", "description": "absolute column, 0 is the west edge"},
+            "y": {"type": "integer", "description": "absolute row, 0 is the north edge"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what you expect from this, written before "
+                    "you find out. The drive runs either way."},
+            "avoid": {"type": "string", "description":
+                      "cells to treat as impassable for this trip only, like '(3,4),(5,6)'. "
+                      "Omit it entirely unless you have a specific cell in mind."},
+        }, "required": ["x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "distance",
+        "description": (
+            "How many steps a goto to this cell would cost, without walking it and "
+            "without spending anything. Optimistic: it assumes every unseen cell is "
+            "clear, so the real walk can only come out the same or longer. Use it to "
+            "price a trip before committing battery and time to it."),
+        "parameters": {"type": "object", "properties": {
+            "x": {"type": "integer", "description": "absolute column"},
+            "y": {"type": "integer", "description": "absolute row"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what you are weighing up"},
+            "avoid": {"type": "string", "description":
+                      "cells to treat as impassable, like '(3,4),(5,6)'. Usually omit."},
+        }, "required": ["x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "execute",
+        "description": (
+            "Do the work at the objective or interest the rover is standing next to. "
+            "Drive to it first -- goto puts you alongside it, which is arriving -- then "
+            "call this. It costs that work's own number of steps, listed with it in "
+            "your view: that much battery, and the day's time to do them one by one. "
+            "The work is finished and gone once it is paid. An interest "
+            "tells you what it is when you examine it, and only then. Standing anywhere "
+            "else this does nothing and costs nothing."),
+        "parameters": {"type": "object", "properties": {
+            "why": {"type": "string", "description":
+                    "optional: one line on why this one now"},
+        }, "required": []}}},
+    {"type": "function", "function": {
+        "name": "count",
+        "description": (
+            "Every rock formation and every patch of fog you have revealed so far, "
+            "each with how many cells it covers and one coordinate at its middle. "
+            "Rock formations keep the same id for the whole expedition, so R4 is the "
+            "same rock tomorrow. Counting cells off the map by eye is the one thing "
+            "you are reliably wrong about -- ask for the numbers instead of adding "
+            "them up. It costs no steps. Rock still under fog is not counted as rock, "
+            "because you have not seen it yet."),
+        "parameters": {"type": "object", "properties": {
+            "kind": {"type": "string", "description":
+                     "'rock', 'fog', or omit for both"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what you are weighing up"},
+        }, "required": []}}},
+    {"type": "function", "function": {
+        "name": "count_cells",
+        "description": (
+            "The exact cells one formation occupies. Give it any coordinate that "
+            "belongs to the thing -- the middle coordinate `count` gave you is always "
+            "one. Use it when you need the shape rather than the size, such as working "
+            "out which way round something you cannot drive through. Costs no steps."),
+        "parameters": {"type": "object", "properties": {
+            "x": {"type": "integer", "description": "absolute column"},
+            "y": {"type": "integer", "description": "absolute row"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what you are weighing up"},
+        }, "required": ["x", "y"]}}},
+    {"type": "function", "function": {
+        "name": "todo",
+        "description": (
+            "Put one thing you mean to do on your list, so you do not decide it "
+            "twice. The list is in your view, numbered, and it is yours -- it is not "
+            "the mission's work, which is listed separately and crosses itself off "
+            "when the work is paid for. Costs no steps. The whole list is cleared when "
+            "dusk ends, so what you put on it at night is waiting for you at dawn."),
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description":
+                     "the item, in one line -- 'drive the fog north-east of R4'"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what put this on the list"},
+        }, "required": ["text"]}}},
+    {"type": "function", "function": {
+        "name": "strike",
+        "description": (
+            "Cross an item off today's list once it is done or once it stops being "
+            "worth doing. Give the number the list shows against it. It stays visible "
+            "as [x] so the numbering never shifts under you. Costs no steps."),
+        "parameters": {"type": "object", "properties": {
+            "n": {"type": "integer", "description":
+                  "the number of the item, as your list shows it"},
+            "why": {"type": "string", "description":
+                    "optional: one line on how it went, or why you are dropping it"},
+        }, "required": ["n"]}}},
+    {"type": "function", "function": {
+        "name": "remember",
+        "description": (
+            "Write one entry of your memory, by name -- what you carry forward. This "
+            "conversation and your reasoning are gone by morning and today's list is "
+            "cleared when dusk ends; the map, the finished work and mission control's "
+            "orders carry themselves, so do not copy those -- but what an interest "
+            "turned out to be is kept nowhere else. An entry holds one subject: what "
+            "you found, what you judged not worth the trip, a constraint you are "
+            "keeping, what to do next. A name you already have REPLACES that entry, so "
+            "send all of it; a new name adds one, up to the cap. Write sols as numbers -- "
+            "'until the end of sol 3', never 'for two more sols'. Costs no steps."),
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description":
+                     "a short name for the subject, e.g. 'constraints' or 'the C'"},
+            "text": {"type": "string", "description":
+                     f"the whole entry, at most {S.MEMORY_CHARS} characters; bullets are fine"},
+            "why": {"type": "string", "description":
+                    "optional: one line on what changed your mind"},
+        }, "required": ["name", "text"]}}},
+    {"type": "function", "function": {
+        "name": "forget",
+        "description": (
+            "Drop one entry of your memory, by name, once it is no longer true or no "
+            "longer needed. At the cap this is how you make room. Costs no steps."),
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "the entry's name"},
+            "why": {"type": "string", "description": "optional: one line on why it goes"},
+        }, "required": ["name"]}}},
+    {"type": "function", "function": {
+        "name": "radio",
+        "description": (
+            "Call mission control by day, from anywhere: an answer to an urgent "
+            "message, a question only they can answer, or news that changes the plan. "
+            "It costs battery, as the system prompt says. It ends your turn, and their "
+            "answer is your next message; while the line is open everything you say "
+            "goes over it at the same cost. If nobody answers within a minute the line "
+            "closes and the day is yours again. At dawn and night just talk."),
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description":
+                     f"what you say to them, at most {S.RADIO_CHARS} characters"},
+            "why": {"type": "string", "description":
+                    "optional: one line on why it cannot wait for the night"},
+        }, "required": ["text"]}}},
+    {"type": "function", "function": {
+        "name": "end",
+        "description": (
+            "End the day. Call it beside the pad once the battery is down to what the "
+            "trip back needed, or the clock is nearly out -- not because your list or "
+            "the work you know of is done, since charge left tonight is wasted. The day "
+            "is over the moment you do, and dusk follows. Until then you can drive as "
+            "long as you like, one call at a time, reading the map each time."),
+        "parameters": {"type": "object", "properties": {
+            "why": {"type": "string", "description":
+                    "optional: one line on where you have got to"},
+        }, "required": []}}},
+]
+
+NAMES = [t["function"]["name"] for t in TOOLS]
+
+def got_through(c):
+    """Whether `c` was a radio call that reached the desk."""
+    return c.name == "radio" and (c.result or "").startswith("RADIOED")
+
+
+def tools_for(names=None):
+    """The schemas for `names`, in TOOLS order. `None` is all of them.
+
+    A skill the turn can no longer afford is left out of the request rather than
+    refused after the fact. A refusal is one line arriving into a prompt whose other
+    6,700 tokens are a map that has not changed since the last one, and it loses:
+    watched 2026-09-04, the 31B re-sent the identical `goto` three times after being
+    told it had no drives left, then had the turn ended for it. What is not offered
+    cannot be asked for, so the cap stops being something to argue with.
+    """
+    if names is None:
+        return TOOLS
+    keep = set(names)
+    return [t for t in TOOLS if t["function"]["name"] in keep]
+
+
+# A call the model wrote out instead of making. Built from NAMES so a skill added later
+# cannot be forgotten. At Ollama's default temperature 3 of 12 turns came back with the
+# call sitting in the reply text and no tool_calls at all -- nothing runs, nothing moves,
+# and the pane shows a confident sentence. `MODEL_TEMP` is the fix; this is the backstop.
+# The digit requirement keeps it off prose like "goto is the right tool here".
+#
+# Braces as well as parens, and `:` as well as `=`, because on 2026-09-04 `gemma4:31b-cloud`
+# stopped populating `tool_calls` at all and began writing every call into the content as
+# `call:goto{x:49,y:0,why:...}`. Verified against a one-line prompt with the stock schema:
+# the local `gemma4:e4b` answers the same request with a real tool call and empty content,
+# so it is that model behind that endpoint, not the schema and not the view.
+#
+# What each skill actually needs, read off its own schema rather than assumed. `count`
+# and `end` require nothing, so a recovery path demanding x and y could never return
+# either -- which with a model narrating *every* call means she can never count and
+# never hand back a turn.
+REQUIRED = {t["function"]["name"]: set(t["function"]["parameters"].get("required", ()))
+            for t in TOOLS}
+
+# A skill that needs arguments is recognised by having one with a digit in it. A skill
+# that needs none cannot be, so it has to look like a call some other way: empty
+# brackets, or something with a `:` or `=` in them. Otherwise "at the end (of the sweep)"
+# reads as a call to `end` and quietly gives the turn away.
+_needy = [n for n in NAMES if REQUIRED[n]]
+_free = [n for n in NAMES if not REQUIRED[n]]
+# A needy skill with a digit in its brackets, or a quote straight after the bracket:
+# `todo("Explore north of the pad")` has no digit, and the 14 Oct team run lost seven
+# list writes typed like that without a word said.
+CALL_SHAPED = re.compile("|".join(
+    ([r"\b(?:" + "|".join(_needy) + r")\s*[({]\s*(?:[^)}]*\d|[\"'])"] if _needy else [])
+    + ([r"\b(?:" + "|".join(_free) + r")\s*[({]\s*(?:[)}]|[^)}]*[:=])"] if _free else [])))
+
+
+def looks_like_a_call(text):
+    """Did the model write a call out in words rather than make one? Anything that reads
+    as a whole call does, whatever its shape."""
+    return bool(CALL_SHAPED.search(text or "")) or bool(written_calls(text))
+
+
+# The same thing again, but parsed rather than merely detected: where each typed call
+# opens. Where it closes is `_closes`'s, because the text of a `todo` holds coordinates
+# in brackets of its own.
+OPENS = re.compile(r"\b(" + "|".join(NAMES) + r")\s*[({]")
+
+# Each skill's arguments in the order its schema lists them, which is the order a call
+# typed without keywords gives them in. Reading every one as goto's x, y and why meant a
+# typed `todo`, `strike` or `remember` could never be recovered.
+ORDER = {t["function"]["name"]: list(t["function"]["parameters"]["properties"])
+         for t in TOOLS}
+TYPES = {t["function"]["name"]: {k: v["type"] for k, v in
+                                 t["function"]["parameters"]["properties"].items()}
+         for t in TOOLS}
+
+
+def _quote_opens(text, i):
+    """Whether the quote at `i` starts a value rather than sitting in a word: the
+    apostrophe in `why:the rover's path` must not swallow the rest of the call."""
+    before = text[:i].rstrip()
+    return not before or before[-1] in "({,=:"
+
+
+def _closes(text, start):
+    """Where the bracket just before `start` closes, skipping brackets inside quotes and
+    nested ones. None if it never does."""
+    depth, quote = 0, ""
+    for i in range(start, len(text)):
+        ch = text[i]
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "\"'" and _quote_opens(text, i):
+            quote = ch
+        elif ch in "({":
+            depth += 1
+        elif ch in ")}":
+            if not depth:
+                return i
+            depth -= 1
+    return None
+
+
+def _fields(inside):
+    """Split `35, 25, "why, with a comma"` on the commas that separate arguments."""
+    out, cur, quote, depth = [], "", "", 0
+    for i, ch in enumerate(inside):
+        if quote:
+            cur += ch
+            quote = "" if ch == quote else quote
+        elif ch in "\"'" and _quote_opens(inside, i):
+            quote, cur = ch, cur + ch
+        elif ch == "," and not depth:
+            out.append(cur)
+            cur = ""
+        else:
+            depth += (ch in "({") - (ch in ")}")
+            cur += ch
+    out.append(cur)
+    return [f.strip() for f in out if f.strip()]
+
+
+def _unquote(v):
+    v = v.strip()
+    return v[1:-1] if len(v) > 1 and v[0] == v[-1] and v[0] in "\"'" else v
+
+
+def written_call(text):
+    """The first complete call the model typed instead of making: (name, args), or None."""
+    calls = written_calls(text)
+    return calls[0] if calls else None
+
+
+def written_calls(text):
+    """Every complete call the model typed instead of making, in order, as (name, args).
+
+    All of them, because writes typed together all run together, as made ones do
+    (`chat.Conversation._run`); a typed call after the first that is not a write is
+    refused out loud there, like a made one.
+
+    This runs them rather than refusing them. About 7 turns in 10 emit a real tool call
+    and the rest type it out, and neither the prompt nor the sampler moves that number.
+    There is nothing to invent: a written call names the skill and its arguments, so it
+    is a decision the model made and Ollama failed to encode.
+
+    `skills.call` still validates it, so a malformed recovery comes back BAD_ARGS like
+    any other, and everything recovered this way is counted on the tape.
+
+    Complete means whatever that skill's own schema calls required -- `x` and `y` for a
+    `goto`, nothing at all for `count` or `end`. A written `goto(25, 15)` is as complete
+    as a tool call carrying the same two, and the recovery path must not be stricter than
+    the real one.
+
+    Accepts `goto(35, 25, "why")`, `goto(x=35, y=25, why="...")`, and the brace dialect
+    `call:goto{x:35,y:25,why:...}` that `gemma4:31b-cloud` switched to on 2026-09-04.
+    Arguments without a keyword fill the skill's own parameters in its schema's order,
+    so `todo("drive north", "why")` and `strike(2)` read as they were meant.
+    """
+    out, text, at = [], text or "", 0
+    while m := OPENS.search(text, at):
+        end = _closes(text, m.end())
+        if end is None:
+            at = m.end()
+            continue
+        # On past it, so a skill named inside a quoted text is not read as a call too.
+        name, inside, at = m.group(1), text[m.end():end], end + 1
+        args, positional = {}, []
+        # Blank fields dropped, so `end()` parses to no arguments rather than to one
+        # empty positional that then lands in `x`.
+        for field in (f for f in _fields(inside) if f.strip()):
+            key, eq, val = field.partition("=")
+            if not eq:
+                # `x:49` is the brace dialect. `isidentifier` below is what stops a
+                # positional string with a colon in it being read as a keyword.
+                key, eq, val = field.partition(":")
+            if eq and key.strip().isidentifier():
+                args[key.strip()] = _unquote(val)
+            else:
+                positional.append((_unquote(field), field[:1] in "\"'"))
+        # A skill that takes no required argument has no positional form either, so
+        # bracketed prose -- "at the end (of the sweep)" -- is text and not a call.
+        if not REQUIRED[name] and positional:
+            continue
+        free = [k for k in ORDER[name] if k not in args]
+        # Words go in quotes. "I will radio (if needed)" is a sentence, and reading it
+        # as a call would spend battery and end her turn.
+        if (positional and free and TYPES[name][free[0]] == "string"
+                and not positional[0][1]):
+            continue
+        args.update(zip(free, (v for v, _ in positional)))
+        if REQUIRED[name] <= set(args):
+            out.append((name, args))
+    return out
+
+
+class Call:
+    """One skill invocation, start to finish. What the tape records.
+
+    `why` is captured before dispatch and `result` after, so the file preserves the
+    order in which they were true. That ordering is the entire point of the field.
+    """
+
+    def __init__(self, name, args):
+        self.name = name
+        self.args = args
+        self.why = None
+        self.result = None
+        self.steps = 0
+        self.gained = 0       # cells of map this call bought. See `_stuck`.
+
+    def __str__(self):
+        shown = {k: v for k, v in self.args.items() if k != "why"}
+        bits = ", ".join(f"{k}={v}" for k, v in shown.items())
+        return f"{self.name}({bits})"
+
+
+def _stuck(c, history):
+    """Say so when a run of calls has told the caller nothing it did not already know.
+
+    The invariant is `gained == 0`, and it has been widened three times -- each earlier
+    version checked a label rather than the fact. Firing only on `DONE` missed the same
+    loop wearing `UNREACHABLE`; "spent no steps" missed 439 steps that revealed nothing.
+
+    It does not require the calls to be identical. The loop measured was (0,49) to
+    (0,10) and back, six times, so a run of identical calls never forms. That the
+    targets differ is the point: casting about at random is not working either.
+
+    **The second rule is a rate over a window, not a streak.** It used to need three
+    *consecutive* gainless calls. Watched: two retreats after a BLOCKED, 19 and 24
+    steps, both revealing nothing, 24% of the sol between them -- and each sat between
+    two calls that gained plenty, so the streak never formed and nothing was said.
+    Waste that alternates with usefulness is invisible to a streak by construction.
+
+    WINDOW is 4 rather than 2 or 3 deliberately. **This must never be a first-offence
+    scold**: driving home to the pad is a gainless drive on purpose, and so is any
+    deliberate repositioning.
+
+    **The window is every call that spends steps**, which is prototype 7's rule back
+    again. Prototype 9 narrowed it to sorties because a drive there revealed nothing
+    however well aimed, so gainless steps were not evidence of waste. Driving buys map
+    again, so they are.
+
+    `distance` never enters the window; it spends no steps. Asking for the same price
+    over and over is caught by the first rule, which is where it belongs.
+    """
+    if not c.gained:
+        # The same question, asked again, having learned nothing in between. Covers
+        # arriving beside something solid, an unreachable target, and pricing one trip
+        # repeatedly -- three codes, one fact.
+        same = 0
+        for p in reversed(history):
+            if p.gained or str(p) != str(c):
+                break
+            same += 1
+        if same >= 2:
+            return (f" You have asked for this {same + 1} times in a row and learned "
+                    f"nothing new any of those times, so nothing has changed and the "
+                    f"answer cannot change either. Do something different, or say what "
+                    f"you are trying to achieve.")
+
+    # A call that spent nothing cannot have wasted anything, so it is neither evidence
+    # nor an alibi. `distance` spends nothing and is excluded for the same reason.
+    if not c.steps or c.name == "distance":
+        return ""
+    window = [p for p in list(history) + [c] if p.steps and p.name != "distance"][-WINDOW:]
+    if len(window) < WINDOW:
+        return ""
+    spent = sum(p.steps for p in window)
+    wasted = sum(p.steps for p in window if not p.gained)
+    if spent and wasted * 2 >= spent:
+        return (f" Of your last {spent} steps, {wasted} bought no new map at all -- you "
+                f"are going back over ground you have already covered. Somewhere on this "
+                f"arena is still unexplored: aim at the ? and say what you are trying to "
+                f"achieve.")
+    return ""
+
+
+def _runs(cells):
+    """A set of cells as one line of coordinate runs a row, the way the map is written.
+
+    Thirty coordinates in a row is a wall she has to parse; `y15: x30-39` is the same
+    fact in the notation she is already reading the map in.
+    """
+    rows = {}
+    for x, y in sorted(cells, key=lambda c: (c[1], c[0])):
+        rows.setdefault(y, []).append(x)
+    out = []
+    for y, xs in rows.items():
+        spans, lo, prev = [], xs[0], xs[0]
+        for x in xs[1:] + [None]:
+            if x != prev + 1:
+                spans.append(f"x{lo}" if lo == prev else f"x{lo}-{prev}")
+                lo = x
+            prev = x
+        out.append(f"y{y}: {', '.join(spans)}")
+    return " | ".join(out)
+
+
+def _count(world, kind):
+    """Sizes and middles for everything revealed. Facts only -- deliberately unranked.
+
+    Listed in map order, north to south, not by size. She is the one weighing which
+    formation matters; a list already sorted by the answer would be doing that for her.
+    """
+    a, s = world.here, world.survey
+    want = (kind or "").strip().lower() or "both"
+    if want not in ("rock", "fog", "both"):
+        return (f"BAD_ARGS(kind must be 'rock', 'fog' or omitted, got {kind!r}). "
+                f"Nothing happened.")
+    lines = []
+    if want in ("rock", "both"):
+        found = s.rock(a)
+        found.sort(key=lambda f: (centre_of(f[1])[1], centre_of(f[1])[0]))
+        for fid, cells in found:
+            mx, my = centre_of(cells)
+            grew = s.since_last(fid, len(cells))
+            more = f", {grew} of them new since you last asked" if grew else ""
+            lines.append(f"  R{fid}: {len(cells)} cells, middle ({mx},{my}){more}")
+        lines.insert(0, f"ROCK -- {len(found)} formations you have seen:")
+    if want in ("fog", "both"):
+        blobs = s.fog(a)
+        blobs.sort(key=lambda c: (centre_of(c)[1], centre_of(c)[0]))
+        fog = [f"  {len(c)} cells, middle {centre_of(c)}" for c in blobs]
+        lines.append(f"FOG -- {len(blobs)} patches still unseen:" if blobs
+                     else "FOG -- none left, you have seen the whole arena.")
+        lines += fog
+    # A formation she may have named out loud must not simply stop existing.
+    for gone, kept in s.take_merges():
+        lines.append(f"  NOTE: R{gone} and R{kept} turned out to be one formation. "
+                     f"It is all R{kept} now.")
+    return "COUNT --\n" + "\n".join(lines)
+
+
+def _count_cells(world, x, y):
+    """Every cell of the one feature at (x, y), written as runs."""
+    a, s = world.here, world.survey
+    if not (0 <= x < a.w and 0 <= y < a.h):
+        return f"BAD_ARGS(({x},{y}) is off the arena). Nothing happened."
+    if (x, y) not in a.seen:
+        for c in s.fog(a):
+            if (x, y) in c:
+                return (f"CELLS(fog, {len(c)} cells) -- {_runs(c)}. You have not been "
+                        f"here, so what is under it is unknown.")
+    if a.at(x, y) != "#":
+        return (f"NOT_A_FEATURE(({x},{y})) -- that is open ground you have already "
+                f"seen, not rock and not fog. Give a cell that belongs to the thing "
+                f"you mean; the middle coordinate `count` gives you always does.")
+    for fid, cells in s.rock(a):
+        if (x, y) in cells:
+            return f"CELLS(R{fid}, {len(cells)} cells) -- {_runs(cells)}"
+    return f"NOT_A_FEATURE(({x},{y})) -- nothing revealed there."
+
+
+def _work_line(o, short=False):
+    """One piece of work as she reads it. An interest's text is never in it."""
+    at = f"({o.cell[0]},{o.cell[1]})"
+    if o.kind == "objective":
+        return f"{o.priority} priority at {at}, {o.cost} steps" + ("" if short else " of work")
+    return f"an interest at {at}, {o.cost} steps to examine"
+
+
+def _nothing_waiting(world, what):
+    """`what` says the work she knows of, or her list, is all done. By day it goes on
+    to say what the day still holds, as facts.
+
+    All five sols of the two 14 Oct runs ended the same way: "Nothing else you know of
+    is left to do" or "Nothing is left open on your list", then the drive to the pad
+    and `end`, with 271 to 333 of 500 steps of battery unspent and 57 to 122 of the
+    day's 600 seconds used. Read as "you are done", those lines outweighed a prompt
+    that says leftover charge is wasted.
+    """
+    if world.phase != "day" or world.day_over:
+        return f"{what}."
+    a = world.here
+    return (f"{what}, and the day is not over: {world.battery} steps of battery and "
+            f"{world.time_left:.0f} seconds are left, and {a.w * a.h - len(a.seen)} of "
+            f"the {a.w * a.h} cells are still unseen.")
+
+
+def _execute(world):
+    """Do the work the rover is beside, and say what it cost -- and, for an interest,
+    what it was. That sentence is the only place she is ever told.
+
+    Every refusal says where the work she knows of is, and that nothing was spent. A
+    bare code leaves a 4B model nothing to act on, which is the lesson `DONE(beside=...)`
+    cost four days: a field is not a sentence. Only what she knows of: naming work still
+    under the fog hands her its location.
+    """
+    left = world.objectives + [i for i in world.interests if i.found]
+    o = world.adjacent_work()
+    if o is None:
+        if not left:
+            return ("NOT_BESIDE_ONE -- the rover is not next to any work, so nothing "
+                    "happened and nothing was spent. "
+                    + _nothing_waiting(world, "No work you know of is waiting"))
+        near = ", ".join(_work_line(p) for p in left)
+        return (f"NOT_BESIDE_ONE -- the rover is not next to any work, so nothing "
+                f"happened and nothing was spent. Still to do: {near}. Drive to one; "
+                f"goto stops you alongside it, which is arriving.")
+
+    at = f"({o.cell[0]},{o.cell[1]})"
+    if world.battery <= 0:
+        return (f"BATTERY_FLAT -- the work at {at} needs {o.cost} steps and the battery "
+                f"is flat. Nothing was spent.")
+    if world.day_over:
+        return (f"OUT_OF_TIME -- the work at {at} needs {o.cost} steps and the day is "
+                f"over. Nothing was spent. It will still be there tomorrow.")
+
+    spent = world.execute(o)
+    if not o.done:
+        return (f"UNFINISHED(at={at}, steps={spent}) -- the work needs {o.cost} steps and "
+                f"the battery ran flat after {spent}. It is not done and those steps are "
+                f"gone. Start it with more in hand.")
+    rest = [p for p in left if p is not o]
+    tail = (" " + _nothing_waiting(world, "No other work you know of is waiting")
+            if not rest else
+            " Still to do: " + ", ".join(_work_line(p, short=True) for p in rest) + ".")
+    if o.kind == "objective":
+        return (f"EXECUTED(at={at}, priority={o.priority}, steps={spent}) -- the work is "
+                f"done and the objective is off the map." + tail)
+    return (f"EXAMINED(at={at}, steps={spent}) -- you found {o.text}. Your view keeps "
+            f"where it was and nothing of what it was." + tail)
+
+
+def _todo(world, text):
+    """One item onto today's list.
+
+    A duplicate is refused by name rather than added. The list exists so that a decision
+    is made once, and a list carrying the same line twice is the loop it was built to
+    stop, wearing a different hat.
+    """
+    n = world.notes
+    for i, (t, struck) in enumerate(n.todos, 1):
+        if t.lower() == text.lower():
+            return (f'ALREADY_ON_IT({i}) -- "{t}" is item {i} on your list'
+                    f'{" and already crossed off" if struck else ""}, so nothing was '
+                    f'added and nothing was spent.')
+    if len(n.todos) >= S.TODO_MAX:
+        return (f"LIST_FULL -- your list already holds {S.TODO_MAX} items today and "
+                f"this one was not added. {n.open} of them are still open: do one of "
+                f"those, or say what you are trying to achieve.")
+    i = n.add(text)
+    world.record("todo", n=i, text=text)
+    return (f'NOTED({i}) -- "{text}" is item {i} on your list, {n.open} still open. '
+            f'Cross it off with strike({i}) when it is done.')
+
+
+def _strike(world, i):
+    """Cross one off. Says which, in words, because a bare code cannot be checked
+    against what she meant to strike -- and an off-by-one here quietly retires the
+    wrong decision."""
+    n = world.notes
+    if not n.holds(i):
+        if not n.todos:
+            return (f"NO_SUCH_ITEM({i}) -- your list is empty, nothing has been written "
+                    f"on it today, and nothing happened.")
+        return (f"NO_SUCH_ITEM({i}) -- your list is numbered 1 to {len(n.todos)}. "
+                f"Nothing happened.")
+    if n.struck(i):
+        return (f'ALREADY_STRUCK({i}) -- "{n.text(i)}" was crossed off already, so '
+                f'nothing happened.')
+    n.strike(i)
+    world.record("strike", n=i, text=n.text(i))
+    return (f'STRUCK({i}) -- "{n.text(i)}" is crossed off. '
+            + (f"{n.open} still open on your list." if n.open else
+               _nothing_waiting(world, "Nothing is left open on your list")))
+
+
+def _remember(world, name, text):
+    """One entry, written or replaced whole. The old length is quoted back when there was
+    one, so a rewrite that dropped half of what she had said is visible in the answer
+    rather than only on the tape."""
+    n = world.notes
+    if n.entry(name) is None and len(n.memory) >= S.MEMORY_ENTRIES:
+        return (f"MEMORY_FULL -- you already hold {S.MEMORY_ENTRIES} entries, so nothing was "
+                f"written. Forget one that is no longer true, or fold this into an entry "
+                f"that covers it: {', '.join(n.memory)}.")
+    had = n.remember(name, text)
+    world.record("remember", name=name, chars=len(text), text=text)
+    return (f"REMEMBERED({name}, {len(text)} characters) -- "
+            + (f"this replaced the {had} characters that were there. " if had is not None
+               else f"a new entry: {len(n.memory)} of {S.MEMORY_ENTRIES}. ")
+            + "It will still be in your memory tomorrow morning.")
+
+
+def _forget(world, name):
+    n = world.notes
+    if not n.forget(name):
+        held = ", ".join(n.memory) or "none"
+        return (f"NOT_REMEMBERED({name}) -- there is no entry by that name, so nothing "
+                f"changed. Your entries: {held}.")
+    world.record("forget", name=name)
+    return f"FORGOT({name}) -- {len(n.memory)} of {S.MEMORY_ENTRIES} entries left."
+
+
+def call(world, name, args, history=()):
+    """Run one skill. Returns a finished `Call` -- never raises, never lies.
+
+    A BAD_ARGS costs nothing. `world.steps` is read either side rather than trusted to
+    the skill, so what the tape says a call spent is what the day actually lost.
+
+    `history` is the calls already made, newest last, and is only read to notice a
+    repeat that is going nowhere.
+    """
+    c = Call(name, dict(args or {}))
+    before = world.steps
+
+    if name not in NAMES:
+        c.result = f"NO_SUCH_SKILL({name}) -- you have {' and '.join(NAMES)}"
+        return c
+
+    try:
+        c.why = _why(c.args.get("why"))
+        if name in ("goto", "distance", "count_cells"):
+            x = _int("x", c.args.get("x"))
+            y = _int("y", c.args.get("y"))
+        if name in ("goto", "distance"):
+            avoid = _avoid(c.args.get("avoid"))
+        if name == "strike":
+            n = _int("n", c.args.get("n"))
+        if name in ("todo", "remember", "radio"):
+            text = _text("text", c.args.get("text"),
+                         {"todo": S.TODO_CHARS, "remember": S.MEMORY_CHARS}.get(
+                             name, S.RADIO_CHARS))
+        if name in ("remember", "forget"):
+            entry = _text("name", c.args.get("name"), 40)
+    except BadArgs as e:
+        c.result = f"BAD_ARGS({e}). Nothing happened and nothing was spent."
+        return c
+
+    if name == "end":
+        # The turn is ended by `chat`, which is the only thing that knows what a turn
+        # is. Here it is a call like any other so that it lands on the tape in order
+        # with the rest, rather than as an event beside them.
+        # One wording whoever is on shift. Replay compares results, and who is on shift
+        # is the viewer's choice there; what `end` did to the sol is the prompt's to say.
+        c.result = "END -- your turn is over."
+        return c
+
+    if name == "radio":
+        # Whether anyone answers is the clock's business (`autopilot`), and whether
+        # anyone is at the desk decides what she is offered, not what this says: the
+        # result is the same whoever replays it.
+        if world.phase != "day" or world.day_over:
+            c.result = ("NOT_NEEDED -- it is not day, so nothing was sent and nothing was "
+                        "spent. At dawn and night just say it; at dusk your last words "
+                        "are your report.")
+            return c
+        world.drain(S.RADIO_STEPS)
+        world.record(name, text=text, at=list(world.pos), cost=S.RADIO_STEPS)
+        c.result = (f"RADIOED -- mission control has it, and it cost {S.RADIO_STEPS} steps "
+                    f"of battery. Your turn is over: their answer, if they give one, is "
+                    f"your next message, and while the line is open every reply you speak "
+                    f"costs the same. The day's clock does not stop for it.")
+        return c
+
+    if name == "count":
+        c.result = _count(world, c.args.get("kind"))
+        return c
+
+    if name == "count_cells":
+        c.result = _count_cells(world, x, y)
+        return c
+
+    if name == "execute":
+        left = len(world.here.work())
+        c.result = _execute(world)
+        # Doing the work is the point of the sol, so it counts as gain even though it
+        # reveals nothing -- otherwise `_stuck` reads the whole mission as waste.
+        c.gained = 1 if len(world.here.work()) < left else 0
+    elif name == "goto":
+        world.just_found = []
+        r = nav.goto(world, x, y, avoid)
+        c.gained = r.new or 0
+        # A drive that ends beside work still to do bought something, even over ground
+        # already mapped. Without this the scold fires on the one journey the sol is
+        # actually for -- going to the work is not casting about.
+        if not c.gained and world.adjacent_work():
+            c.gained = 1
+        # `beside=` was meant to carry this on its own and did not. Watched
+        # 2026-08-26: gemma read DONE(at=(10,15), beside=(10,16)) as a failure to
+        # reach (10,16) and spent the rest of the run trying to step into a shop
+        # counter. A field is not a sentence.
+        c.result = f"{r} -- {r.advice}" if r.advice else str(r)
+        if world.just_found:
+            found = ", ".join(f"({x_},{y_})" for x_, y_ in world.just_found)
+            c.result += (f" On the way the rover came within sight of something worth a "
+                         f"closer look at {found}, marked {INTEREST} on your map. Examine "
+                         f"it to find out what it is.")
+            c.gained = max(c.gained, 1)
+    elif name == "todo":
+        c.result = _todo(world, text)
+    elif name == "strike":
+        c.result = _strike(world, n)
+    elif name == "remember":
+        c.result = _remember(world, entry, text)
+    elif name == "forget":
+        c.result = _forget(world, entry)
+    else:
+        # A floor, not a quote, and said in words -- a field is not a sentence. The
+        # companion `reveals~` number is gone: driving reveals nothing here, so it was
+        # always zero.
+        steps = nav.price(world, x, y, avoid)
+        c.result = (f"UNREACHABLE(to=({x},{y})) -- no route even assuming every "
+                    f"unseen cell is clear" if steps is None else
+                    f"DISTANCE(to=({x},{y}), steps>={steps}) -- planned as though the "
+                    f"fog were clear, so the drive takes at least that many steps and "
+                    f"more if there is rock in the way. {_left_today(world)}")
+
+    c.steps = world.steps - before
+    c.result += _stuck(c, list(history))
+    return c
+
+
+def _left_today(world):
+    clock = (f"the day has {world.time_left:.0f} seconds left" if world.phase == "day"
+             else f"the day's {world.time_left:.0f} seconds start when it does"
+             if world.phase == "dawn" else "the day is over")
+    return f"The battery holds {world.battery} steps and {clock}."
+
+
+def budget_note(world, hops=""):
+    """Handed back with a result when the day or the battery is spent, because
+    OUT_OF_TIME on its own reads as a failure of the call rather than the end of the day.
+
+    `hops` is what is left of the turn's allowance, and it rides on *every* result
+    rather than only on the last one. A cap she is told about only once she has hit it
+    is a cap she cannot plan around -- the 31B spent half a run discovering it by
+    having calls refused.
+    """
+    out = hops
+    if world.battery <= 0:
+        out += (" The battery is flat, so the day is over. Only the pad recharges it.")
+        return out
+    if world.day_over:
+        out += (" The day is over. Anything that drives or works will refuse from here.")
+        return out
+    # The warning about getting home comes while there is still time to act on it:
+    # within a tenth of a charge, or a tenth of the day, of what the trip back costs.
+    # Thinking runs the clock too, so the time margin has to cover more than the drive.
+    back = nav.home_steps(world)
+    low_b = world.battery <= (back or 0) + S.BATTERY // 10
+    low_t = (world.phase == "day" and
+             world.time_left <= nav.drive_seconds(back or 0) + S.DAY_SECONDS / 10)
+    if back and (low_b or low_t):
+        out += (f" {_left_today(world)} The pad is at least {back} steps away. Head "
+                f"back now, or the rover is stranded tonight.")
+    elif low_b or low_t:
+        out += f" {_left_today(world)}"
+    return out
