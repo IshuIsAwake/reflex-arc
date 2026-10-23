@@ -372,7 +372,8 @@ def main():
                     if asking:
                         asking = answer_quit(e)
                     elif e.key == pygame.K_SPACE:
-                        return
+                        if space_ends_pause(e):
+                            return
                     elif e.key == pygame.K_ESCAPE:
                         asking = True
                 clock.tick(config.FPS)
@@ -385,7 +386,7 @@ def main():
         finally:
             world.awaiting_rover = None
 
-    nav._await_rover = await_rover
+    nav.wait_for_rover = await_rover
 
     def mission_over():
         """The last sol is done, or the rover is lost. A length changed on the settings screen counts already."""
@@ -690,6 +691,17 @@ def main():
             render.draw_settings(screen, fonts, items, picked, prefs, editing, notice,
                                  models, bool(script), caret)
         pygame.display.flip()
+
+
+def space_ends_pause(e):
+    """Whether a SPACE ends the rover pause. While the real rover drives (Level 3), only the
+    SPACE Level 3 posts for it, marked rover=True, does; one from the keyboard is ignored."""
+    if e.dict.get("rover"):
+        return True
+    if nav.rover_driving and nav.rover_driving():
+        print("[rover] (SPACE ignored -- the rover is still driving)")
+        return False
+    return True
 
 
 def clamp_cursor(cursor, d, area):

@@ -524,12 +524,11 @@ def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
 def _legs_handed_over(w, *goto_args, **kw):
     """Every leg the robot was actually given, in order.
 
-    `_await_rover` runs between the write and the wipe, which is the only moment the
+    `wait_for_rover` runs between the write and the wipe, which is the only moment the
     file holds anything -- so standing in for the robot there reads exactly what the
     robot would have read, and proves the pause sits between the two.
     """
     seen = []
-    real = nav._await_rover
 
     def spy(world, dirs):
         on_disk = open(nav.plan_file(), encoding="utf-8").read().split()
@@ -539,11 +538,11 @@ def _legs_handed_over(w, *goto_args, **kw):
         assert on_disk == list(dirs), (on_disk, dirs)
         seen.append(on_disk)
 
-    nav._await_rover = spy
+    nav.wait_for_rover = spy
     try:
         r = nav.goto(w, *goto_args, **kw)
     finally:
-        nav._await_rover = real
+        nav.wait_for_rover = None
     return r, seen
 
 

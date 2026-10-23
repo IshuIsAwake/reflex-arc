@@ -5,6 +5,8 @@ import pytest
 
 import chat
 import config
+import dashboard
+import nav
 import settings
 
 
@@ -14,12 +16,18 @@ def fresh_settings(tmp_path):
     saved_settings = dict(vars(settings))
     saved_config = dict(vars(config))
     saved_threading = chat.threading
+    saved_hint = dashboard.ROVER_HINT
     settings.STORM_ON = False    # clear skies unless a test turns the storm on
     settings.PLAN_FILE = str(tmp_path / "plan.txt")
     yield
     vars(settings).update(saved_settings)
     vars(config).update(saved_config)
     chat.threading = saved_threading
+    dashboard.ROVER_HINT = saved_hint
+    nav.wait_for_rover = None
+    nav.leg_started = None
+    nav.leg_finished = None
+    nav.rover_driving = None
 
 
 class Inline:

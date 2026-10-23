@@ -1,29 +1,17 @@
-"""Level 3 -- the simulation's mission, with every leg it drives sent to the real rover.
+"""Level 3: the simulation's mission, with every leg it drives sent to the real rover.
 
     python level3.py --rover 10.7.12.41
     python level3.py --rover 127.0.0.1 --arena 50 --sols 3   anything after --rover goes to the game
 
-The simulation is prototype13's `game/`, prototype 11's. This imports it and wraps, in
-memory, `nav.publish` -- where the game hands a driven leg to the robot as N/E/S/W
-lines -- and `pygame.event.get`, for the SPACE guard below. When a leg comes
-through, it goes to the rover over the link, and the game is held at its rover pause
-(`--pause key`, forced on here) until the rover reports the leg finished. Then this
-presses SPACE for you. If the link fails, nothing is pressed: the HUD keeps waiting,
-you put the rover where the screen says it should be, and press SPACE yourself.
+The game in ../../game runs as usual, with the rover pause on (--pause key). Each leg it
+drives goes to the rover over the link, and the game waits at the pause until the rover
+reports the leg done; then this presses SPACE for you. With no LiDAR the simulation is the
+truth, and the rover replays what the game already drove.
 
-With no LiDAR the simulation is the truth: the map, the fog and the battery all come
-from the game, and the rover replays what the game already drove. Nothing measures where
-the floor disagrees with the screen; that is Level 4, deferred.
+If a leg is stopped from the pad, or the link fails, nothing is pressed: the screen says
+where to put the rover (counted from home), and you press SPACE once it is there.
 
-A stop from the control pad ends the leg there and hands the rover to you, the same as
-a failed link. The screen and the terminal say where the leg ends, counted from home,
-and which way to face it; put it there and press SPACE. The rover is then told it is
-there.
-
-The arena is the 30 unless `--arena` says otherwise: 3 m across at 10 cm a cell.
-
-Before starting: rover on the cell that stands for the landing cell, facing grid
-north (up on the screen).
+Before starting: the rover on the home spot (the landing cell), facing north.
 """
 
 import argparse
@@ -34,38 +22,15 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype13/game
-sys.path.insert(0, HERE)
+PROTOTYPE = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, os.path.join(PROTOTYPE, "game"))  # the game's modules
 
+import dashboard  # noqa: E402
+import nav  # noqa: E402
 from link import LinkError, RoverLink, RoverStopped  # noqa: E402
 
-STEP = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}   # the game's frame and the rover's
-DRIVING = "the rover says when it has stopped"      # the pause's hint while a leg drives
-
-
-class Guard:
-    """While the rover is driving, a SPACE from the keyboard is dropped, so the game's
-    pause ends when the rover says so and not when a thumb does. Our SPACE carries
-    `rover=True` and always gets through. After a FAILED leg the guard is off, so a
-    person can put the rover right and release the game by hand.
-    """
-
-    def __init__(self):
-        self.driving = 0              # legs queued or being driven
-
-    def filter(self, events):
-        if not self.driving:
-            return events
-        keep = []
-        for e in events:
-            if e.type == KEYDOWN and e.key == K_SPACE and not getattr(e, "rover", False):
-                print("[rover] (SPACE ignored -- the rover is still driving)")
-                continue
-            keep.append(e)
-        return keep
-
-
-KEYDOWN, K_SPACE = 768, 32           # pygame's values; set properly once pygame is imported
+STEP = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}  # the game's frame and the rover's
+DRIVING = "the rover says when it has stopped"  # the pause's hint while a leg drives
 
 
 def show(m):
@@ -74,122 +39,124 @@ def show(m):
 
 
 def leg_end(pose, dirs):
-    """Where a leg leaves the rover, from the pose it started in: the cell, facing the
-    way its last move went."""
-    x, y = pose["x"], pose["y"]
+    """Where a leg leaves the rover, from the pose it started in: the cell, facing the way
+    its last move went."""
+    x = pose["x"]
+    y = pose["y"]
     for d in dirs:
-        x, y = x + STEP[d][0], y + STEP[d][1]
+        x += STEP[d][0]
+        y += STEP[d][1]
     return x, y, dirs[-1]
 
 
 def from_home(x, y, cell_m=None):
     """A rover cell as a person finds it on the floor: how far east or west, and north or
-    south, of the home spot it was reset on."""
+    south, of the home spot."""
     parts = []
     for n, ahead, back in ((x, "east", "west"), (-y, "north", "south")):
-        if n:
-            far = f"{abs(n)} cell{'s' * (abs(n) != 1)}"
-            if cell_m:
-                far += f" ({abs(n) * cell_m * 100:.0f} cm)"
-            parts.append(f"{far} {ahead if n > 0 else back}")
-    return " and ".join(parts) + " of home" if parts else "on home"
+        if not n:
+            continue
+        far = f"{abs(n)} cell"
+        if abs(n) != 1:
+            far += "s"
+        if cell_m:
+            far += f" ({abs(n) * cell_m * 100:.0f} cm)"
+        if n > 0:
+            parts.append(f"{far} {ahead}")
+        else:
+            parts.append(f"{far} {back}")
+    if not parts:
+        return "on home"
+    return " and ".join(parts) + " of home"
 
 
-def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=None,
-            start=None, cell_m=None, tell=lambda hint: None):
-    """Wrap `nav.publish` so every leg the game hands over is also driven by `rover`, and
-    `finished()` is called once the rover has done it. The game calls `publish` with the
-    leg, then waits at its rover pause, then calls it again with [] -- so the wait is
-    the window the rover drives in.
+class RoverLegs:
+    """Sends each leg the game drives to the rover, in order, from one worker thread, so a
+    leg never reaches a rover that is still driving the last one. The game calls
+    leg_started, leg_finished and is_driving through nav's hooks."""
 
-    Legs go through one queue and one worker, in order. If the game is let go early -- a
-    SPACE typed by hand ends its pause too -- the next leg waits its turn instead of
-    reaching a rover that is still driving and being refused, so every direction is
-    still driven. `finished()` only fires while the game is still waiting on that same
-    leg (`still_waiting`); a SPACE posted after a hand-released pause would otherwise
-    land in the next one, or in the chat.
+    def __init__(self, rover, press_space, start=None, cell_m=None):
+        self.rover = rover
+        self.press_space = press_space  # ends the game's pause
+        self.cell_m = cell_m
+        self.pose = start or {"x": 0, "y": 0, "heading": "N"}  # the rover's pose before the next leg
+        self.owed = None  # where a person was told to put the rover, sent once they have
+        self.driving = 0  # legs queued or being driven
+        self.jobs = queue.Queue()
+        threading.Thread(target=self.work, daemon=True).start()
 
-    A leg that does not finish -- stopped, or the link failed -- leaves the rover to a
-    person. When they release the game's pause, the rover is told it stands where that
-    leg ends (`start` is the rover's pose before the first leg; `cell_m` puts centimetres
-    in what the person is told). `tell` puts the pause's hint on the screen. Returns a
-    function that undoes the wrap.
-    """
-    original = nav.publish
-    legs = queue.Queue()
-    guard = guard or Guard()
-    at = [start or {"x": 0, "y": 0, "heading": "N"}]   # the rover's pose before the next leg
-    owed = [None]                 # the pose to tell it once a person has put it right
+    def leg_started(self, world, dirs):
+        self.driving += 1  # before the game's pause starts reading keys
+        dashboard.ROVER_HINT = DRIVING
+        self.jobs.put(("leg", world, list(dirs)))
 
-    def release(world, dirs):
-        # The game marks its pause just after `publish` returns; a short leg can beat it.
+    def leg_finished(self, world):
+        # The pause is over, so a person has put the rover right. The pose goes through
+        # the same queue as the legs, so it never reaches the rover in the middle of one.
+        if self.owed:
+            self.jobs.put(("pose", world, self.owed))
+            self.owed = None
+
+    def is_driving(self):
+        return self.driving > 0
+
+    def work(self):
+        while True:
+            kind, world, item = self.jobs.get()
+            if kind == "pose":
+                self.tell_pose(item)
+            else:
+                self.drive(world, item)
+
+    def tell_pose(self, pose):
+        try:
+            self.pose = self.rover.set_pose(*pose)["pose"]
+            print(f"[rover] told it is on cell {self.pose}")
+        except (LinkError, OSError) as e:
+            print(f"[rover] could not tell the rover its cell: {e}")
+
+    def drive(self, world, dirs):
+        line = f"[rover] leg: {' '.join(dirs)}"
+        if self.jobs.qsize():
+            line += f"   ({self.jobs.qsize()} more queued -- the sim is ahead)"
+        print(line)
+        try:
+            self.pose = self.rover.drive(dirs, on_step=show)
+        except RoverStopped as e:
+            print(f"[rover] STOPPED: {e}")
+            self.hand_back(dirs)
+            return
+        except (LinkError, OSError) as e:
+            print(f"[rover] FAILED: {e}")
+            self.hand_back(dirs)
+            return
+        print(f"[rover] leg done, rover believes {self.pose}")
+        self.driving -= 1
+        self.release(world, dirs)
+
+    def release(self, world, dirs):
+        """Press SPACE, but only while the game is still waiting on this leg: one pressed
+        after the game moved on would land in the next pause, or in the chat. The game
+        marks its pause just after the leg starts, so a short leg can beat it."""
         for _ in range(20):
-            if still_waiting(world, dirs):
-                finished()
+            if world.awaiting_rover == dirs:
+                self.press_space()
                 return
             time.sleep(0.05)
         print("[rover] (the game had already moved on -- no SPACE sent)")
 
-    def worker():
-        while True:
-            kind, item = legs.get()
-            if kind == "pose":
-                try:
-                    at[0] = rover.set_pose(*item)["pose"]
-                    print(f"[rover] told it is on cell {at[0]}")
-                except (LinkError, OSError) as e:
-                    print(f"[rover] could not tell the rover its cell: {e}")
-                continue
-            world, dirs = item
-            ok = False
-            print(f"[rover] leg: {' '.join(dirs)}"
-                  + (f"   ({legs.qsize()} more queued -- the sim is ahead)" if legs.qsize() else ""))
-            try:
-                at[0] = rover.drive(dirs, on_step=show)
-                print(f"[rover] leg done, rover believes {at[0]}")
-                ok = True
-                guard.driving -= 1
-                release(world, dirs)
-            except RoverStopped as e:
-                print(f"[rover] STOPPED: {e}")
-            except (LinkError, OSError) as e:
-                print(f"[rover] FAILED: {e}")
-            except Exception as e:        # a bug here must say so, not kill the leg thread quietly
-                print(f"[rover] FAILED (a bug in level3.py): {e!r}")
-            finally:
-                if not ok:
-                    owed[0] = leg_end(at[0], dirs)
-                    x, y, h = owed[0]
-                    where = f"put it {from_home(x, y, cell_m)}, facing {h}"
-                    print(f"[rover] the rover is yours: {where}, then press SPACE in the game")
-                    tell(f"STOPPED: {where}, then SPACE")
-                    guard.driving = 0     # hand control back to the person
-
-    threading.Thread(target=worker, daemon=True).start()
-
-    def publish(world, dirs):
-        original(world, dirs)
-        if not nav.live_file(world):
-            return
-        if dirs:
-            guard.driving += 1            # before the game's pause starts reading keys
-            tell(DRIVING)
-            legs.put(("leg", (world, list(dirs))))
-        elif owed[0]:
-            # The pause is over and a person put the rover right; it goes through the same
-            # queue as the legs, so it can never reach the rover in the middle of one.
-            legs.put(("pose", owed[0]))
-            owed[0] = None
-
-    nav.publish = publish
-
-    def restore():
-        nav.publish = original
-    return restore
+    def hand_back(self, dirs):
+        """The leg did not finish: the rover is a person's to put right, where the leg ends."""
+        self.owed = leg_end(self.pose, dirs)
+        x, y, heading = self.owed
+        where = f"put it {from_home(x, y, self.cell_m)}, facing {heading}"
+        print(f"[rover] the rover is yours: {where}, then press SPACE in the game")
+        dashboard.ROVER_HINT = f"STOPPED: {where}, then SPACE"
+        self.driving = 0
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description="Level 3: the simulation drives the real rover")
     ap.add_argument("--rover", required=True, help="the Pi's address, or 127.0.0.1 for a fake")
     ap.add_argument("--no-reset", action="store_true",
                     help="keep the rover's heading from last time instead of 'facing north now'")
@@ -198,41 +165,32 @@ def main():
     rover = RoverLink(ours.rover, timeout=300)
     try:
         hi = rover.hello()
-        start = hi["pose"] if ours.no_reset else rover.reset("N")["pose"]
+        if ours.no_reset:
+            start = hi["pose"]
+        else:
+            start = rover.reset("N")["pose"]
     except OSError as e:
         sys.exit(f"cannot reach the rover at {ours.rover}:5005 ({e}). Is server.py running?")
     print(f"rover connected ({'fake' if hi['fake'] else 'REAL'} motors).")
 
-    sys.path.insert(0, GAME)
-    os.chdir(os.path.dirname(GAME))           # the game's own working directory
+    # From the prototype's folder, so `--replay runs/<stamp>` means what it means for the game.
+    os.chdir(PROTOTYPE)
     import pygame
-    import dashboard
-    import nav
     import main as game
-
-    global KEYDOWN, K_SPACE
-    KEYDOWN, K_SPACE = pygame.KEYDOWN, pygame.K_SPACE
 
     def press_space():
         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE, mod=0,
                                              unicode=" ", scancode=0, rover=True))
 
-    # Every pygame.event.get() the game makes -- its main loop and its rover pause --
-    # goes through the guard. The game's code is not touched; the function it calls is
-    # wrapped.
-    guard = Guard()
-    real_get = pygame.event.get
-    pygame.event.get = lambda *a, **k: guard.filter(real_get(*a, **k))
+    legs = RoverLegs(rover, press_space, start, hi.get("cell_m"))
+    nav.leg_started = legs.leg_started
+    nav.leg_finished = legs.leg_finished
+    nav.rover_driving = legs.is_driving
 
-    # The game sets `world.awaiting_rover` to the leg for exactly as long as it holds on it.
-    install(nav, rover, press_space,
-            still_waiting=lambda world, dirs: getattr(world, "awaiting_rover", None) == dirs,
-            guard=guard, start=start, cell_m=hi.get("cell_m"),
-            tell=lambda hint: setattr(dashboard, "ROVER_HINT", hint))
     if "--pause" not in theirs:
         theirs += ["--pause", "key"]
     if "--arena" not in theirs:
-        theirs += ["--arena", "30"]           # 3 m of floor; the game alone opens on the 50
+        theirs += ["--arena", "30"]  # 3 m of floor; the game alone opens on the 50
     sys.argv = ["game/main.py"] + theirs
     try:
         game.main()

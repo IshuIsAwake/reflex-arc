@@ -267,10 +267,13 @@ def publish(world, dirs):
         write_plan(out, dirs)
 
 
-def _await_rover(world, dirs):
-    """Wait until the rover has driven `dirs`. Does nothing here: main.py replaces it with
-    the SPACE pause, and the tests with a stand-in."""
-    return
+# Hooks for the real rover, None in the game alone and in tests. main.py sets
+# wait_for_rover to its SPACE pause; Level 3 (hardware/laptop/level3.py) sets the other
+# three, to send each leg to the rover and hear when it is done.
+wait_for_rover = None  # called with (world, dirs) to wait while the rover drives a leg
+leg_started = None  # called with (world, dirs) once a leg is in the route file
+leg_finished = None  # called with (world) once the game has stopped waiting for a leg
+rover_driving = None  # returns True while the real rover is still driving
 
 
 def _log(world, area_name, start, goal, planned, result):
@@ -332,8 +335,13 @@ def _hand_over(world, cells):
         return
     dirs = route_actions(cells)
     publish(world, dirs)
-    _await_rover(world, dirs)
+    if leg_started:
+        leg_started(world, dirs)
+    if wait_for_rover:
+        wait_for_rover(world, dirs)
     publish(world, [])
+    if leg_finished:
+        leg_finished(world)
 
 
 def goto(world, x, y, avoid=None):

@@ -1,19 +1,27 @@
-"""Checks Level 3's hook against the game's real planner. No window, no model, no Pi.
+"""Level 3's hooks against the game's real planner. No window, no model, no Pi.
 
-
-The game's `goto` drives a goal far enough off to need several legs; a stand-in rover
-records what it was sent. The load-bearing check is that the rover gets exactly the
-legs the game wrote to its route file, in order, each one while the game is still
-paused on it.
+The game's goto drives a goal far enough off to need several legs; a stand-in rover
+records what it was sent. The rover must get exactly the legs the game wrote to its route
+file, in order, each one while the game is still paused on it.
 """
 
 import threading
+import time
+
+import pygame
 
 import config
+import dashboard
 import level3
+import main
 import nav
-import settings
 from world import World
+
+
+def attach(legs):
+    nav.leg_started = legs.leg_started
+    nav.leg_finished = legs.leg_finished
+    nav.rover_driving = legs.is_driving
 
 
 class StandIn:
@@ -28,36 +36,35 @@ class StandIn:
 
 
 def test_every_leg_reaches_the_rover_while_the_game_waits():
-    keep = (nav.publish, nav._await_rover)
-    rover, done = StandIn(), threading.Event()
+    rover = StandIn()
+    done = threading.Event()
     handed = []
 
-    def wait(world, dirs):              # stands in for the game's SPACE pause
+    def wait(world, dirs):  # stands in for the game's SPACE pause
+        world.awaiting_rover = list(dirs)
         handed.append(list(dirs))
         assert done.wait(5), "the rover never finished the leg"
         done.clear()
+        world.awaiting_rover = None
 
-    try:
-        level3.install(nav, rover, done.set)
-        nav._await_rover = wait
-        config.use("50")
-        w = World(recorder=lambda *a, **k: None)
-        nav.goto(w, 40, 40)
-        assert handed, "the game handed the rover nothing"
-        assert rover.legs == handed, (rover.legs, handed)
-        assert open(nav.plan_file()).read() == "", "file not wiped after the last leg"
-    finally:
-        nav.publish, nav._await_rover = keep
-        config.use(config.DEFAULT_ARENA)
-    print(f"  {len(handed)} legs, {sum(map(len, handed))} moves handed over")
+    attach(level3.RoverLegs(rover, done.set))
+    nav.wait_for_rover = wait
+    config.use("50")
+    w = World(recorder=lambda *a, **k: None)
+    nav.goto(w, 40, 40)
+    assert handed, "the game handed the rover nothing"
+    assert rover.legs == handed, (rover.legs, handed)
+    assert open(nav.plan_file()).read() == "", "file not wiped after the last leg"
 
 
 def test_a_hand_released_pause_still_drives_every_leg_in_order():
-    """The 22 Oct run: SPACE pressed by hand let the game run ahead, and the rover refused the
-    next legs as BUSY. Now they queue, and no SPACE is sent into a pause it does not own."""
-    import time
-    keep = (nav.publish, nav._await_rover)
-    busy, driven, released = threading.Lock(), [], []
+    """SPACE pressed by hand once let the game run ahead, and the rover refused the next
+    legs as BUSY. They queue, and no SPACE is sent into a pause it does not own."""
+    busy = threading.Lock()
+    driven = []
+    handed = []
+    done = threading.Event()
+    first = [True]
 
     class Slow:
         def drive(self, dirs, on_step=None):
@@ -69,13 +76,11 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
                 busy.release()
             return {"x": 0, "y": 0, "heading": "N"}
 
-    done = threading.Event()
-    first = [True]
-
     def wait(world, dirs):
+        handed.append(list(dirs))
         world.awaiting_rover = list(dirs)
         try:
-            if first[0]:           # the operator's thumb: let go at once
+            if first[0]:  # the operator's thumb: let go at once
                 first[0] = False
                 return
             assert done.wait(10), "a leg never finished"
@@ -83,44 +88,25 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
         finally:
             world.awaiting_rover = None
 
-    def finished():
-        released.append(1)
-        done.set()
-
-    try:
-        level3.install(nav, Slow(), finished,
-                       still_waiting=lambda world, dirs: world.awaiting_rover == dirs)
-        nav._await_rover = wait
-        config.use("50")
-        w = World(recorder=lambda *a, **k: None)
-        w.awaiting_rover = None
-        handed = []
-        real_publish = nav.publish
-
-        def spy(world, dirs):
-            if dirs:
-                handed.append(list(dirs))
-            real_publish(world, dirs)
-        nav.publish = spy
-        nav.goto(w, 40, 40)
-        deadline = time.time() + 10
-        while len(driven) < len(handed) and time.time() < deadline:
-            time.sleep(0.05)
-        assert len(handed) > 1, "need more than one leg to test this"
-        assert driven == handed, ("legs lost or out of order", driven, handed)
-    finally:
-        nav.publish, nav._await_rover = keep
-        config.use(config.DEFAULT_ARENA)
-    print(f"  {len(handed)} legs, first released by hand, all driven in order")
+    attach(level3.RoverLegs(Slow(), done.set))
+    nav.wait_for_rover = wait
+    config.use("50")
+    w = World(recorder=lambda *a, **k: None)
+    nav.goto(w, 40, 40)
+    deadline = time.time() + 10
+    while len(driven) < len(handed) and time.time() < deadline:
+        time.sleep(0.05)
+    assert len(handed) > 1, "need more than one leg to test this"
+    assert driven == handed, ("legs lost or out of order", driven, handed)
 
 
 def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
-    """A stop from the pad ends the leg: nothing is resent and no SPACE is sent. The
-    screen says where the leg ends; once a person releases the game, the rover is told
-    it stands there."""
-    import time
-    keep = (nav.publish, nav._await_rover)
-    guard, handed, told, released, hints = level3.Guard(), [], [], [], []
+    """A stop from the pad ends the leg: nothing is resent and no SPACE is sent. The screen
+    says where the leg ends; once a person releases the game, the rover is told it stands
+    there."""
+    handed = []
+    told = []
+    released = []
 
     class Stopped:
         def drive(self, dirs, on_step=None):
@@ -131,33 +117,28 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
             told.append((x, y, h))
             return {"ok": True, "pose": {"x": x, "y": y, "heading": h}}
 
-    def wait(world, dirs):              # the person: waits for the rover, then presses SPACE
+    legs = level3.RoverLegs(Stopped(), lambda: released.append(1))
+
+    def wait(world, dirs):  # the person: waits for the rover, then presses SPACE
         handed.append(list(dirs))
         deadline = time.time() + 5
-        while guard.driving and time.time() < deadline:
+        while legs.is_driving() and time.time() < deadline:
             time.sleep(0.01)
-        assert not guard.driving, "the stopped leg was never handed back"
+        assert not legs.is_driving(), "the stopped leg was never handed back"
 
-    try:
-        level3.install(nav, Stopped(), lambda: released.append(1), guard=guard,
-                       tell=hints.append)
-        nav._await_rover = wait
-        config.use("50")
-        w = World(recorder=lambda *a, **k: None)
-        nav.goto(w, w.pos[0] + 3, w.pos[1])
-        deadline = time.time() + 5
-        while len(told) < len(handed) and time.time() < deadline:
-            time.sleep(0.01)
-    finally:
-        nav.publish, nav._await_rover = keep
-        config.use(config.DEFAULT_ARENA)
+    attach(legs)
+    nav.wait_for_rover = wait
+    config.use("50")
+    w = World(recorder=lambda *a, **k: None)
+    nav.goto(w, w.pos[0] + 3, w.pos[1])
+    deadline = time.time() + 5
+    while len(told) < len(handed) and time.time() < deadline:
+        time.sleep(0.01)
     assert handed and not released, "SPACE was sent for a leg that never finished"
     assert told[0] == level3.leg_end({"x": 0, "y": 0, "heading": "N"}, handed[0]), told
     assert len(told) == len(handed), (told, handed)
     x, y, h = told[0]
-    assert hints[:2] == [level3.DRIVING, f"STOPPED: put it {level3.from_home(x, y)}, "
-                                         f"facing {h}, then SPACE"], hints
-    print(f"  {len(handed)} stopped leg(s), the rover told {told[0]}")
+    assert dashboard.ROVER_HINT == f"STOPPED: put it {level3.from_home(x, y)}, facing {h}, then SPACE"
 
 
 def test_the_person_is_told_the_cell_from_home():
@@ -167,13 +148,10 @@ def test_the_person_is_told_the_cell_from_home():
     assert level3.from_home(0, 0, 0.1) == "on home"
 
 
-def test_a_hand_space_is_dropped_while_the_rover_drives():
-    import pygame
-    level3.KEYDOWN, level3.K_SPACE = pygame.KEYDOWN, pygame.K_SPACE
+def test_a_hand_space_is_ignored_while_the_rover_drives():
     hand = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE, mod=0, unicode=" ")
     ours = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE, mod=0, unicode=" ", rover=True)
-    other = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_a, mod=0, unicode="a")
-    g = level3.Guard()
-    assert g.filter([hand, other]) == [hand, other], "nothing driving: every key passes"
-    g.driving = 1
-    assert g.filter([hand, ours, other]) == [ours, other], "driving: only our SPACE passes"
+    assert main.space_ends_pause(hand), "nothing driving: a hand SPACE ends the pause"
+    nav.rover_driving = lambda: True
+    assert not main.space_ends_pause(hand), "driving: a hand SPACE is ignored"
+    assert main.space_ends_pause(ours), "driving: the rover's own SPACE ends the pause"
