@@ -71,6 +71,8 @@ def main():
                 elif e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_q:
                         running = False
+                    elif e.key == pygame.K_SPACE:
+                        rover.stop()          # a real stop: zero power alone does not end a drive
                     elif pygame.K_1 <= e.key <= pygame.K_9:
                         power = (e.key - pygame.K_0) / 9
                 elif e.type == pygame.JOYBUTTONDOWN and e.button == 0:

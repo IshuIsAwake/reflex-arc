@@ -34,9 +34,10 @@ run_ file with `--rover 127.0.0.1`.
 ## Taking over
 
 Keep `run_remote.py` open beside the game. SPACE on the pad (A on a gamepad) stops the rover at
-once, from any window, and the leg it was driving ends there. The pad then drives it by hand.
-The terminal says where to put it: the cell the screen shows, facing the way the leg ended.
-Press SPACE in the game and the rover is told it is there. A failed link is handled the same way.
+once, and the leg it was driving ends there; so does quitting the pad. The pad then drives it by
+hand. The game's terminal says where the leg ends, counted from home, and which way to face:
+*"put it 3 cells (30 cm) east and 2 cells (20 cm) north of home, facing E"*. Put it there and
+press SPACE in the game, and the rover is told it is there. A failed link is handled the same way.
 
 Several windows can be connected at once; only the one driving stops the motors when it closes.
 

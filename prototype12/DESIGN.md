@@ -23,8 +23,10 @@ Level 3 is the rover replaying the simulation blind. Nothing measures where it r
   `lidar_check.py`, `fake_world.py`, `correct.py`, the map window, `run_level4.py` and their
   tests.
 - **A stop sticks.** A stop from the pad used to make the laptop resend the rest of the leg
-  straight away. Now it ends the leg. Level 3 hands the rover to you. When you press SPACE, the
-  rover is told it stands where the leg ends, facing its last move.
+  straight away, and the pad's SPACE only cut hand power, which a drive ignores. Now SPACE sends
+  a real stop, as gamepad A did, and the stop ends the leg. Level 3 hands the rover to you and
+  says where the leg ends, counted from home. When you press SPACE in the game, the rover is
+  told it stands there, facing the leg's last move.
 - **One cell is 10 cm**, Ishan's call: ten cells to the metre, so 10d's 30 x 30 map is 3 m
   across. The forward placeholder becomes 1 s a cell at the same 0.10 m/s.
 

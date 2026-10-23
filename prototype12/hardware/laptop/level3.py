@@ -17,8 +17,8 @@ from 10d, and the rover replays what 10d already drove. Nothing measures where t
 floor disagrees with the screen; that is Level 4, deferred.
 
 A stop from the control pad ends the leg there and hands the rover to you, the same as
-a failed link: put it where the screen shows it, facing the way the leg ended, and
-press SPACE. The rover is then told it is there.
+a failed link. The terminal says where the leg ends, counted from home, and which way
+to face it; put it there and press SPACE. The rover is then told it is there.
 
 Before starting: rover on the cell that stands for 10d's landing cell, facing grid
 north (up on 10d's screen).
@@ -80,8 +80,21 @@ def leg_end(pose, dirs):
     return x, y, dirs[-1]
 
 
+def from_home(x, y, cell_m=None):
+    """A rover cell as a person finds it on the floor: how far east or west, and north or
+    south, of the home spot it was reset on."""
+    parts = []
+    for n, ahead, back in ((x, "east", "west"), (-y, "north", "south")):
+        if n:
+            far = f"{abs(n)} cell{'s' * (abs(n) != 1)}"
+            if cell_m:
+                far += f" ({abs(n) * cell_m * 100:.0f} cm)"
+            parts.append(f"{far} {ahead if n > 0 else back}")
+    return " and ".join(parts) + " of home" if parts else "on home"
+
+
 def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=None,
-            start=None):
+            start=None, cell_m=None):
     """Wrap `nav.publish` so every leg 10d hands over is also driven by `rover`, and
     `finished()` is called once the rover has done it. 10d calls `publish` with the
     leg, then waits at its rover pause, then calls it again with [] -- so the wait is
@@ -96,8 +109,8 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
 
     A leg that does not finish -- stopped, or the link failed -- leaves the rover to a
     person. When they release 10d's pause, the rover is told it stands where that leg
-    ends (`start` is the rover's pose before the first leg). Returns a function that
-    undoes the wrap.
+    ends (`start` is the rover's pose before the first leg; `cell_m` puts centimetres in
+    what the person is told). Returns a function that undoes the wrap.
     """
     original = nav.publish
     legs = queue.Queue()
@@ -143,8 +156,9 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
             finally:
                 if not ok:
                     owed[0] = leg_end(at[0], dirs)
-                    print(f"[rover] the rover is yours: put it where the screen shows it, facing "
-                          f"{dirs[-1]}, then press SPACE in the game")
+                    x, y, h = owed[0]
+                    print(f"[rover] the rover is yours: put it {from_home(x, y, cell_m)}, "
+                          f"facing {h}, then press SPACE in the game")
                     guard.driving = 0     # hand control back to the person
 
     threading.Thread(target=worker, daemon=True).start()
@@ -206,7 +220,7 @@ def main():
     # 10d sets `world.awaiting_rover` to the leg for exactly as long as it holds on it.
     install(nav, rover, press_space,
             still_waiting=lambda world, dirs: getattr(world, "awaiting_rover", None) == dirs,
-            guard=guard, start=start)
+            guard=guard, start=start, cell_m=hi.get("cell_m"))
     if "--pause" not in theirs:
         theirs += ["--pause", "key"]
     sys.argv = ["game/main.py"] + theirs

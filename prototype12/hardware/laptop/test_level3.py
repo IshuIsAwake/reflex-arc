@@ -173,6 +173,13 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
     print(f"  {len(handed)} stopped leg(s), the rover told {told[0]}")
 
 
+def test_the_person_is_told_the_cell_from_home():
+    assert level3.from_home(3, -2, 0.1) == "3 cells (30 cm) east and 2 cells (20 cm) north of home"
+    assert level3.from_home(-1, 0) == "1 cell west of home"
+    assert level3.from_home(0, 4, 0.1) == "4 cells (40 cm) south of home"
+    assert level3.from_home(0, 0, 0.1) == "on home"
+
+
 def test_a_hand_space_is_dropped_while_the_rover_drives():
     import pygame
     level3.KEYDOWN, level3.K_SPACE = pygame.KEYDOWN, pygame.K_SPACE
@@ -190,4 +197,5 @@ if __name__ == "__main__":
     test_every_leg_reaches_the_rover_while_10d_waits()
     test_a_hand_released_pause_still_drives_every_leg_in_order()
     test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends()
+    test_the_person_is_told_the_cell_from_home()
     print("all level3 checks passed")
