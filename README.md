@@ -56,21 +56,25 @@ waits until after prototype 14.
   has driven 14 legs on the rover with its wheels in the air. A stop from the pad ends the leg
   and hands the rover to a person, and one cell is 10 cm. His LiDAR and Level 4 are on the
   branch `old_level4`.
+- [`prototype13/`](prototype13/) merges them: 11's simulation and screen, with 12's rover
+  driving every leg up to Level 3. Under Level 3 it opens on the 30, 3 m of floor, and the
+  screen says the rover reports when it has stopped. Nothing pauses her day while the rover
+  drives, so on the rover the clock will end most days before the battery does. How the two
+  fit is not decided.
 - The rover's chassis is built and laser-cut.
 
 **Next:**
-1. **Prototype 13: 11 and 12 merged.** A small step.
-2. **Prototype 14: the simplification.** The code is brought to
+1. **Prototype 14: the simplification.** The code is brought to
    [`repo_rules.md`](repo_rules.md) §7, so any teammate can explain it line by line. The rover
    goes up to Level 3. Names review found unclear change here: the `run_` files, and DONE, OFF
    and LOST if they survive.
-3. **The repo goes back to the team for the final hardware:**
+2. **The repo goes back to the team for the final hardware:**
    - Level 4 and the LiDAR, redone by Koushik and Abhishek with Nithin, starting from the
      branch `old_level4`;
    - the bots and their circuits simulated in software, in a simulator such as Wokwi;
    - later, sensors: a thermometer, and temperature and humidity sensors. Their readings could
      become objectives in the simulation.
-4. **Then optimisation:**
+3. **Then optimisation:**
    - her memory and list overflow the context, past 90% of 16k tokens by sol 7 or 8. Try 32k,
      and hard rules in her prompt for when to do what and what goes in her memory and list;
    - what other papers tried, such as fine-tuning a small model on a large model's outputs;
@@ -120,6 +124,7 @@ were off it too, and he has deleted them.
 | [`rover_ideas.md`](rover_ideas.md) | the rover in full — the reasoning, and what was already cut |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the three layers fit together |
 | [`work_division.md`](work_division.md) | who owns what |
+| [`prototype13/`](prototype13/) | 11's simulation driving the real rover, up to Level 3 — the newest |
 | [`prototype12/`](prototype12/) | 10d's game driving the real rover, up to Level 3 |
 | [`prototype11/`](prototype11/) | 10d with the mission-control screen, the newest simulation |
 | [`prototype10d/`](prototype10d/) | the sol in four phases, interests and objectives |

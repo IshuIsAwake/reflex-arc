@@ -1,8 +1,9 @@
-# Prototype 11 — the manual
+# Prototype 13 — the manual
 
-Everything you can do in 11 and what it does. Setup is in [`README.md`](README.md), and why it
-is built this way is in [`DESIGN.md`](DESIGN.md). In the app, `/help` in her chat and `help` in
-your terminal list the same commands.
+Everything you can do in the simulation and what it does. Setup is in [`README.md`](README.md),
+and why it is built this way is in [`DESIGN.md`](DESIGN.md). In the app, `/help` in her chat and
+`help` in your terminal list the same commands. Driving the real rover from it is in
+[`hardware/README.md`](hardware/README.md).
 
 **The idea in one paragraph.** She is the planner: a language model choosing where a rover on a
 fogged Martian plain goes and what it does. A sol is dawn, day, dusk and night. You sit at

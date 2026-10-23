@@ -1,4 +1,4 @@
-# hardware/ — the rover side of prototype 12
+# hardware/ — the rover side of prototype 13
 
 ```
 hardware/
@@ -24,9 +24,10 @@ once -- the pad beside the game, say; one drive at a time still.
    ```
 3. On the laptop, double-click one `run_` file, or run it: `python run_remote.py`.
 
-`run_level3.py` takes the simulation's options: `python run_level3.py --sols 2`. Type `/next` in
-its chat to start each phase. Don't press SPACE while it shows ROVER DRIVING; the launcher does
-that when the rover reports the leg done.
+`run_level3.py` takes the simulation's options: `python run_level3.py --sols 2`. It opens on the
+30, which is 3 m across; `--arena 50` is 5 m. Type `/next` in its chat to start each phase. While
+a leg drives, the screen reads "the rover says when it has stopped": the launcher presses SPACE
+when the rover reports the leg done, and a SPACE of yours is ignored.
 
 No Pi? In one terminal `python pi/server.py --fake --fast` -- motors only, printed -- then any
 run_ file with `--rover 127.0.0.1`.
@@ -35,9 +36,9 @@ run_ file with `--rover 127.0.0.1`.
 
 Keep `run_remote.py` open beside the game. SPACE on the pad (A on a gamepad) stops the rover at
 once, and the leg it was driving ends there; so does quitting the pad. The pad then drives it by
-hand. The game's terminal says where the leg ends, counted from home, and which way to face:
-*"put it 3 cells (30 cm) east and 2 cells (20 cm) north of home, facing E"*. Put it there and
-press SPACE in the game, and the rover is told it is there. A failed link is handled the same way.
+hand. The screen, and the window `run_level3.py` runs in, say where the leg ends, counted from
+home, and which way to face: *"put it 3 cells (30 cm) east and 2 cells (20 cm) north of home,
+facing E"*. Put it there and press SPACE in the game, and the rover is told it is there. A failed link is handled the same way.
 
 Several windows can be connected at once; only the one driving stops the motors when it closes.
 
@@ -56,8 +57,9 @@ north on screen is the way the rover faces there. A `calib.json` left on the Pi 
 runs overrides the defaults, and `settings.py` shows which. Timings are measured, not typed:
 `calibrate.py forward` and `calibrate.py turn`, again after any change of tyres or battery. The
 simulation's own values -- arena, sols, model -- are its options
-(`python run_level3.py --sols 2 --arena 30`) or its settings screen (O), saved in
-`prototype12/user_settings.json`.
+(`python run_level3.py --sols 2 --arena 50`) or its settings screen (O), saved in
+`prototype13/user_settings.json`. Here the arena is a flag only: without one the launcher
+picks the 30.
 
 ## On the Pi, setting up (server stopped: `pkill -f server.py`)
 
@@ -98,12 +100,14 @@ laptop/
 
 ## What this changes in the simulation
 
-Nothing on disk. When `run_level3.py` runs, three things about the simulation change *in memory,
-for that run only*; the files in `game/` stay as copied:
+Nothing on disk. When `run_level3.py` runs, these change *in memory, for that run only*:
 
-- `--pause key` is forced on, so the simulation waits at its rover pause after every leg;
+- `--pause key` is forced on, so the simulation waits at its rover pause after every leg, and
+  `--arena 30` unless you give an arena;
 - `nav.publish`, where the simulation hands a leg to the robot, is wrapped: it still writes
   `runs/plan.txt`, and also sends the leg to the rover;
-- `pygame.event.get` is wrapped: a SPACE from the keyboard is dropped while a leg is driving.
+- `pygame.event.get` is wrapped: a SPACE from the keyboard is dropped while a leg is driving;
+- `dashboard.ROVER_HINT`, the pause's hint on the screen, says the rover reports by itself,
+  or, after a stop, where to put it.
 
-Run the simulation directly (`python game/main.py` from `prototype12/`) and none of this applies.
+Run the simulation directly (`python game/main.py` from `prototype13/`) and none of this applies.
