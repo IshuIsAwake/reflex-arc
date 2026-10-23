@@ -17,7 +17,7 @@ def fresh_settings(tmp_path):
     saved_config = dict(vars(config))
     saved_threading = chat.threading
     saved_hint = dashboard.ROVER_HINT
-    settings.STORM_ON = False    # clear skies unless a test turns the storm on
+    settings.STORM_ON = False  # clear skies unless a test turns the storm on
     settings.PLAN_FILE = str(tmp_path / "plan.txt")
     yield
     vars(settings).update(saved_settings)

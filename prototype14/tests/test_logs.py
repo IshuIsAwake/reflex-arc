@@ -77,7 +77,7 @@ def test_two_runs_in_the_same_second_do_not_collide():
 def test_the_game_log_carries_what_the_chat_log_cannot():
     with tempfile.TemporaryDirectory() as d:
         run, w = rig(d)
-        nav.goto(w, 14, 9)          # driven at rock, so there is something to record
+        nav.goto(w, 14, 9)  # driven at rock, so there is something to record
         w.next_day()
         rows = lines(run.dir / "game.jsonl")
         kinds = [r["kind"] for r in rows]
@@ -113,7 +113,7 @@ def test_every_record_survives_a_real_recorder():
     """
     import config
     import skills
-    settings.STORM_ON = True                   # the storm records on spawn; that counts too
+    settings.STORM_ON = True  # the storm records on spawn; that counts too
     rows = []
     try:
         config.use("50")

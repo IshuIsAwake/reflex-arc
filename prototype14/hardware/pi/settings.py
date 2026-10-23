@@ -7,8 +7,6 @@
 Restart the rover server after a change. One simulation cell is CELL_M metres; the landing
 cell is the rover's home spot, and north on the screen is the way it faces there."""
 
-import json
-import os
 import sys
 
 import config
@@ -28,13 +26,6 @@ MEANING = {
 DEFAULTS = config.DEFAULTS
 
 
-def saved():
-    if not os.path.exists(config.CALIB_FILE):
-        return {}
-    with open(config.CALIB_FILE, encoding="utf-8") as fh:
-        return json.load(fh)
-
-
 def parse(name, text):
     kind = type(DEFAULTS[name]) if DEFAULTS[name] is not None else float
     if kind is bool:
@@ -47,9 +38,9 @@ def parse(name, text):
 
 
 def show():
-    mine = saved()
+    mine = config.saved()
     print(f"values from config.py, overridden by {config.CALIB_FILE}\n")
-    for name in config._CALIBRATED:
+    for name in config.CALIBRATED:
         value = getattr(config, name)
         where = "calib.json" if name in mine else "default"
         print(f"  {name:<20} {str(value):<10} {where:<11} {MEANING.get(name, '')}")
@@ -63,18 +54,17 @@ def main():
         return
     if args[0] == "--reset" and len(args) == 2:
         name = args[1]
-        mine = saved()
+        mine = config.saved()
         if name not in mine:
             print(f"{name} is already the default ({DEFAULTS.get(name)})")
             return
         del mine[name]
-        with open(config.CALIB_FILE, "w", encoding="utf-8") as fh:
-            json.dump(mine, fh, indent=2)
+        config.write(mine)
         print(f"{name} back to the default {DEFAULTS[name]}. Restart the server.")
         return
-    if len(args) != 2 or args[0] not in config._CALIBRATED:
+    if len(args) != 2 or args[0] not in config.CALIBRATED:
         sys.exit(f"usage: settings.py [NAME VALUE | --reset NAME]\nNAME is one of: "
-                 f"{', '.join(config._CALIBRATED)}")
+                 f"{', '.join(config.CALIBRATED)}")
     name, text = args
     try:
         value = parse(name, text)

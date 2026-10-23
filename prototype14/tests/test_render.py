@@ -155,7 +155,7 @@ def test_an_unseen_rock_changes_nothing_on_screen():
         r = pygame.Rect(ox + seen[0] * config.TILE, oy + seen[1] * config.TILE, config.TILE, config.TILE)
         return pygame.image.tostring(surf.subsurface(r), "RGB")
 
-    for ch in (".", "#"):          # the seen cell as ground, then as a rock
+    for ch in (".", "#"):  # the seen cell as ground, then as a rock
         put(seen, ch)
         put(hidden, ".")
         before = picture()

@@ -268,7 +268,7 @@ def publish(world, dirs):
 
 
 # Hooks for the real rover, None in the game alone and in tests. main.py sets
-# wait_for_rover to its SPACE pause; Level 3 (hardware/laptop/level3.py) sets the other
+# wait_for_rover to its SPACE pause; Level 3 (hardware/laptop/level3_game.py) sets the other
 # three, to send each leg to the rover and hear when it is done.
 wait_for_rover = None  # called with (world, dirs) to wait while the rover drives a leg
 leg_started = None  # called with (world, dirs) once a leg is in the route file

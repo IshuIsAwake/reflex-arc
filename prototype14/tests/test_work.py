@@ -168,7 +168,7 @@ def test_a_battery_that_runs_flat_mid_task_still_pays_for_what_it_used():
     w = World()
     i = w.interests[0]
     _beside(w, i.cell)
-    w.battery = 5                      # five steps of charge left, a 40-step job
+    w.battery = 5  # five steps of charge left, a 40-step job
     c = skills.call(w, "execute", {})
     assert not i.done and i.cell in w.here.interests, "it does not finish"
     assert (c.result.startswith("UNFINISHED")

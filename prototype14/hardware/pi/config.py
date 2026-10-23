@@ -34,17 +34,16 @@ FORWARD_M_PER_S = None
 # Wait after a stop before the next move, so the rover's coasting doesn't run into it.
 SETTLE_S = 0.6
 
-# Keyboard driving: a held motion stops by itself after this long with no key.
-LATCH_MAX_S = 3.0
-
 CALIB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calib.json")
 # What calib.json may override: the values that belong to one rover on one floor.
-_CALIBRATED = ("CELL_M", "FORWARD_M_PER_S", "FORWARD_S_PER_CELL", "TURN_S_PER_90", "SETTLE_S",
-               "DRIVE_POWER", "TURN_POWER", "MIN_DUTY", "MAX_DUTY")
+CALIBRATED = ("CELL_M", "FORWARD_M_PER_S", "FORWARD_S_PER_CELL", "TURN_S_PER_90", "SETTLE_S",
+              "DRIVE_POWER", "TURN_POWER", "MIN_DUTY", "MAX_DUTY")
 
-
-# The values above, before calib.json. settings.py shows and restores these.
-DEFAULTS = {k: globals()[k] for k in _CALIBRATED}
+# The values above, before calib.json. settings.py shows and restores these. globals() is
+# this module's own variables by name; load() and save() below change them the same way.
+DEFAULTS = {}
+for name in CALIBRATED:
+    DEFAULTS[name] = globals()[name]
 
 
 def _derive():
@@ -54,29 +53,38 @@ def _derive():
         FORWARD_S_PER_CELL = round(CELL_M / FORWARD_M_PER_S, 3)
 
 
-def load():
-    """Overlay calib.json, if there is one. Returns the keys it changed."""
+def saved():
+    """What calib.json holds, or {} if there is none."""
     if not os.path.exists(CALIB_FILE):
         return {}
     with open(CALIB_FILE, encoding="utf-8") as fh:
-        data = json.load(fh)
-    got = {k: v for k, v in data.items() if k in _CALIBRATED}
-    globals().update(got)
+        return json.load(fh)
+
+
+def write(data):
+    with open(CALIB_FILE, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+
+
+def use(values):
+    """Put calibrated values in force over the defaults above."""
+    for name, value in values.items():
+        if name in CALIBRATED:
+            globals()[name] = value
     _derive()
-    return got
+
+
+def load():
+    """Overlay calib.json, if there is one."""
+    use(saved())
 
 
 def save(**values):
-    """Merge `values` into calib.json."""
-    data = {}
-    if os.path.exists(CALIB_FILE):
-        with open(CALIB_FILE, encoding="utf-8") as fh:
-            data = json.load(fh)
+    """Merge `values` into calib.json, and put them in force."""
+    data = saved()
     data.update(values)
-    with open(CALIB_FILE, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    globals().update({k: v for k, v in values.items() if k in _CALIBRATED})
-    _derive()
+    write(data)
+    use(values)
 
 
 load()

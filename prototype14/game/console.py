@@ -62,7 +62,7 @@ def run(world, text, desk=None):
     x, y = cells[0]
     if verb == "goto":
         result = nav.goto(world, x, y, avoid)
-        world.say(str(result), result.tone)   # so the HUD carries it too
+        world.say(str(result), result.tone)  # so the HUD carries it too
         # The advice on its own line, since the console cuts lines at 88 characters.
         out = [(str(result), result.tone)]
         if result.advice:

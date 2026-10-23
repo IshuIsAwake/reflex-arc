@@ -19,7 +19,7 @@ import skills
 from world import World
 
 
-PAD = {"x": 15, "y": 16}    # solid, one cell south of where the rover lands
+PAD = {"x": 15, "y": 16}  # solid, one cell south of where the rover lands
 
 
 def test_a_plain_goto_drives():
@@ -53,7 +53,7 @@ def _repeat(w, args, n=3, name="goto"):
 def test_going_nowhere_twice_is_said_out_loud():
     w = World()
     args = {**PAD, "why": "the pad"}
-    skills.call(w, "goto", args)                       # already beside it
+    skills.call(w, "goto", args)  # already beside it
     history = _repeat(w, args)
     # Watched 2026-08-26: seven identical calls, seven DONE(steps=0), and gemma kept
     # asking because a costless success gave it nothing to correct.
@@ -299,7 +299,7 @@ def test_counting_is_exact_where_reading_the_map_is_not():
 def test_counting_only_ever_counts_what_she_has_seen():
     # Rock still under fog is fog. A size that silently meant "or more" would be the
     # lying success code again, wearing a number.
-    w = World()          # fresh: only the landing site is revealed
+    w = World()  # fresh: only the landing site is revealed
     r = skills.call(w, "count", {})
     seen_rock = sum(1 for (x, y) in w.here.seen if w.here.at(x, y) == "#")
     listed = sum(int(n) for n in re.findall(r"R\d+: (\d+) cells", r.result))
@@ -318,11 +318,11 @@ def test_a_formation_keeps_its_name_as_it_comes_out_of_the_fog():
     try:
         config.use("50")
         w = World()
-        w.here.reveal(31, 16, r=3)          # part of the C
+        w.here.reveal(31, 16, r=3)  # part of the C
         first = skills.call(w, "count", {"kind": "rock"}).result
         got = re.search(r"R(\d+): (\d+) cells", first)
         assert bool(got), "it is named on sight"
-        w.here.reveal(35, 21, r=6)          # more of the same formation
+        w.here.reveal(35, 21, r=6)  # more of the same formation
         second = skills.call(w, "count", {"kind": "rock"}).result
         assert f"R{got.group(1)}:" in second, "the same rock keeps its id"
         assert "new since you last asked" in second, "and the newly revealed cells are called out"
@@ -457,7 +457,7 @@ def test_the_schema_matches_what_is_wired_up():
 
 def test_the_way_home_is_warned_about_in_time():
     w = World()
-    w.pos = (15, 5)                                # ten rows north of the landing site
+    w.pos = (15, 5)  # ten rows north of the landing site
     back = nav.home_steps(w)
     w.spend(settings.BATTERY - back - settings.BATTERY // 10 - 1)
     assert "Head back" not in skills.budget_note(w), "with charge to spare, no warning"

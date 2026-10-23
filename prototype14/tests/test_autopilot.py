@@ -222,7 +222,7 @@ def test_a_cap_is_a_new_turn_and_her_end_is_the_day():
     try:
         w = World()
         model = Model([READY, ("", [call("goto", x=18, y=15)]),
-                       ("", [call("goto", x=15, y=18)]),        # the cap ends the turn
+                       ("", [call("goto", x=15, y=18)]),  # the cap ends the turn
                        ("", [call("goto", x=15, y=15)]), END, REPORT])
         settings.MISSION_SOLS = 1
         convs, rows, _ = fly(w, model)
@@ -342,15 +342,15 @@ def test_an_urgent_message_ends_her_turn_not_her_day():
     with Desk():
         w = World()
         model = Model([READY, ("", [call("goto", x=15, y=12)]),
-                       ("", [call("goto", x=18, y=12)])])   # what she would do next
+                       ("", [call("goto", x=18, y=12)])])  # what she would do next
         rover = [True]
         c, pilot, rows = sol(w, model, rover)
         until(c, pilot, w, lambda got: pilot.wait == "dawn")
         assert "not day" in (pilot.send_urgent(c, w, "come home") or ""), "refused at dawn: just talk to her"
         pilot.next()
         until(c, pilot, w, lambda got: w.phase == "day", frames=3)
-        pilot.tick(c, w, now=500.0)              # the day's first turn goes out
-        rover[0] = False                         # ...and the rover drives its leg
+        pilot.tick(c, w, now=500.0)  # the day's first turn goes out
+        rover[0] = False  # ...and the rover drives its leg
         c.pump()
         assert len(c.calls) == 1 and c.waiting, "one drive ran, the next request is held for the rover"
         assert pilot.send_urgent(c, w, "return to the pad now") is None, "an urgent message gets through, from anywhere"
@@ -377,7 +377,7 @@ def test_an_urgent_message_ends_her_turn_not_her_day():
 def test_a_radio_call_opens_a_line_the_clock_runs_through():
     with Desk():
         w = World()
-        w.pos = (15, 5)                           # radio works away from the pad
+        w.pos = (15, 5)  # radio works away from the pad
         model = Model([READY, ("", [call("radio", text="is the C worth a sol?")])])
         c, pilot, rows = sol(w, model)
         until(c, pilot, w, lambda got: pilot.wait == "dawn")
@@ -536,7 +536,7 @@ def recorder(log):
                              default=str) + "\n")
         log.flush()
         if kind in replay.OPS:
-            time.sleep(0.002)      # an op and the call after it never share a stamp
+            time.sleep(0.002)  # an op and the call after it never share a stamp
     return write
 
 

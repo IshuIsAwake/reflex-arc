@@ -76,7 +76,7 @@ def _a_drive_is_recorded():
     # be rock, so there is nowhere else to re-route to and nav stops rather than
     # inventing a destination.
     w2 = World()
-    r2 = nav.goto(w2, 14, 9)       # the south face of the formation due north
+    r2 = nav.goto(w2, 14, 9)  # the south face of the formation due north
     assert r2.code == "BLOCKED" and kinds(w2.reel[0]).count("plan") == 1, "blocked *on* the target lays no second plan"
 
 
@@ -94,7 +94,7 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
     w2 = World()
     w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
     w2.pos = (16, 20)
-    nav.price(w2, 17, 20)         # straight into a known outcrop
+    nav.price(w2, 17, 20)  # straight into a known outcrop
     assert not w2.reel, "an unreachable price draws nothing"
 
 
@@ -190,7 +190,7 @@ def test_a_long_stall_catches_up_rather_than_crawling():
     nav.goto(w, 15, 0)
     reel = anim.Reel(w)
     reel.tick(0.001)
-    reel.tick(30.0)              # the model held the loop for thirty seconds
+    reel.tick(30.0)  # the model held the loop for thirty seconds
     assert not reel.busy, "it does not then play out in slow motion"
     assert reel.where(w.pos) == w.pos, "and it is caught up"
 

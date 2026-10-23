@@ -12,7 +12,7 @@ import pygame
 
 import config
 import dashboard
-import level3
+import level3_game
 import main
 import nav
 from world import World
@@ -47,7 +47,7 @@ def test_every_leg_reaches_the_rover_while_the_game_waits():
         done.clear()
         world.awaiting_rover = None
 
-    attach(level3.RoverLegs(rover, done.set))
+    attach(level3_game.RoverLegs(rover, done.set))
     nav.wait_for_rover = wait
     config.use("50")
     w = World(recorder=lambda *a, **k: None)
@@ -88,7 +88,7 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
         finally:
             world.awaiting_rover = None
 
-    attach(level3.RoverLegs(Slow(), done.set))
+    attach(level3_game.RoverLegs(Slow(), done.set))
     nav.wait_for_rover = wait
     config.use("50")
     w = World(recorder=lambda *a, **k: None)
@@ -110,14 +110,14 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
 
     class Stopped:
         def drive(self, dirs, on_step=None):
-            raise level3.RoverStopped({"result": "STOPPED", "pose": {"x": 0, "y": 0,
+            raise level3_game.RoverStopped({"result": "STOPPED", "pose": {"x": 0, "y": 0,
                                                                      "heading": "N"}})
 
         def set_pose(self, x, y, h):
             told.append((x, y, h))
             return {"ok": True, "pose": {"x": x, "y": y, "heading": h}}
 
-    legs = level3.RoverLegs(Stopped(), lambda: released.append(1))
+    legs = level3_game.RoverLegs(Stopped(), lambda: released.append(1))
 
     def wait(world, dirs):  # the person: waits for the rover, then presses SPACE
         handed.append(list(dirs))
@@ -135,17 +135,17 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
     while len(told) < len(handed) and time.time() < deadline:
         time.sleep(0.01)
     assert handed and not released, "SPACE was sent for a leg that never finished"
-    assert told[0] == level3.leg_end({"x": 0, "y": 0, "heading": "N"}, handed[0]), told
+    assert told[0] == level3_game.leg_end({"x": 0, "y": 0, "heading": "N"}, handed[0]), told
     assert len(told) == len(handed), (told, handed)
     x, y, h = told[0]
-    assert dashboard.ROVER_HINT == f"STOPPED: put it {level3.from_home(x, y)}, facing {h}, then SPACE"
+    assert dashboard.ROVER_HINT == f"STOPPED: put it {level3_game.from_home(x, y)}, facing {h}, then SPACE"
 
 
 def test_the_person_is_told_the_cell_from_home():
-    assert level3.from_home(3, -2, 0.1) == "3 cells (30 cm) east and 2 cells (20 cm) north of home"
-    assert level3.from_home(-1, 0) == "1 cell west of home"
-    assert level3.from_home(0, 4, 0.1) == "4 cells (40 cm) south of home"
-    assert level3.from_home(0, 0, 0.1) == "on home"
+    assert level3_game.from_home(3, -2, 0.1) == "3 cells (30 cm) east and 2 cells (20 cm) north of home"
+    assert level3_game.from_home(-1, 0) == "1 cell west of home"
+    assert level3_game.from_home(0, 4, 0.1) == "4 cells (40 cm) south of home"
+    assert level3_game.from_home(0, 0, 0.1) == "on home"
 
 
 def test_a_hand_space_is_ignored_while_the_rover_drives():

@@ -65,3 +65,11 @@ def apply(pose, cmd):
     return Pose(x, y, h)
 
 
+def to_json(pose):
+    """A pose as the link sends it: {"x": 3, "y": -2, "heading": "E"}."""
+    return {"x": pose.x, "y": pose.y, "heading": HEADING_NAMES[pose.heading]}
+
+
+def from_json(d):
+    """The pose a link message carries."""
+    return Pose(d["x"], d["y"], HEADING_NAMES.index(d["heading"]))

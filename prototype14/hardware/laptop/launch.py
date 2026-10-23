@@ -1,13 +1,9 @@
-"""launch -- what the double-click files in hardware/ share.
+"""What the three level programs share: finding the rover, and keeping a double-clicked
+window open long enough to read an error.
 
-Each run_*.py file is two lines: pick a program, hand it to `run`. This finds the rover
-by the name in hardware/rover_address.txt (rpi5.local unless changed), resolves it to
-an IPv4 address -- the rover server listens on IPv4, and rpi5.local also answers on
-IPv6 -- and adds `--rover <address>` unless one was given on the command line.
-
-A double-clicked console window closes the moment the program ends, which would hide
-any error. So on a failure this prints the reason and waits for Enter.
-"""
+run(main) adds `--rover <address>` unless one was given, from the name in
+hardware/rover_address.txt (rpi5.local unless changed), looked up as an IPv4 address
+since the rover server listens on IPv4. On a failure it prints why and waits for Enter."""
 
 import os
 import socket

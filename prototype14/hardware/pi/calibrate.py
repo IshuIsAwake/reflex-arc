@@ -11,9 +11,9 @@ import statistics
 import time
 
 import config
+import moves
 from motors import open_motors
 
-POWER = {"forward": (1, 1), "turn": (1, -1)}
 
 
 def ask(prompt):
@@ -25,7 +25,7 @@ def ask(prompt):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description="Measure a cell and a quarter turn on this floor")
     ap.add_argument("what", choices=("forward", "turn"))
     ap.add_argument("seconds", type=float)
     ap.add_argument("--reps", type=int, default=3)
@@ -40,10 +40,15 @@ def main():
     try:
         for r in range(args.reps):
             input(f"rep {r + 1}/{args.reps}: place the rover, Enter to go ")
-            left, right = POWER[args.what]
-            sign = -1 if (args.what == "turn" and r % 2) else 1
-            p = config.DRIVE_POWER if args.what == "forward" else config.TURN_POWER
-            motors.set(sign * left * p, sign * right * p)
+            if args.what == "forward":
+                left, right = moves.POWER["F"]
+                power = config.DRIVE_POWER
+            else:
+                left, right = moves.POWER["R"]
+                power = config.TURN_POWER
+                if r % 2:  # turns alternate, so the rover unwinds rather than drifting round
+                    left, right = -left, -right
+            motors.set(left * power, right * power)
             time.sleep(args.seconds)
             motors.stop()
             time.sleep(config.SETTLE_S)

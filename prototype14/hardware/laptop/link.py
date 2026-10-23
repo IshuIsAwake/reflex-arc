@@ -1,25 +1,29 @@
-"""link -- the laptop's end of the connection to hardware/pi/server.py.
+"""The laptop's end of the link to the rover (hardware/pi/server.py). The messages are in
+../LINK.md.
 
     rover = RoverLink("10.7.12.41")          # or "127.0.0.1" with server.py --fake
     rover.hello()
     rover.drive(["N", "N", "E"], on_step=print)
 
-`drive` blocks until the rover has finished, and it finishes the whole list even if
-the wifi drops: it reconnects, asks again under the same id (the rover answers a
-finished id from memory, so nothing drives twice), and sends whatever had not been
-driven yet. The command that was moving when the link dropped is driven again in
-full, because the rover stopped part-way through it and cannot say how far it got.
-A stop from any window is the exception: it ends the drive, and nothing is resent.
-"""
+`drive` blocks until the rover has finished, and finishes the whole list even if the wifi
+drops: it reconnects and sends again whatever had not been driven. The command that was
+moving when the link dropped is driven again in full, since the rover stopped part-way
+and can't say how far it got. A stop from any window ends the drive, and nothing is resent."""
 
-import itertools
 import json
 import socket
 import threading
 import time
 
 PORT = 5005
-_ids = itertools.count(int(time.time()) % 100000 * 1000)
+# Drive ids. They start from the clock, so a new run never reuses an old run's ids.
+last_id = int(time.time()) % 100000 * 1000
+
+
+def new_id():
+    global last_id
+    last_id += 1
+    return last_id
 
 
 class LinkError(Exception):
@@ -27,24 +31,29 @@ class LinkError(Exception):
 
 
 class RoverStopped(LinkError):
-    """A stop came in mid-drive -- the pad, /stop, any window. Not retried: a person has
-    taken over, and the rest of the list is theirs to finish or drop."""
+    """A stop came in mid-drive: from the pad, /stop, or any window. Not retried: a person
+    has taken over, and the rest of the list is theirs to finish or drop."""
 
     def __init__(self, msg):
-        self.result, self.pose = msg["result"], msg.get("pose")
-        note = f": {msg['note']}" if msg.get("note") else ""
+        self.result = msg["result"]
+        self.pose = msg.get("pose")
+        note = ""
+        if msg.get("note"):
+            note = f": {msg['note']}"
         super().__init__(f"{msg['result']} at {self.pose}{note}")
 
 
 class RoverLink:
     def __init__(self, host, port=PORT, timeout=120, retries=5):
-        self.host, self.port = host, port
-        self.timeout, self.retries = timeout, retries
+        self.host = host
+        self.port = port
+        self.timeout = timeout
+        self.retries = retries
         self.sock = None
         self.buf = b""
-        self._send_lock = threading.Lock()
+        # Level 3 drives on its worker thread while the game's thread may send a stop.
+        self.send_lock = threading.Lock()
 
-    # --- the connection ----------------------------------------------------
     def connect(self):
         self.close()
         self.sock = socket.create_connection((self.host, self.port), timeout=5)
@@ -60,13 +69,14 @@ class RoverLink:
                 pass
         self.sock = None
 
-    def _send(self, obj):
+    def send(self, obj):
         if self.sock is None:
             self.connect()
-        with self._send_lock:            # whole lines only, if two threads ever share a link
+        with self.send_lock:
             self.sock.sendall((json.dumps(obj) + "\n").encode())
 
-    def _recv(self):
+    def receive(self):
+        """The next message from the rover."""
         while b"\n" not in self.buf:
             chunk = self.sock.recv(4096)
             if not chunk:
@@ -75,59 +85,60 @@ class RoverLink:
         line, self.buf = self.buf.split(b"\n", 1)
         return json.loads(line)
 
-    def _ask(self, obj):
-        self._send(obj)
+    def ask(self, obj):
+        """Send a message and return the rover's answer: the next message with "ok" in it."""
+        self.send(obj)
         while True:
-            msg = self._recv()
+            msg = self.receive()
             if "ok" in msg:
                 return msg
 
-    # --- what the rover can be asked ----------------------------------------
     def hello(self):
-        return self._ask({"op": "hello"})
+        return self.ask({"op": "hello"})
 
     def reset(self, heading="N"):
-        return self._ask({"op": "reset", "heading": heading})
+        return self.ask({"op": "reset", "heading": heading})
 
     def set_pose(self, x, y, heading):
         """Tell the rover which cell it is on, after a person has put it there."""
-        return self._ask({"op": "set_pose", "x": x, "y": y, "heading": heading})
+        return self.ask({"op": "set_pose", "x": x, "y": y, "heading": heading})
 
     def manual(self, left, right):
         """Wheel power, -1..1 each side. Send it again within 0.4 s or the rover stops."""
-        self._send({"op": "manual", "left": round(left, 3), "right": round(right, 3)})
+        self.send({"op": "manual", "left": round(left, 3), "right": round(right, 3)})
 
     def stop(self):
         try:
-            self._send({"op": "stop"})
+            self.send({"op": "stop"})
         except OSError:
             pass
 
     def drive(self, cmds, on_step=None):
-        """Drive every command in `cmds`. Returns the rover's last pose. Raises
-        RoverStopped if a stop ends it part-way."""
+        """Drive every command in `cmds`. Returns the rover's last pose. Raises RoverStopped
+        if a stop ends it part-way, and LinkError if it gives up."""
         todo = list(cmds)
         for attempt in range(self.retries + 1):
             if not todo:
                 break
-            did = next(_ids)
-            got = 0
+            did = new_id()
+            got = 0  # commands the rover has reported done
             try:
-                self._send({"op": "drive", "id": did, "cmds": todo})
+                self.send({"op": "drive", "id": did, "cmds": todo})
                 while True:
-                    msg = self._recv()
+                    msg = self.receive()
                     if msg.get("id") != did:
                         continue
                     if msg.get("event") == "step":
                         got = msg["i"]
-                        on_step and on_step(msg)
+                        if on_step:
+                            on_step(msg)
                     elif msg.get("event") == "done":
                         if msg["result"] == "DONE":
                             return msg["pose"]
                         if msg["result"] == "STOPPED":
                             raise RoverStopped(msg)
                         raise LinkError(f"rover said {msg['result']}: {msg.get('note', '')}")
-            except (OSError, ConnectionError, ValueError) as e:
+            except (OSError, ValueError) as e:
                 todo = todo[got:]
                 print(f"  link dropped ({e}); {len(todo)} command(s) left, reconnecting...")
                 time.sleep(min(2 * (attempt + 1), 8))

@@ -1,7 +1,9 @@
 """Level 3: the simulation's mission, with every leg it drives sent to the real rover.
+Double-click to run, or:
 
-    python level3.py --rover 10.7.12.41
-    python level3.py --rover 127.0.0.1 --arena 50 --sols 3   anything after --rover goes to the game
+    python level3_game.py                         finds the Pi by hardware/rover_address.txt
+    python level3_game.py --rover 127.0.0.1 --sols 2   against server.py --fake; the game's
+                                                       own options go on the end too
 
 The game in ../../game runs as usual, with the rover pause on (--pause key). Each leg it
 drives goes to the rover over the link, and the game waits at the pause until the rover
@@ -26,6 +28,7 @@ PROTOTYPE = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(PROTOTYPE, "game"))  # the game's modules
 
 import dashboard  # noqa: E402
+import launch  # noqa: E402
 import nav  # noqa: E402
 from link import LinkError, RoverLink, RoverStopped  # noqa: E402
 
@@ -200,4 +203,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    launch.run(main)

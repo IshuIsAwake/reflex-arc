@@ -204,7 +204,7 @@ def test_a_move_into_rock_costs_nothing():
     """The exact test, because `nav` detects a refused drive by the step not being
     charged rather than by the position not changing."""
     w = World()
-    w.pos = (16, 20)                    # just west of the formation at (17,20)
+    w.pos = (16, 20)  # just west of the formation at (17,20)
     assert config.ARENA[20][17] == "#"
     before = w.steps
     w.move(1, 0)
@@ -268,7 +268,7 @@ def test_the_sol_rolls_over():
 def test_home_by_nightfall():
     w = World()
     assert w.docked, "the rover lands beside the pad"
-    w.pos = (15, 18)                       # south of the pad, not where it landed
+    w.pos = (15, 18)  # south of the pad, not where it landed
     assert w.docked, "any side of the pad is home"
     w.spend(40)
     w.next_day()

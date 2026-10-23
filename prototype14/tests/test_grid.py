@@ -36,7 +36,7 @@ def test_absolute_commands_ignore_where_it_was_facing():
 def test_turns_go_the_short_way():
     assert grid.primitives("E", N) == ["R", "F"]
     assert grid.primitives("W", N) == ["L", "F"]
-    assert grid.primitives("S", N) == ["R", "R", "F"]   # a U-turn is always two rights
+    assert grid.primitives("S", N) == ["R", "R", "F"]  # a U-turn is always two rights
     assert grid.primitives("N", N) == ["F"]
 
 

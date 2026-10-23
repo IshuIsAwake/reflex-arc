@@ -96,7 +96,7 @@ def test_never_routes_through_known_rock():
 def test_a_surveyed_arena_agrees_with_bfs():
     w = surveyed()
     pairs = [((15, 15), (3, 3)), ((15, 15), (27, 27)), ((1, 1), (27, 18)),
-             ((0, 29), (15, 0)), ((15, 15), (15, 16))]   # the last is the pad
+             ((0, 29), (15, 0)), ((15, 15), (15, 16))]  # the last is the pad
     for start, goal in pairs:
         path = nav.plan(w.here, start, goal)
         want = reference_bfs(config.ARENA, start, goal)
@@ -122,7 +122,7 @@ def test_the_planner_is_not_omniscient():
     truth = reference_bfs(config.ARENA, config.SPAWN, (2, 14))
     assert truth is not None, "(2,14) has to be reachable at all"
 
-    w = World()                      # only the landing site is seen
+    w = World()  # only the landing site is seen
     path = nav.plan(w.here, w.pos, (2, 14))
     assert path, "fog has to be plannable through, or exploring is impossible"
     assert len(path) - 1 <= truth - 4, \
@@ -179,7 +179,7 @@ def test_the_arena_has_no_rim_wall():
 def test_steps_charged_equal_tiles_driven():
     w = surveyed()
     before = w.steps
-    r = nav.goto(w, 15, 16)          # the pad: solid, so land beside it
+    r = nav.goto(w, 15, 16)  # the pad: solid, so land beside it
     assert r.code == "DONE", str(r)
     assert w.steps - before == r.steps == 0, (w.steps - before, r.steps)
 
@@ -195,7 +195,7 @@ def test_a_solid_target_lands_you_next_to_it():
     the same rule."""
     w = surveyed()
     w.pos = (12, 20)
-    r = nav.goto(w, 15, 16)          # the base pad
+    r = nav.goto(w, 15, 16)  # the base pad
     assert r.code == "DONE", str(r)
     assert w.pos in _around((15, 16)), w.pos
     assert r.beside == (15, 16) and "beside=(15,16)" in str(r), str(r)
@@ -233,7 +233,7 @@ def test_a_known_rock_is_not_somewhere_you_can_arrive():
 
 
 def test_rock_it_could_not_have_known_about_stops_the_drive():
-    w = World()                      # everything past the landing site is fog
+    w = World()  # everything past the landing site is fog
     # Driven *at* a formation it cannot see. On a sparse arena of rectangles that is the
     # way to earn a BLOCKED: with NAV_REPLANS at 5, a drive merely *passing* one walks
     # around it and still reports DONE, listing the rock it met in `walls`. The C is the
@@ -253,7 +253,7 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     is the record that survives, and unlike the plan it can never cross rock -- which
     is what makes the two worth drawing together."""
     w = World()
-    r = nav.goto(w, 10, 0)           # 20 through fog, 26 in fact: it must be surprised
+    r = nav.goto(w, 10, 0)  # 20 through fog, 26 in fact: it must be surprised
     assert r.code in ("BLOCKED", "DONE"), str(r)
 
     area, walk = w.last_walk
@@ -306,7 +306,7 @@ def test_a_drive_buys_the_map_it_drove_past():
     # A refused drive went nowhere and revealed nothing, and both are true, so the
     # field is 0 rather than absent.
     seen_rock = surveyed()
-    refused = nav.goto(seen_rock, 17, 20)     # rock it can already see, so UNREACHABLE
+    refused = nav.goto(seen_rock, 17, 20)  # rock it can already see, so UNREACHABLE
     assert refused.code.startswith("UNREACHABLE"), str(refused)
     assert refused.new == 0, str(refused)
 
@@ -619,7 +619,7 @@ def test_a_call_that_did_not_arrive_leaves_nothing_for_the_next_one():
     """
     out = os.path.join(tempfile.gettempdir(), "reflex_journey.txt")
     keep_file, keep_replans = settings.PLAN_FILE, settings.NAV_REPLANS
-    settings.PLAN_FILE, settings.NAV_REPLANS = out, 0     # stop at the first wall, so it takes several
+    settings.PLAN_FILE, settings.NAV_REPLANS = out, 0  # stop at the first wall, so it takes several
     try:
         w = _roomy()
         nav.clear_plan(w)

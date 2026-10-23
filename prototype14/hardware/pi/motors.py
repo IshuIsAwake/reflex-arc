@@ -45,17 +45,15 @@ class Motors:
 class FakeMotors:
     """Prints what the real motors would have been told."""
 
-    def __init__(self, quiet=False):
-        self.quiet = quiet
+    def __init__(self):
         self.last = (0.0, 0.0)
 
     def set(self, left, right):
         self.last = (left, right)
-        if not self.quiet:
-            print(f"    [fake motors] left {left:+.2f}  right {right:+.2f}")
+        print(f"    [fake motors] left {left:+.2f}  right {right:+.2f}")
 
     def stop(self):
-        if self.last != (0.0, 0.0) and not self.quiet:
+        if self.last != (0.0, 0.0):
             print("    [fake motors] stop")
         self.last = (0.0, 0.0)
 
