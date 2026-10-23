@@ -1,0 +1,4 @@
+# The rover's address. The run_*.py files read the first line that is not a comment.
+# rpi5.local finds the Pi by its name on the hotspot, whatever IP it was given today.
+# If that ever fails, put the Pi's IP here instead (from the hotspot's device list).
+rpi5.local
