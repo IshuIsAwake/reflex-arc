@@ -1,20 +1,11 @@
-"""See and change the values that tie the simulation to the real floor. Runs on the Pi.
+"""See and change the real-world values (calib.json). Runs on the Pi.
 
     python3 settings.py                  every value, what it means, where it comes from
-    python3 settings.py CELL_M 0.25      set one -- saved in calib.json
+    python3 settings.py CELL_M 0.25      set one
     python3 settings.py --reset CELL_M   back to the default in config.py
 
-Restart the rover server after a change; it reads them when it starts.
-
-How the simulation and the floor line up:
-  * one simulation cell is CELL_M metres of floor;
-  * the simulation's landing cell is the rover's home spot -- where the rover stands
-    when Level 3 starts;
-  * north, up on the simulation's screen, is the way the rover faces on that spot;
-  * a cell takes FORWARD_S_PER_CELL seconds to drive and a quarter turn TURN_S_PER_90
-    -- measure both with calibrate.py on the floor rather than typing them.
-Change CELL_M and the forward timing must be measured again: it is seconds per cell.
-"""
+Restart the rover server after a change. One simulation cell is CELL_M metres; the landing
+cell is the rover's home spot, and north on the screen is the way it faces there."""
 
 import json
 import os

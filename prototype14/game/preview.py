@@ -1,9 +1,5 @@
-"""Draw the README's screenshot, `preview.png`, with no model, run or window.
-
-    .venv/bin/python game/preview.py
-
-The map is drawn fully surveyed so the rocks show; a real mission starts in fog.
-"""
+"""Draws the README's screenshot, preview.png, with no model and no window.
+The map is fully surveyed so the rocks show; a real mission starts in fog."""
 import os
 from pathlib import Path
 

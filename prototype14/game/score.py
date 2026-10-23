@@ -1,17 +1,5 @@
-"""A kept run, scored from its own record: what a prompt change is measured against.
-
-    .venv/bin/python game/score.py runs/<stamp> [runs/<stamp> ...]
-
-A row per sol, then the mission's totals. Given two or more runs, the totals are also set
-side by side. Everything is read off the run's files -- `chat.jsonl`, `game.jsonl`,
-`night.json` and `start.json` -- so it scores runs kept before it existed.
-
-Whether an order was followed is a judgement, so it is not scored: the orders standing
-each sol are listed under the table, beside the numbers that bear on them. A score is one
-run of one model, so report it with its run directory and n, never as a rate on its own.
-
-No pygame in here.
-"""
+"""Scores kept runs from their own logs: a row per sol, then the totals, side by side
+for two or more runs. Usage: .venv/bin/python game/score.py runs/<stamp> [runs/<stamp> ...]"""
 
 import json
 import re
@@ -27,7 +15,7 @@ def _rows(path):
         try:
             out.append(json.loads(line))
         except ValueError:
-            continue                    # the half-written last line of a crashed run
+            continue  # the half-written last line of a crashed run
     return out
 
 
@@ -36,7 +24,7 @@ def _words(text):
 
 
 def _mentions(text, said):
-    """Whether `said` carries `text`: at least half its longer words."""
+    """Whether `said` carries at least half of `text`'s longer words."""
     want = _words(text)
     return bool(want) and len(want & _words(said)) * 2 >= len(want)
 
@@ -53,7 +41,7 @@ def score(run):
     memory = dict(start.get("memory") or [])
     orders = list(start.get("orders") or [])
     day_seconds, sols, standing, woke = 600, {}, {}, {}
-    objectives = set()                  # open objective cells, as "(x,y)"
+    objectives = set()  # open objective cells, as "(x,y)"
 
     def sol(n):
         return sols.setdefault(n, {
@@ -115,7 +103,7 @@ def score(run):
         elif kind == "quit":
             s["memory_at_close"] = s.get("memory_at_close") or dict(memory)
 
-    # The day's clock as each sol's last daytime call found it; her words on an open line.
+    # The day's clock at each sol's last daytime call, and her words on an open line.
     for r in chat:
         n = r.get("day")
         if n not in sols:
@@ -126,8 +114,7 @@ def score(run):
         if r.get("who") == "call" and not r.get("ran"):
             sols[n]["refused"] = sols[n].get("refused", 0) + 1
 
-    # Where each sol ended and on what charge. The night keeps every sol's, the last one
-    # included, which a run quit before its night has no `day_close` for.
+    # Where each sol ended and on what charge. The night has every sol's, the last included.
     night = run / "night.json"
     for h in (json.loads(night.read_text()).get("history", []) if night.exists() else []):
         s = sols.get(h.get("day"))

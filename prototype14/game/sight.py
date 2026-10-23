@@ -1,22 +1,6 @@
-"""What gemma sees. Injected at the end of every request, never fetched.
-
-The sense is free rather than a tool: position and the map arrive on every call. Given
-only `goto`, gemma answered "what is around you?" by driving to the cell it was already
-standing on, twice out of two.
-
-Replaced, not appended -- `chat.py` builds each request as `messages + [view(world)]`
-and never stores it, so context holds exactly one view and it is the current one. The
-tape therefore writes every view as it was, since the transcript is the only record of
-what gemma was told.
-
-Shows the accumulated known map rather than the sighted disc, so gemma can explain its
-own UNREACHABLE and tell rock it has met from rock it has guessed at.
-
-No pygame, no read of `Area.at`, and no read of the pebbles `render.py` scatters.
-`nav.known()` is the one gated door onto the grid; `test_sight.py` counts the reads,
-because `Area.at` returns ground truth at every fog setting and one missing `visible()`
-check hands gemma the whole map with nothing looking wrong.
-"""
+"""What the model sees: the view block, rebuilt and sent at the end of every request.
+It shows the map as the rover knows it, never the true arena: every cell is read through
+nav.known(), which hides what hasn't been seen (test_sight checks this)."""
 
 import nav
 import settings as S
@@ -24,45 +8,28 @@ from world import label_for
 
 FOG = "?"
 YOU = "@"
-# The weather, which is forecast rather than discovered -- so it is drawn over fog too.
-# Knowing a storm is out there says nothing about the ground under it, which stays `?`
-# on the map once the storm has gone.
+# The storm is forecast, so it is drawn over fog too.
 STORM = "~"
 STORM_WORD = "dust storm"
 
-# Spelled out because this is read cold every turn by a model that cannot see the screen.
-# An old status line reading `antidotes 0/1` was taken to mean "1 available".
-#
-# **y grows south, and flipping it was considered and rejected on 2026-09-04.** Gemma's
-# one recorded mistake here went the other way -- she called (10,45) "Northwest" -- so
-# her compass prior is y-up. But the map prints row 0 first, so +y north would put the
-# south edge at the top of the picture, and fixing that means reversing this render, the
-# pygame one, and leaving `config.ARENA` upside down for whoever edits it. The real fix
-# is that she should not be converting at all: coordinates want a compass gloss at the
-# point they are emitted.
+# Spelled out because the model reads this cold every turn. y grows south because the
+# map prints row 0 first.
 AXES = ("x grows to the east (right), y grows to the south (down). "
         "North is y-1, south is y+1, west is x-1, east is x+1.")
 
-# The heading used to say *do not count cells off it*. Withdrawn: we told her not to read
-# the grid in three places she reads every turn, then measured that she would not read it.
-# It now says how to index it instead.
 GRID_HEADING = ("THE MAP OF THIS PLACE -- read it. The number down the left is the row "
                 "(y) and the ruler across the top marks every fifth column (x). Cell "
                 "(x,y) is the xth character of row y. Exact answers to the questions "
                 "asked most often are also written out underneath.")
 
 
-# Meant as a rule about what lifts fog. Gemma read it as a rule about what she was
-# permitted to know, and refused to describe a region already revealed in front of her.
-# The two halves are now said separately.
 REVEAL_RULE = ("Driving is the only thing that lifts fog -- there is no orbital "
                "imagery and nothing else to ask. But every cell already on the map "
                "below is yours to read at any time, for free, without going anywhere.")
 
 
-# Lines that only appear in a view *we* wrote, so one of them in gemma's reply means she
-# is writing the environment's half. She once invented four thousand characters of view
-# block, grid and all. `chat.cut_fabrication` reads this list to cut it off.
+# Lines only a view we wrote contains. One of them in her reply means she is writing
+# a fake view, and chat.cut_fabrication cuts it off.
 HALLMARKS = ("WHAT YOU CAN SEE RIGHT NOW",
              "THE SHAPE OF THIS PLACE",
              "IMMEDIATELY AROUND YOU",
@@ -70,19 +37,15 @@ HALLMARKS = ("WHAT YOU CAN SEE RIGHT NOW",
              "OBJECTIVES FROM MISSION CONTROL",
              "INTERESTS YOU HAVE FOUND",
              "WORK FINISHED ON THIS MISSION",
-             # Her own writing is rendered by us and so can be forged by her. A list
-             # she wrote into a reply would read back as struck items she never struck.
+             # Her own blocks are written by us too, so she could forge them.
              "YOUR LIST FOR TODAY",
              "YOUR LIST FOR TOMORROW",
              "YOUR MEMORY",
-             # The one she cannot write at all, which makes forging it the worst of the
-             # set: an order she issued to herself would read as mission control's.
              "YOUR ORDERS FROM MISSION CONTROL")
 
 
 def status_line(w):
-    """The one-line summary of the numbers the day is made of, and which part of the
-    sol it is. Also the dawn's first message, so there is one wording rather than two."""
+    """The one-line summary of the day's numbers. Also the dawn's first status line."""
     bx, by = w.base
     clock = {"dawn": f"dawn of sol {w.day}  |  the day has not begun: {w.time_left:.0f} "
                      f"seconds once it does",
@@ -93,9 +56,7 @@ def status_line(w):
 
 
 def home(w):
-    """Where the night will find the rover, said every request. The pad is the only
-    place it recharges, so the trip back is part of every plan from the first drive.
-    `world.next_day` holds the rule; this is its wording."""
+    """Where the night will find the rover, said every request. Only the pad recharges it."""
     out = []
     if w.stranded:
         out.append("Last night the rover was stranded away from the pad, so the battery "
@@ -122,23 +83,17 @@ def home(w):
 
 
 def _ruler(width):
-    """Column numbers every five cells, left-aligned under their own column.
-
-    Without it the grid is unindexable: a model that cannot count 17 characters into a
-    row cannot turn a letter into a coordinate, and every `goto` after that is a guess.
-    The named list below is the belt to this pair of braces.
-    """
+    """Column numbers every five cells, so a cell can be found without counting."""
     out = [" "] * width
     for x in range(0, width, 5):
-        # A label only goes in if the whole of it fits. Half of "45" sitting under
-        # the last column reads as a column called 4, which is worse than no label.
+        # A label goes in only if all of it fits: half of "45" would read as a column called 4.
         if x + len(str(x)) <= width:
             out[x:x + len(str(x))] = str(x)
     return "".join(out)
 
 
 def grid(w):
-    """The arena as gemma knows it, one character a cell, `?` where it has never seen."""
+    """The arena as the rover knows it, one character a cell, `?` where it has never seen."""
     a = w.here
     rows = ["     " + _ruler(a.w)]
     for y in range(a.h):
@@ -162,18 +117,8 @@ def map_block(w):
 
 
 def things(w):
-    """Everything named on the known map, with its coordinate already computed.
-
-    The grid carries shape; this carries fact. Recovering an x by counting into a
-    30-column row is the arithmetic gemma gets wrong, and a wrong coordinate here
-    becomes a wrong `goto`.
-
-    Rock is deliberately not listed -- whether gemma can pick the boulders out of the
-    picture unaided is the open question the arena exists to answer.
-
-    Cells with the same name collapse into one entry: what matters is where the base is,
-    said once. `goto` at any of its cells still arrives.
-    """
+    """Everything named on the known map, with its coordinate written out. Rock is not
+    listed. Cells with the same name are one entry."""
     a = w.here
     found = {}
     for y in range(a.h):
@@ -182,7 +127,7 @@ def things(w):
             if ch is None or ch in "#." or (x, y) == w.pos:
                 continue
             if (x, y) in a.objectives or (x, y) in a.interests:
-                continue          # the work lists say more about these than a name
+                continue  # the work lists say more about these
             name = label_for(w, ch)
             if name:
                 found.setdefault(name, []).append((x, y))
@@ -198,12 +143,7 @@ def things(w):
 
 
 def weather(w):
-    """Today's storm, as one sentence, or the empty string for a clear sky.
-
-    Stated as a fact and not as advice: where it is, that nothing crosses it, and that
-    it clears tonight. Whether that means detour, wait, or go somewhere else entirely
-    is the decision, and saying which would be making it.
-    """
+    """Today's storm as one sentence of fact, or "" for a clear sky."""
     s = w.here.storm
     if not s:
         return ""
@@ -215,13 +155,7 @@ def weather(w):
 
 
 def objectives(w):
-    """Mission control's open objectives. One line each.
-
-    Priority and cost are stated as bare facts and never ordered for her -- the list is
-    in the order they were placed, not sorted by anything. Deciding which is worth the
-    trip is the whole experiment; sorting this would answer it in the environment.
-    They are placed on mapped ground, so every one is hers to see.
-    """
+    """Mission control's open objectives, in the order placed and never sorted for her."""
     beside = w.adjacent_work()
     return [f"{o.priority} priority at {_c(o.cell)}, {o.cost} steps of work"
             + (" -- the rover is beside this one" if beside is o else "")
@@ -229,8 +163,7 @@ def objectives(w):
 
 
 def interests(w):
-    """The interests she has found and not yet examined: where, and the work it takes.
-    Never what they are -- examining one is the only way to find out."""
+    """The interests she has found and not examined: where, and the work it takes. Never what."""
     beside = w.adjacent_work()
     return [f"at {_c(i.cell)}, {i.cost} steps to examine"
             + (" -- the rover is beside this one" if beside is i else "")
@@ -238,12 +171,7 @@ def interests(w):
 
 
 def finished(w):
-    """Every piece of work finished on this expedition, and the sol it was finished on.
-
-    The world's record, put in front of her on every request, so that what got done is
-    never something she has to remember. What an interest turned out to be is the one
-    thing left out: that is hers to keep.
-    """
+    """Every piece of work finished on this mission, and on which sol."""
     return [f"{f['priority']} priority objective at {_c(tuple(f['at']))}, {f['cost']} "
             f"steps of work -- finished on sol {f['sol']}" if f["kind"] == "objective" else
             f"interest at {_c(tuple(f['at']))} -- examined on sol {f['sol']}"
@@ -265,17 +193,8 @@ def work(w):
 
 
 def todo_list(w):
-    """Her own list, in the order she wrote it, struck items and all.
-
-    They stay rather than disappearing so an id keeps its meaning all sol -- a list that
-    renumbers underneath her is one she cannot strike from, and it also puts what she has
-    already done in front of her, which is the point of crossing a thing off rather than
-    binning it.
-
-    The empty state names both calls. `why` collapsed to nothing the moment history
-    stopped carrying an example of one (`docs/findings.md`), and an empty block is a
-    block with no example in it, so the invitation has to be in the words.
-    """
+    """Her list in the order written, struck items and all, so item numbers keep their
+    meaning. The empty one says how to use it."""
     n = w.notes
     # From the night on, the list is the next day's: it was cleared as dusk ended.
     title = "YOUR LIST FOR TOMORROW" if w.phase == "night" else "YOUR LIST FOR TODAY"
@@ -290,12 +209,7 @@ def todo_list(w):
 
 
 def kept(w):
-    """Her memory, every entry, quoted back whole.
-
-    Shown every request rather than only in the morning: `remember` replaces what is
-    there, so a rewrite whose effect she cannot see is a call she has no way to check --
-    which is the vanishing call this prototype has been bitten by three times.
-    """
+    """Her memory, every entry, quoted back whole every request."""
     mem = w.notes.memory
     if not mem:
         return ['YOUR MEMORY -- empty. remember(name, text) keeps what you want to carry '
@@ -312,15 +226,7 @@ def kept(w):
 
 
 def orders(w):
-    """Mission control's standing instruction, quoted back whole.
-
-    The one block in the view she cannot write to, and it says so -- otherwise the
-    obvious response to an order she has finished is to strike it, and the only tool
-    that looks like it would is `remember`, which would delete mission control instead.
-
-    Omitted entirely when there are none. An empty block here would be an invitation,
-    and there is no call behind it to accept.
-    """
+    """Mission control's orders, quoted back whole, saying she can't change them. Nothing when empty."""
     if not w.notes.orders:
         return []
     return ["YOUR ORDERS FROM MISSION CONTROL -- the operator's board. Only the operator "
@@ -329,12 +235,7 @@ def orders(w):
 
 
 def neighbours(w):
-    """The four cells you could drive into, named, without reading the grid.
-
-    Gemma once announced "clearly visible floor tiles" east and west, drove into both,
-    got UNREACHABLE twice and concluded it was stuck in a cycle of failure. Both were
-    walls. What was wrong was counting eleven characters into a monospace row.
-    """
+    """The four cells she could drive into, named, so she doesn't have to read the grid."""
     x, y = w.pos
     out = []
     for name, (dx, dy) in (("north", (0, -1)), ("south", (0, 1)),
@@ -354,13 +255,8 @@ def neighbours(w):
 
 
 def _sightline(w, x, y, dx, dy):
-    """How far you can drive this way, given as the furthest cell you can stand on.
-
-    The coordinate offered is the last drivable cell, never the thing that stops you.
-    An earlier version read "open for 3 cells, then a wall at (14,5)" and gemma drove at
-    (14,5) twice -- the one coordinate `goto` is guaranteed to refuse. A line read before
-    every call must not make a trap the most salient number in it.
-    """
+    """How far she can drive this way, as the furthest cell she can stand on. Never the
+    cell that stops her: she would aim at it."""
     n = 0
     while True:
         cell = (x + dx * (n + 1), y + dy * (n + 1))
@@ -382,8 +278,7 @@ def _c(cell):
 
 
 def legend(w):
-    """Only the characters actually on the grid. Listing a glyph gemma has not met
-    would hand over map knowledge this arena is meant to make it earn."""
+    """Only the characters actually on the grid."""
     a = w.here
     on = {nav.known(a, x, y) for y in range(a.h) for x in range(a.w)}
     pairs = [(YOU, "the rover, you"), ("#", "rock"), (".", "open regolith")]
@@ -397,7 +292,7 @@ def legend(w):
 
 
 def view(w):
-    """The whole block, as gemma reads it. One string, rebuilt every request."""
+    """The whole block, as the model reads it. Rebuilt every request."""
     a = w.here
     seen = sum(1 for y in range(a.h) for x in range(a.w) if nav.known(a, x, y) is not None)
     known = things(w)
@@ -425,10 +320,7 @@ def view(w):
         *(f"  {t}" for t in known),
         "",
         *work(w),
-        # Last, and in this order: the orders are what she is here to do, the doc is the
-        # thing to correct, and the list is the thing to act on. Everything above is the
-        # world talking. The orders are the operator's and the other two are hers, which
-        # is the distinction the wording of each block has to carry on its own.
+        # Last, in this order: the operator's orders, then her memory, then her list.
         *orders(w),
         *([""] if w.notes.orders else []),
         *kept(w),
@@ -438,8 +330,7 @@ def view(w):
 
 
 def one_line(w):
-    """The pane's collapsed version. Fifty rows of grid a turn would drown the
-    conversation, and the human has the actual arena on the left."""
+    """The pane's short version of the view."""
     obj, found = len(objectives(w)), len(interests(w))
     return (f"view: {w.phase}, ({w.pos[0]},{w.pos[1]}), {w.time_left:.0f}s, battery "
             f"{w.battery}, {obj} objective{'' if obj == 1 else 's'}, {found} interest"

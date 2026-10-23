@@ -1,22 +1,6 @@
-"""The mission report, written from the world's record. Her note goes under it as hers.
-
-    runs/<stamp>/report.md     rewritten every nightfall, and once more at the end
-
-**Facts are the world's to keep, not hers.** Two unattended runs ended on a report that
-said no objective had ever been found, after she had finished all three. Her note was
-the report then, and her note is a paragraph she rewrites from memory every evening --
-one bad rewrite and a fact is gone for good. Asking her more nicely at dusk would only
-make that less likely. So everything checkable here is read off the world: what was
-finished and on which sol, what is still out there, how much is mapped, the largest
-formation seen, where each sol ended and on what charge. Her note follows, labelled as
-hers and not checked against any of it, because what she judged and why is the part
-only she can say.
-
-Read-only. `Survey.rock` assigns ids and records merges, and `count` reports both, so
-calling it here would change what she is told next -- and replay compares every result.
-The formations are found again with `components` and named off ids already assigned.
-
-No pygame in here, so the tests can read it.
+"""The mission report, runs/<stamp>/report.md, rewritten every nightfall.
+Every fact is read off the world, never from her notes; her dusk reports go under it as hers.
+Read-only: it must not call `Survey.rock`, which hands out ids that replay checks.
 """
 
 import settings as S
@@ -28,7 +12,7 @@ def _c(cell):
 
 
 def _formations(world):
-    """Revealed rock as (name, cells), named by the ids `count` has already handed out."""
+    """Seen rock as (name, cells), named by the ids `count` has already handed out."""
     a, owner = world.here, world.survey.owner
     out = []
     for cells in components(a.w, a.h,
@@ -50,7 +34,6 @@ def _ending(world):
 
 
 def build(world):
-    """The report, as Markdown."""
     a = world.here
     seen = sum(1 for y in range(a.h) for x in range(a.w) if (x, y) in a.seen)
     lines = ["# Mission report", "", _ending(world), ""]
@@ -85,7 +68,7 @@ def build(world):
               "| sol | steps | ended at | home | battery after |",
               "|---|---|---|---|---|"]
     for h in world.history + [world._sol_record()]:
-        if "at" not in h:            # a night saved before sols kept these
+        if "at" not in h:  # a night saved before sols kept these
             lines.append(f"| {h['day']} | {h['steps']} | | | |")
             continue
         lines.append(f"| {h['day']} | {h['steps']} | {_c(h['at'])} | "

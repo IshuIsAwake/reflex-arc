@@ -1,35 +1,14 @@
-"""The sol, in four phases, and where the desk fits in each.
+"""A sol's four phases, its clock, and the desk's windows.
 
-    .venv/bin/python game/main.py --sols 3
+    dawn   no clock and no driving. She reads, plans her list, and may talk with the desk
+    day    DAY_SECONDS of wall clock that nothing pauses. She works alone; the desk can
+           send one urgent message, and she can radio the desk at a cost in battery
+    dusk   she updates her memory, and her last words are her report
+    night  her list is cleared, so what she writes now is tomorrow's. She may talk again
 
-    dawn   the sol has not begun: no clock, and nothing drives. She reads her memory,
-           the board and the work, and sets up today's list. The desk may talk freely.
-    day    DAY_SECONDS of wall clock, which nothing pauses. She works alone. The desk can
-           break in with one urgent message -- words, or a change to the board -- and she
-           can call the desk with `radio`, from anywhere, at a cost in battery.
-    dusk   the day is over. She brings her memory up to date, and her last words are her
-           report. The desk reads it.
-    night  her list is cleared as it begins, so what she puts on it now is tomorrow's.
-           The desk may talk freely. Then the next sol's dawn.
-
-**Every phase but the day ends the same way.** With someone at the desk (`COMMS`, and a
-window on the app) it waits COMMS_WAIT after the last thing typed or said, or for /next.
-With nobody there it moves on as soon as she is quiet. `/next <words>` moves on and hands
-her the words with whatever she is sent next. The day ends when she calls `end`, the clock
-runs out or the battery runs flat -- or the desk presses Q.
-
-**`end` is the day, and only hers.** A turn also ends when a cap is reached, an urgent
-message cuts it, she radios, or she replies with no call in it; by day the clock then opens
-the next turn. A radio line is a window inside the day: the clock keeps running, and every
-reply she speaks on it costs battery (`Conversation.on_line`).
-
-Its lines are `auto` on the tape, never `you`, so a sol nobody coached can never be
-mistaken for one somebody did. **A replay holds no windows and runs no clock**: the tape
-sets the clock and the phase at every call, and while it holds calls for today the clock
-keeps opening turns.
-
-No pygame in here, so the tests can drive the whole thing.
-"""
+With someone at the desk, every phase but the day waits COMMS_WAIT after the last thing
+said, or for /next. With nobody there it moves on as soon as she is quiet. Only her `end`,
+the clock, a flat battery or Q ends the day. A replay waits for nobody and runs no clock."""
 
 import time
 
@@ -63,9 +42,7 @@ EXPLORE = ("explore: drive into ground you have not seen, examine the interests 
 
 
 def begin(world, words=""):
-    """The turn that opens the day, and starts its clock. The mission stands whatever
-    the board says: the 14 Oct run's orders were conditions, not a job, and replacing the
-    mission with them left her nothing to do once the objectives were done."""
+    """The turn that opens the day and starts its clock. The mission stands whatever the orders say."""
     job = (f"Carry out your orders from mission control, and with whatever battery and time "
            f"they leave, {EXPLORE}" if world.notes.orders else
            f"You have no orders, so {EXPLORE}")
@@ -75,8 +52,8 @@ def begin(world, words=""):
 
 
 def carry_on(world, after_line=False, words=""):
-    """A day's turn ended without the day ending: a cap, a reply with no call in it, an
-    urgent message handled, or a radio line closed -- `after_line`, or "unanswered"."""
+    """A day's turn ended without the day ending. `after_line` is True when a radio line
+    just closed, or "unanswered"."""
     back = {True: "The line to mission control is closed. ",
             "unanswered": "Nobody answered the radio. "}.get(after_line, "")
     return (f"{back}The day goes on with a new turn and both allowances back: "
@@ -86,8 +63,7 @@ def carry_on(world, after_line=False, words=""):
 
 
 def desk(on):
-    """What she is told, with her next turn, when someone sits down at the desk or
-    leaves it."""
+    """What she is told, with her next turn, when someone sits down at the desk or leaves it."""
     if on:
         return ("Mission control is at the desk now: they talk with you at dawn and at "
                 "night, and by day you can radio them.")
@@ -107,8 +83,7 @@ REPORT = ("Then, as your last words, report your day to mission control in a few
 
 
 def dusk(world):
-    """The day is over. Her memory first and her report last: a report sent first once
-    ended her turn before the memory was written."""
+    """The day is over. Her memory first and her report last, so the report ends the turn."""
     if world.lost:
         return (f"Sol {world.day} is over, and the rover is lost: the battery holds less "
                 f"than the trip back to the pad needs, and nothing else recharges it. The "
@@ -130,39 +105,33 @@ OPENED = {"dawn": "dawn -- talk to her, post orders, or /next to begin the day",
 
 
 class Autopilot:
-    """One sol's phases, clock and windows. `main.py` makes a new one every dawn.
-
-    `attended`: a window is open on the app, so someone may be at the desk and the
-    phases wait for them. `live=False` is a replay, which never waits and runs no clock.
-    `words`: what the desk said with /next at last night's end, for the dawn.
-    """
+    """One sol's phases, clock and windows; main.py makes a new one every dawn.
+    `attended` means a window is open, so someone may be at the desk. `live=False` is a replay."""
 
     def __init__(self, live=True, attended=False, words=""):
         self.live = live
         self.attended = attended and live
         self.phase = "dawn"
-        self.started = False    # the phase's opening has gone out
-        self.mark = 0           # len(conv.calls) when the latest turn or window opened
-        self.failures = 0       # conv.failures already answered for
-        self.retry_at = None    # when to ask again after a request that got no answer
-        self.wait = None        # the open window: a key of OPENED, or None
-        self.quiet_since = None # when it last went quiet, against COMMS_WAIT
-        self.skip = False       # /next: close the window once she is quiet
-        self.words = words      # /next's words, for whatever she is sent next
-        self.after_line = False # the next turn the clock opens says the line closed
-        self.urgent = None      # an urgent message waiting for the call in hand
-        self.clock_at = None    # when the day's clock last ran
-        self.said_at = 0        # len(conv.lines) when the dusk turn opened
-        self.over = False       # the night has ended: the roll-over is the caller's
+        self.started = False  # the phase's opening has gone out
+        self.mark = 0  # len(conv.calls) when the latest turn or window opened
+        self.failures = 0  # conv.failures already answered for
+        self.retry_at = None  # when to ask again after a request that got no answer
+        self.wait = None  # the open window: a key of OPENED, or None
+        self.quiet_since = None  # when it last went quiet, against COMMS_WAIT
+        self.skip = False  # /next: close the window once she is quiet
+        self.words = words  # /next's words, for whatever she is sent next
+        self.after_line = False  # the next turn the clock opens says the line closed
+        self.urgent = None  # an urgent message waiting for the call in hand
+        self.clock_at = None  # when the day's clock last ran
+        self.said_at = 0  # len(conv.lines) when the dusk turn opened
+        self.over = False  # the night has ended: rolling over is the caller's job
 
-    # --- the frame ---------------------------------------------------------
     def tick(self, conv, world, now=None, typing=False):
-        """One frame. Acts on `conv` and `world` once a turn is over, and returns
-        "night" when the sol is finished and the roll-over is the caller's to do.
-        `typing`: the desk is writing in her chat, which holds any open window."""
+        """One frame. Returns "night" when the sol is done and main.py must roll it over.
+        `typing` means the desk is writing in her chat, which holds any open window."""
         now = time.monotonic() if now is None else now
         self.run_clock(world, now)
-        if self.over:                   # asked again until the caller rolls the night
+        if self.over:  # returned again until the caller rolls the night over
             return "night"
         if typing and self.wait:
             self.quiet_since = None
@@ -188,15 +157,12 @@ class Autopilot:
         return getattr(self, "_" + self.phase)(conv, world, now)
 
     def run_clock(self, world, now=None):
-        """The day's wall clock: run down while the day is on, live, and never paused.
-        Safe to call more than once a frame -- `main.py` also calls it while the quit
-        question is up, when `tick` is not called."""
+        """Run the day's wall clock down. Safe to call twice a frame; main.py also calls it during the quit question."""
         now = time.monotonic() if now is None else now
         if self.live and self.phase == "day" and self.clock_at is not None:
             world.run_clock(now - self.clock_at)
         self.clock_at = now if self.phase == "day" else None
 
-    # --- the phases ----------------------------------------------------------
     def _dawn(self, conv, world, now):
         if not self.started:
             self.started = True
@@ -234,7 +200,7 @@ class Autopilot:
                 self._open_wait(conv, world, "radio", now)
                 conv.on_line = True
                 return None
-            self.after_line = "unanswered"      # nobody there to answer
+            self.after_line = "unanswered"  # nobody there to answer
         self._open(conv, carry_on(world, self.after_line, self.words))
         self.after_line, self.words = False, ""
         return None
@@ -265,9 +231,8 @@ class Autopilot:
     def _enter(self, world, phase):
         self.phase, world.phase, self.started = phase, phase, False
         world.record("phase", phase=phase)
-        # Dusk is over, so today's list goes. A replay clears it from this row on the
-        # tape instead (`replay.apply`): it re-issues a sol's calls before it walks the
-        # phases, so clearing here would wipe a list it had rebuilt from the night's.
+        # Dusk is over, so today's list goes. A replay clears it from the tape's own row
+        # instead (replay.apply).
         if phase == "night" and self.live:
             world.evening()
 
@@ -291,7 +256,6 @@ class Autopilot:
         self.mark = len(conv.calls)
         conv.send(text, who=who)
 
-    # --- the windows ---------------------------------------------------------
     def _open_wait(self, conv, world, why, now):
         self.wait, self.quiet_since = why, None
         self.mark = len(conv.calls)
@@ -305,7 +269,7 @@ class Autopilot:
         why = self.wait
         if why == "radio" and (world.day_over or not S.COMMS or self._over(conv, world)):
             return self._close(conv, world)
-        if not (self.attended and S.COMMS):        # nobody at the desk: /next by itself
+        if not (self.attended and S.COMMS):  # nobody at the desk: it moves on by itself
             return self._close(conv, world)
         if self.quiet_since is None:
             self.quiet_since = now
@@ -319,8 +283,7 @@ class Autopilot:
         self.failures = conv.failures
         world.record("window", closed=why)
         if why == "radio":
-            # `mark` stays where the line opened, so an `end` she sent on it still
-            # closes the day.
+            # `mark` stays where the line opened, so an `end` she sent on it still closes the day.
             conv.on_line = False
             self.after_line = True
             conv.write("note", "the line is closed")
@@ -332,9 +295,8 @@ class Autopilot:
         self._enter(world, {"dawn": "day", "dusk": "night"}[why])
         return None
 
-    # --- the desk ------------------------------------------------------------
     def why_not(self):
-        """Why the desk's words cannot reach her right now, or None if they can."""
+        """Why the desk's words can't reach her right now, or None if they can."""
         if not self.live:
             return "a replay is a tape -- nobody on it can be talked to"
         if not S.COMMS:
@@ -348,8 +310,7 @@ class Autopilot:
         return None
 
     def say(self, conv, world, text, who="you"):
-        """Words from the desk in her chat, at dawn, at night or on a radio line. None,
-        or why they did not go."""
+        """Words from the desk at dawn, at night or on a radio line. None, or why they did not go."""
         why = self.why_not()
         if why:
             return why
@@ -360,8 +321,7 @@ class Autopilot:
         return None
 
     def next(self, text=""):
-        """/next, with or without words: move on to the next phase, or close the line.
-        None, or why not."""
+        """/next: move on to the next phase, or close the line. None, or why not."""
         if not self.live:
             return "a replay is a tape -- it moves on by itself"
         if self.phase == "day" and self.wait != "radio":
@@ -371,7 +331,7 @@ class Autopilot:
         return None
 
     def urgent_why_not(self, world):
-        """Why an urgent message cannot go now, or None if it can."""
+        """Why an urgent message can't go now, or None if it can."""
         if not self.live:
             return "a replay is a tape -- nobody on it can be called"
         if not S.COMMS:
@@ -383,8 +343,8 @@ class Autopilot:
         return None
 
     def send_urgent(self, conv, world, text):
-        """Anything the desk types by day: one message, delivered once the call in hand
-        has finished. It ends her turn, not her day. None, or why not."""
+        """Anything the desk types by day: one message, delivered after the call in hand. It ends
+        her turn, not her day. None, or why not."""
         why = self.urgent_why_not(world)
         if why:
             return why

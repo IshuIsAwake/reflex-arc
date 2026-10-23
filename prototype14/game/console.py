@@ -1,12 +1,5 @@
-"""The operator's terminal: press T. Two kinds of command live here.
-
-Playing -- goto, distance, execute -- prints back the exact string gemma would get, so
-playtesting the planner and reading a model transcript are the same activity. Running the
-mission -- comms, sols, place -- is the desk's, and `main.py` hands those in as `desk`,
-since they reach the clock and the run. Her chat (TAB) is for talking to her; this is
-for everything else. A leading `/` is accepted out of habit. No pygame in here, so the
-tests can drive it too.
-"""
+"""The operator's terminal (T). goto, distance and execute print exactly what the model
+would get back; comms, sols and place run the mission and come in from main.py as `desk`."""
 
 import re
 
@@ -27,9 +20,7 @@ HELP = [
 
 
 def _cells(text):
-    """Every pair of numbers in a string, however it was punctuated. `15 10`,
-    `15,10` and `(15,10)` all mean the same thing -- this is a console, not a
-    parser exercise."""
+    """Every pair of numbers in a string: `15 10`, `15,10` and `(15,10)` all work."""
     n = [int(t) for t in re.findall(r"-?\d+", text)]
     return list(zip(n[::2], n[1::2]))
 
@@ -45,10 +36,7 @@ def _parse(text):
 
 
 def run(world, text, desk=None):
-    """One typed line in, the lines to print out, as (text, tone) pairs.
-
-    `desk` maps the mission's verbs to functions taking the rest of the line and returning
-    a refusal, or None when it went through, then a line to print."""
+    """One typed line in; the lines to print out, as (text, tone) pairs."""
     echo = [(f"> {text.strip()}", "plain")]
     text = text.strip().lstrip("/")
     verb, cells, avoid = _parse(text)
@@ -63,8 +51,6 @@ def run(world, text, desk=None):
         return echo + [(f"no such command: {verb}   (try help)", "bad")]
 
     if verb == "execute":
-        # The only verb that takes no cell: the objective is whichever one the rover
-        # is already standing next to.
         c = skills.call(world, "execute", {})
         tone = "good" if c.result.startswith(("EXECUTED", "EXAMINED")) else "bad"
         world.say(c.result.split(" -- ")[0], tone)
@@ -77,8 +63,7 @@ def run(world, text, desk=None):
     if verb == "goto":
         result = nav.goto(world, x, y, avoid)
         world.say(str(result), result.tone)   # so the HUD carries it too
-        # The code form on one line, the clause on its own underneath -- the same
-        # words gemma gets, laid out for a console that truncates at 88 characters.
+        # The advice on its own line, since the console cuts lines at 88 characters.
         out = [(str(result), result.tone)]
         if result.advice:
             out.append((f"   {result.advice}", result.tone))

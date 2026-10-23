@@ -1,27 +1,9 @@
-"""goto -- A* over the map the rover has, not the map that exists.
+"""Driving: A* over the map the rover knows, not the true arena. Fog is assumed to be
+open ground, so a plan is a guess and driving it finds out. Every read of the grid goes
+through known(), which hides what hasn't been seen (test_nav checks this).
 
-Pure functions and one driver loop. No pygame, so the tests can import it.
-
-Copied from prototype 1 with the gates, the snake pits and the antidotes taken out.
-Three rules make this A* rather than any other A*:
-
-  * fogged cells are assumed to be regolith, so a plan is a hypothesis and driving it
-    is the experiment;
-  * `avoid` is impassable, never merely expensive;
-  * a rock you have already seen is not somewhere you can arrive.
-
-`known()` below is the only place this module touches the grid. `Area.at` returns
-ground truth whether or not the cell is fogged -- reading it without checking
-`Area.visible` first makes the planner quietly omniscient, everything keeps working,
-and nothing ever looks wrong. `test_nav.py` counts the reads in this file for that
-reason, so there had better stay exactly one.
-
-It also writes the route out, and that file is the whole seam to the physical rover.
-`goto` drives the leg in the simulation first and only then writes down the prefix
-that actually worked, as one of N/E/S/W a line and nothing else. So the robot is only
-ever handed moves the simulation has already proved, and cannot be sent into rock.
-The file holds the current leg; the whole journey lives in the tape.
-"""
+After each leg is driven in the simulation, the cells that worked are written to the route
+file as N/E/S/W, one a line. That file is what the real rover drives."""
 
 import heapq
 import os
@@ -32,26 +14,20 @@ import settings as S
 from world import SOLID, THINGS
 
 NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
-# Clockwise from north, and this order is load-bearing: it indexes HEADING_NAMES, so a
-# step is `HEADING_NAMES[DIRS.index(step)]`. 0=N 1=E 2=S 3=W.
+# Clockwise from north, matching HEADING_NAMES. 0=N 1=E 2=S 3=W.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 HEADING_NAMES = ("N", "E", "S", "W")
-# The whole alphabet the route file speaks. Anything reading it can check against this.
+# The whole alphabet of the route file.
 MOVES = HEADING_NAMES
 FAR = 1 << 30
 
-# The prototype directory, so a relative S.PLAN_FILE means the same thing whether
-# main.py was started from the prototype directory or from its game/.
+# The prototype folder, so a relative PLAN_FILE means the same from anywhere.
 PLAN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def known(area, x, y):
-    """What the rover knows about a cell: the character if it can see the cell, None
-    if it is fogged, "#" off the edge of the arena. An interest it has not found reads
-    as the open ground it sits on.
-
-    The only read of the grid in this module. Keep it that way.
-    """
+    """What the rover knows about a cell: its character if seen, None if fogged, "#" off the
+    edge. An interest not yet found reads as the ground it sits on. The only grid read here."""
     if not (0 <= x < area.w and 0 <= y < area.h):
         return "#"
     if not area.visible(x, y):
@@ -61,8 +37,7 @@ def known(area, x, y):
 
 
 def drive_seconds(steps):
-    """About how long a drive of `steps` takes on the day's clock: drawn, then settled.
-    The drive itself is instant in the world; what the clock pays for is the drawing."""
+    """About how long a drive of `steps` takes on the day's clock: drawn, then settled."""
     if not S.ANIMATE or not steps:
         return 0.0
     return steps * (S.ANIM_STEP + S.ANIM_PLAN) / S.ANIM_SPEED + S.SETTLE_SECONDS
@@ -73,19 +48,8 @@ def _around(cell):
 
 
 def _targets(area, goal, avoid):
-    """Where a plan is allowed to end.
-
-    A solid *thing* -- today only the base pad -- means "get next to it", or
-    `goto(25, 26)` at the pad would be UNREACHABLE taken literally.
-
-    A known rock is not a thing and gets none of this -- it is `THINGS`, not `SOLID`.
-    Driving into an outcrop you can see is a mistake and UNREACHABLE is the honest
-    answer; `DONE(beside=...)` would say you arrived somewhere you never went, and the
-    model once spent four days re-issuing a move it had been told succeeded.
-
-    A fogged cell that turns out to be rock is the opposite case: that one is a
-    hypothesis and driving into it is how the map fills in. Only seen rock is refused.
-    """
+    """Where a plan may end. A solid thing (the pad) means "get next to it". Rock already
+    seen is refused; a fogged cell is a guess, and driving at it is how the map fills in."""
     ch = known(area, *goal)
     if ch is None or ch not in THINGS:
         return {goal}
@@ -101,22 +65,12 @@ def _targets(area, goal, avoid):
 
 
 def with_storm(area, avoid):
-    """`avoid` plus today's weather.
-
-    The storm is folded in here rather than taught to `_passable`, so every rule that
-    already holds for an avoided cell holds for it too -- a route is planned around it,
-    a goal inside it has no way in, and `_targets` will not stop the rover beside one.
-    It also makes "what would this route have been without the storm" a plain second
-    call to `plan`, which is how `goto` tells a storm apart from an outcrop.
-    """
+    """`avoid` plus today's storm, so the storm is avoided like any avoided cell."""
     return frozenset(avoid) | area.storm_cells
 
 
 def _passable(area, cell, avoid):
-    """Fogged cells are passable at cost 1, and that is the whole design. Treat fog
-    as rock and the rover can never path into unexplored ground; treat it as truth
-    and it is omniscient.
-    """
+    """Fogged cells are passable; `avoid` and seen solid cells are not."""
     if cell in avoid:
         return False
     ch = known(area, *cell)
@@ -126,15 +80,9 @@ def _passable(area, cell, avoid):
 
 
 def plan(area, start, goal, avoid=frozenset()):
-    """Cheapest known route, as a list of cells beginning with `start`. None if no
-    route exists even assuming every fogged cell is regolith.
-
-    A*: pop the cell with the smallest f = g + h, where g is the steps already spent
-    reaching it and h is the Manhattan distance still to go. Manhattan can never
-    overestimate on a four-way grid of unit steps, which is what makes the answer
-    provably shortest rather than merely short. Ties break on the smaller h, so the
-    search runs at the goal instead of fanning out around it.
-    """
+    """The shortest route over the known map, as a list of cells from `start`, or None if
+    there is none even with every fogged cell open. A* with Manhattan distance as the
+    estimate; ties go to the cell nearer the goal."""
     avoid = frozenset(avoid) - {start}
     targets = _targets(area, goal, avoid)
     if not targets:
@@ -176,25 +124,8 @@ def _trace(came, cur):
 
 
 def route_actions(path):
-    """A cell path from `plan` rewritten as the directions the route file speaks --
-    one of N/E/S/W a step, in order.
-
-    Absolute, in world coordinates, the same frame `plan` already thinks in. The
-    rover's facing does not appear. It used to: a step became a turn plus a FORWARD,
-    computed against a heading, and BACKWARD existed to spend one action where a
-    U-turn would have spent three. All of it was arithmetic against a quantity the
-    simulation never measured -- and with the rover stopping at every leg boundary,
-    an assumed heading is exactly where the sim's belief and the robot's reality come
-    apart. Absolute removes the quantity rather than correcting it.
-
-    Turning is now the driver's business, on its own side of the file. It knows which
-    way it is pointing; nothing here can.
-
-    A repeated or diagonal step raises. `plan` never emits one, and quietly accepting
-    it would write a file that drives somewhere else.
-
-    Pure. Plans nothing, moves nothing, reads no grid.
-    """
+    """A path from `plan` as the route file's directions: one of N/E/S/W a step. The rover's
+    heading plays no part; turning is the driver's job. A step that isn't one cell N/E/S/W raises."""
     out = []
     for a, b in zip(path, path[1:]):
         step = (b[0] - a[0], b[1] - a[1])
@@ -209,25 +140,10 @@ def _c(cell):
 
 
 class Result:
-    """What a goto comes back with.
-
-    `str()` is the line gemma reads and the line the console prints -- one wording, not
-    two. `at` is where you ended up or the rock you hit; `stopped` appears only when
-    those differ. Every result carries `steps`.
-
-    `beside` says the target was solid and this is as close as anyone gets. Without it,
-    `goto(25,26)` at the pad reads as `DONE(at=(25,25))` and the model concludes it has
-    not arrived. Set for things, never for rock.
-
-    `new` is how much map the drive bought. Without it gemma spent 439 steps, 358 of
-    them revealing nothing, and every answer was the same `DONE(at=..., steps=49)` the
-    useful drives got -- nothing to tell a drive that mapped three hundred cells from
-    one that mapped none.
-
-    `None` for a call that never drove, so it prints conditionally: `distance` builds a
-    Result purely to log, and "revealed nothing" would be a claim about a trip nobody
-    took.
-    """
+    """What a goto comes back with. str() is the line the model reads and the console prints.
+    `at` is where it ended or the rock it hit; `stopped` appears only when those differ;
+    `beside` means the target was solid and this is as close as it gets; `new` is how many
+    cells the drive revealed, None for a call that never drove."""
 
     GOOD = {"DONE"}
 
@@ -240,7 +156,7 @@ class Result:
         self.beside = beside
         self.walls = list(walls)
         self.new = new
-        # How long the route is, for a call that planned one and drove none of it.
+        # The route's length, for a call that planned one.
         self.planned = planned
         # OUT_OF_TIME because the sol was closed with time left, not because it ran out.
         self.closed = closed
@@ -260,9 +176,7 @@ class Result:
         if self.planned is not None:
             bits.append(f"route={self.planned}")
         bits.append(f"steps={self.steps}")
-        # Printed even when it is nought -- especially when it is nought. A drive that
-        # bought no map is the thing worth saying, and a field that appears only on
-        # success is one the reader learns to stop looking for.
+        # Printed even when 0: a drive that revealed nothing is worth saying.
         if self.new is not None:
             bits.append(f"new={self.new}")
         if self.walls:
@@ -271,21 +185,8 @@ class Result:
 
     @property
     def advice(self):
-        """The two answers a reader gets backwards, said again in words.
-
-        Kept off `__str__` so the code form stays one line -- the HUD ticker does not
-        wrap and the console truncates. `skills` appends it for gemma, the console
-        prints it for the human. One wording, three places.
-
-        `beside=` alone was not enough: gemma read `DONE(at=(10,15), beside=(10,16))`
-        as a failure to reach (10,16) and spent the run driving into a counter. A field
-        is not a sentence.
-
-        The zero-step case is the other half -- `goto` to the cell you are standing on
-        succeeds, costs nothing, and reads as though something happened.
-
-        The third is a drive that bought no map: `new=0` alone reads as success.
-        """
+        """The answers the model reads backwards, said again in words: arriving beside a solid
+        target, a zero-step goto, and a drive that revealed nothing."""
         if self.beside:
             return (f"{_c(self.beside)} is solid, so stopping beside it IS "
                     f"arriving. Do not ask again.")
@@ -321,14 +222,8 @@ def plan_file():
 
 
 def _replace(tmp, out, tries=10, wait=0.05):
-    """`os.replace`, retried. It is atomic and it is also refused with WinError 5 the
-    moment anything else has the target open for a fraction of a second -- OneDrive
-    syncing the folder, an editor with the file up, a reader tailing it.
-
-    Half a second of retries, then raise. A route file that cannot be rewritten is a
-    fault worth stopping for: whatever reads it would otherwise go on driving the plan
-    the planner has already replaced.
-    """
+    """os.replace, retried for half a second: on Windows it is refused while anything else
+    has the file open (OneDrive, an editor)."""
     for n in range(tries):
         try:
             os.replace(tmp, out)
@@ -340,24 +235,9 @@ def _replace(tmp, out, tries=10, wait=0.05):
 
 
 def write_plan(out, dirs):
-    """One leg, already driven, as one of N/E/S/W a line. Nothing else in the file.
-
-    No header, no comments, no coordinates, no leg structure. Everything a reader
-    used to have to skip is gone, so there is no parser on the other side worth the
-    name -- read the lines, drive them. An empty `dirs` writes an empty file, which
-    is how the file says the rover has nothing to do.
-
-    `dirs` is the prefix that *worked*, not a plan: `goto` drives the leg in the
-    simulation and calls this afterwards with the cells it actually got over. The
-    robot is therefore never handed a move the simulation has not already proved,
-    and cannot be driven into rock. That is the whole reason the write comes last.
-
-    Written to a temporary file and renamed over the target -- atomic on Windows as
-    well as POSIX, so a reader arriving mid-write gets the previous file rather than
-    half of this one. A rover executing half a plan drives into something.
-    """
-    # No trailing newline on an empty file. "\n".join([]) + "\n" is a blank line, and
-    # a reader splitting on newlines would get one empty move out of it.
+    """Write one driven leg, one of N/E/S/W a line, nothing else. Written to a temp file and
+    renamed over the target, so a reader never sees half a file. Empty `dirs` empties it."""
+    # No newline on an empty file, or a reader would get one blank move.
     body = "".join(f"{d}\n" for d in dirs)
 
     out = os.path.abspath(out)
@@ -374,31 +254,13 @@ def write_plan(out, dirs):
 
 
 def clear_plan(world):
-    """Empty the route file, and forget the journey it belonged to.
-
-    Whatever reads this file has no way to know how old it is. Left alone, the first
-    thing a fresh run offers is the last leg of the previous one -- a route from a
-    position the rover is no longer in, which is the worst kind of wrong because it is
-    perfectly well-formed.
-
-    Also the wipe at the end of every leg. Once the robot has replayed a leg the file
-    has said everything it has to say, and an empty file is the only honest thing to
-    leave lying there while the planner thinks.
-    """
+    """Empty the route file. Done at the start of a run and after every leg."""
     publish(world, [])
 
 
 def live_file(world):
-    """The route file this run writes, or None when nothing is driving.
-
-    Written only for a live run, and `world.recorder` is what marks one -- `logs.py`
-    sets it and it is None in every test, the same seam `world.py` uses to keep itself
-    free of I/O. A suite that plans thousands of routes has no business touching the
-    disk, and a plan file a test left behind is a route the next reader believes.
-    `S.PLAN_FILE = None` switches it off for a live run too.
-
-    None also means there is no robot on the other end, so nothing waits for one.
-    """
+    """The route file this run writes, or None. Only a live run writes one (world.recorder
+    is None in tests), and None also means there is no rover to wait for."""
     out = plan_file()
     return out if out and world.recorder else None
 
@@ -411,24 +273,13 @@ def publish(world, dirs):
 
 
 def _await_rover(world, dirs):
-    """Block until the robot has driven `dirs` off the file and stopped.
-
-    A no-op here, and replaced from outside: `main.py` swaps in a wait on the
-    operator, and the tests swap in a spy. Keeping the default empty is what lets a
-    suite drive thousands of legs without anything to press, and keeps pygame out of
-    this file -- the same injection `main.py` already does for `Conversation.ready`.
-
-    The operator standing in for the robot is temporary. The rover bridge reporting
-    back for itself is Abhishek's, and none of the file format changes when it lands:
-    this is the only function that has to know the difference.
-    """
+    """Wait until the rover has driven `dirs`. Does nothing here: main.py replaces it with
+    the SPACE pause, and the tests with a stand-in."""
     return
 
 
 def _log(world, area_name, start, goal, planned, result):
-    """The gap between what the plan promised and what the drive cost is a direct
-    read on what unmapped ground is costing. Free to record, so record it.
-    """
+    """Record what the plan promised against what the drive cost."""
     world.nav_log.append({"day": world.day, "area": area_name, "from": start,
                           "to": goal, "planned": planned, "steps": result.steps,
                           "code": result.code, "new": result.new})
@@ -438,37 +289,20 @@ def _log(world, area_name, start, goal, planned, result):
 
 
 def goto(world, x, y, avoid=None):
-    """Drive to (x, y) over the map the rover has. Returns a Result.
+    """Drive to (x, y) over the known map. Returns a Result.
 
-    `avoid=None`      dodge only the rock it already knows about
-    `avoid=[(a, b)]`  ...and these cells, this trip only
-    `avoid="auto"`    ...and every cell it has marked. Visited destinations only.
+    `avoid=None` dodges only known rock; a list of cells dodges those too, this trip only;
+    "auto" dodges every marked cell (visited destinations only).
 
-    One leg at a time, and the leg is the unit the physical rover sees. The simulation
-    drives a plan until it arrives or hits rock, `S.PLAN_FILE` is then written with the
-    prefix that *worked*, the robot replays that and stops, and the file is wiped before
-    the planner is allowed to think again. So the robot is only ever handed ground the
-    simulation has already been over, and a plan that turns out to run into an outcrop
-    costs a replan rather than a collision.
-
-    The drive stops the moment a step is refused -- face to face with the outcrop,
-    which is where the most map has been revealed -- records it, and replans up to
-    NAV_REPLANS times. `NAV_REPLANS = 5` therefore bounds this at six hardware
-    round-trips per call, however far the rover has to go.
-    """
+    The drive stops at the first refused step, reveals that rock, and replans, up to
+    NAV_REPLANS times. Each leg driven is handed to the rover before any replan."""
     area, area_name, goal, start = world.here, world.area, (x, y), world.pos
 
-    # Every cell actually driven over, as against the cells that were planned for.
-    # Handed to the world by reference so it grows as the drive does -- a watcher
-    # redrawing per move needs no second channel. It can never contain a rock,
-    # which is exactly what makes it worth drawing beside a plan that can.
+    # Every cell actually driven over. The world holds it by reference, so it grows as the drive does.
     walk = [start]
     world.last_walk = (area_name, walk)
 
-    # What the drive did, in order, so it can be watched afterwards. `anim.py` reads
-    # this; nothing here waits on it. Every replan appends its own `plan`, which is the
-    # part `world.last_path` cannot carry -- that field only ever holds the newest
-    # hypothesis, and the interesting thing to look at is the one that was wrong.
+    # What the drive did, in order, for anim.py to draw afterwards.
     reel = [("start", start)]
 
     if avoid == "auto":
@@ -483,10 +317,7 @@ def goto(world, x, y, avoid=None):
 
     path = plan(area, start, goal, avoid)
     if path is None:
-        # One more hypothesis, and only from the get-go: did the avoid list seal the
-        # route, or is there genuinely no way through? Those are different facts and
-        # gemma cannot tell them apart otherwise. The storm is a third: it is not the
-        # rover's doing and it clears tonight, which is a different thing to be told.
+        # No route: say whether the storm or the avoid list is what sealed it.
         code = "UNREACHABLE"
         if area.storm and plan(area, start, goal, asked):
             code = "STORM_BLOCKED"
@@ -500,21 +331,14 @@ def goto(world, x, y, avoid=None):
     reel.append(("plan", list(path)))
 
     walls, steps, replans = [], 0, S.NAV_REPLANS
-    # What the drive bought. `world.revealed` holds one move's worth and is replaced on
-    # the next, so it is unioned as we go rather than read at the end.
+    # What the drive revealed. world.revealed holds one move's worth, so it is gathered as we go.
     gained = set()
-    # Where in `walk` the leg currently being driven started. `walk` spans the whole
-    # goto; the robot is handed one leg at a time.
+    # Where in `walk` the current leg started. The rover is handed one leg at a time.
     leg_start = 0
 
     def hand_over():
-        """The leg just driven, given to the robot, and the file left empty after.
-
-        Called once a leg has stopped -- arrived, blocked, or out of steps. A leg of
-        one cell is the rover not having moved, and writing an empty file and wiping
-        it again says nothing, so it is skipped. So is a run with no file at all:
-        there is no robot on the other end of one, and nothing to wait for.
-        """
+        """Hand the leg just driven to the rover and wait, then empty the file. Skipped for a leg
+        that didn't move, and when there is no route file."""
         cells = walk[leg_start:]
         if len(cells) < 2 or not live_file(world):
             return
@@ -527,8 +351,7 @@ def goto(world, x, y, avoid=None):
         kw.setdefault("at", world.pos)
         kw.setdefault("new", len(gained))
         if code == "DONE" and world.pos != goal:
-            # The target was solid, so this is as close as it gets. Say so, or
-            # arriving reads as not having arrived.
+            # The target was solid, so this is as close as it gets. Say so.
             kw["beside"] = goal
         world.play(reel)
         hand_over()
@@ -539,10 +362,8 @@ def goto(world, x, y, avoid=None):
         wall = None
         leg_start = len(walk) - 1
         for cell in path[1:]:
-            # Checked before the move rather than read off it afterwards: `world.move`
-            # refuses a flat battery the same way it refuses rock, and the refusal below
-            # would otherwise log the next cell as an outcrop.
-            # The battery first: a flat one ends the day, and it is the reason to give.
+            # Checked before the move: world.move refuses a flat battery the same way it refuses
+            # rock, and the check below would log it as rock.
             if world.battery <= 0:
                 return done("BATTERY_FLAT")
             if world.day_over:
@@ -551,17 +372,10 @@ def goto(world, x, y, avoid=None):
             was_pos, was_steps = world.pos, world.steps
             world.move(cell[0] - was_pos[0], cell[1] - was_pos[1])
 
-            # A refused move is detected by the step not being charged, never by the
-            # position being unchanged. `world.move` charges a step only when it
-            # actually moved, so this is exact. Prototype 1 needed this because a
-            # pit could teleport you back to where you started; there are no pits
-            # here yet, and item 3 brings hazards that will need it again.
+            # A refused move is one that wasn't charged a step.
             if world.steps == was_steps:
                 wall = cell
-                # Contact is the only thing driving reveals. Without this the rock stays
-                # fogged, `_passable` goes on believing it clear, and the replan below
-                # returns the identical path -- the rover bumps the same cell until the
-                # replans run out. A rover with no cameras still knows what it hit.
+                # Bumping into rock reveals it, or the replan would return the same path.
                 gained |= area.reveal_cells({cell})
                 # An interest found a step ago stops the plan too, and it is not rock.
                 if cell not in walls and known(area, *cell) == "#":
@@ -571,18 +385,13 @@ def goto(world, x, y, avoid=None):
 
             steps += 1
             walk.append(cell)
-            # The disc this step opened. Unioned as we go because `world.revealed` holds
-            # one move's worth and is replaced by the next, and handed to the reel so the
-            # fog peels back in step with the rover being drawn rather than all at once
-            # the moment the call returns.
+            # Handed to the reel, so the fog opens in step with the drawn rover.
             gained |= world.revealed
             reel.append(("step", (cell, sorted(world.revealed))))
         else:
             return done("DONE")
 
-        # The leg ended on rock. The robot drives what worked before anything is
-        # replanned -- it is behind the simulation until it has, and a route planned
-        # from a cell it has not reached yet is a route for somebody else.
+        # The leg ended on rock. The rover drives what worked before anything is replanned.
         hand_over()
 
         if replans <= 0:
@@ -590,61 +399,40 @@ def goto(world, x, y, avoid=None):
         replans -= 1
         path = plan(area, world.pos, goal, avoid)
         if path is None:
-            break                     # gemma calls goto again from wherever it is
+            break  # the model calls goto again from wherever it is
         world.last_path = (area_name, list(path))
         reel.append(("plan", list(path)))
 
-    # `done` hands over too, and the leg it would send has already gone. Reset so the
-    # slice is a single cell and the write is skipped rather than repeated.
+    # `done` hands over too, and this leg has already gone, so make the next slice empty.
     leg_start = len(walk) - 1
     return done("BLOCKED", at=wall, stopped=world.pos)
 
 
 def price(world, x, y, avoid=None):
-    """What a trip would cost, in steps. None if there is no route at all.
-
-    Prototype 7 returned a second number -- what the drive would reveal. Driving reveals
-    nothing here, so the honest answer is always zero and the field is gone rather than
-    shipped as a constant.
-
-    `steps` is a floor, not a quote: the route is planned over fog assumed clear, so
-    rock in the way makes the real drive longer. Costs nothing and moves nothing.
-    `avoid="auto"` is accepted even for somewhere the rover has never stood: the visited
-    rule is about committing steps, and this commits none.
-    """
+    """What a trip would cost in steps, or None if there is no route. A floor: rock under
+    the fog can make the real drive longer. Moves nothing."""
     area = world.here
     avoid = frozenset(area.marks) if avoid == "auto" else frozenset(avoid or ())
-    # The same weather the drive would meet, or the quote is for a trip nobody can take.
+    # The same storm the drive would meet.
     avoid = with_storm(area, avoid)
     path = plan(area, world.pos, (x, y), avoid)
     world.last_path = (world.area, list(path) if path else [])
-    world.last_walk = (world.area, [])   # priced, not driven -- say so on the map
-    # Pricing a trip is the one skill with nothing to see, so the route it considered
-    # is drawn instead -- in blue, and never in the yellow a real drive uses, because
-    # the whole point is that this one costs nothing and moves nothing.
+    world.last_walk = (world.area, [])  # priced, not driven
+    # The priced route is drawn in blue, never in a drive's yellow.
     if path:
         world.play([("start", world.pos), ("probe", list(path))])
 
     steps = None if path is None else len(path) - 1
-    # Logged even though it moves nothing: whether gemma prices a trip before
-    # committing to it is one of the behaviours this prototype exists to watch.
+    # Logged even though it moves nothing.
     _log(world, world.area, world.pos, (x, y), steps,
          Result("UNREACHABLE" if steps is None else "DISTANCE"))
     return steps
 
 
 def home_steps(world, storm=True):
-    """Steps back to the pad over the known map, 0 when already beside it, None if no
-    route exists. A floor, like every planned route: fog is assumed clear.
-
-    `storm=False` leaves today's storm out, for asking whether the rover can *ever* get
-    home: the storm blows out at the end of the sol, so it cannot strand anyone for good.
-
-    Breadth-first to the nearest cell beside *any* pad cell, which is what `docked`
-    counts as home. Planning to `world.base` would measure to one corner of a six-cell
-    pad and overstate the trip. Not `price` either: that draws the route and logs a
-    call, and this is asked on every view.
-    """
+    """Steps back to beside the pad over the known map: 0 when already there, None if no
+    route. Breadth-first. `storm=False` leaves today's storm out, to ask whether the rover can
+    ever get home."""
     if world.docked:
         return 0
     area, pad = world.here, world.pad

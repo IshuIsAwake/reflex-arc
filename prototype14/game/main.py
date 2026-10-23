@@ -1,41 +1,11 @@
-"""Run me:  .venv/bin/python game/main.py [--arena 30|50] [--sols N]
-                                        [--model TAG] [--think] [--replay runs/<stamp>]
-                                        [--comms on|off] [--objectives manual|auto]
-                                        [--preset design] [--outage N]
+"""The game: the window, the keys, and the loop that runs the mission.
 
-TAB her chat (/help lists its commands)   T your terminal (help lists its commands)
-C comms on / off   Q end the day now
-V what she sees   H hide/show her reasoning   P her memory, or her list   O settings
-WASD drive (hold to keep going)   M map   X mark   ESC quit
-SPACE the rover has finished the leg -- with ROVER_PAUSE key
+    .venv/bin/python game/main.py [--arena 30|50] [--sols N] [--model TAG] [--think]
+                                  [--comms on|off] [--objectives manual|auto] [--preset design]
+                                  [--outage N] [--resume runs/<stamp>] [--replay runs/<stamp>]
 
-Settings come from `registry.py`: the code's defaults, then `user_settings.json`, then
-flags for this launch. README.md says when each kind of change lands.
-
-A Martian plain, a landing pad at the centre, and gemma in the pane on the right. The
-rover maps what it drives past, out to `VISION_RADIUS`, and that is the only thing that
-lifts fog -- Ingenuity is cut, so a sol of driving is the only way the map fills in.
-
-**Three things are written down, and they differ by who holds the pen.** She keeps a
-list that `todo` adds to and `strike` crosses off, cleared when dusk ends, and a
-memory of named entries that `remember` writes and `forget` drops, which the night does
-not take. The third is the operator's board, posted to from her chat and read-only to her.
-
-**Two places to type.** Her chat (TAB) is for talking to her: words at dawn and night,
-one urgent message by day, an answer when she radios, and /next, /order, /orders,
-/retract, /status, /help. The terminal (T) runs the mission and the game: comms, sols,
-place, and goto / distance / execute for playing by hand.
-
-**A sol is dawn, day, dusk and night**, and `--sols 3` is three of them from one launch.
-With someone at the desk each phase but the day waits for them; with nobody there, or no
-window, each moves on by itself. `autopilot.py` says how.
-
-**Live and replay.** Live, the model decides. `--replay` re-issues a kept run's calls
-with no model in the loop and halts if the world stops matching the tape -- so a sol
-that came out well is the demo, played back exactly. `replay.py` says why.
-
-No human-only mode: the planner is the point.
-"""
+Every key, command and flag is in MANUAL.md. Settings come from the code's defaults, then
+user_settings.json, then the flags for this launch."""
 
 import argparse
 import hashlib
@@ -64,8 +34,7 @@ import sight
 from world import World
 
 def headless():
-    """No window: nobody is watching, so nobody is at the desk and nobody is there to
-    say whether the mission goes on."""
+    """No window: nobody is watching, so nobody is at the desk."""
     return os.environ.get("SDL_VIDEODRIVER") == "dummy"
 
 
@@ -96,17 +65,9 @@ def edit(text, caret, e):
 
 
 def read_flags(argv, prefs):
-    """Puts every setting in force before anything reads one.
-
-    Returns (args, script, carried): `carried` is the night a resumed run wakes from.
-
-    The order is the precedence: the code's defaults, then the person's saved settings,
-    then flags for this launch only, then -- on a replay -- the kept run's own values,
-    which win because a replay under different settings is a different run.
-
-    `--think` sets the trace and the sampler together, because a reasoning trace that
-    starts repeating at temperature 0 has no noise to climb out with.
-    """
+    """Put every setting in force before anything reads one: the defaults, the saved
+    settings, this launch's flags, and on a replay the kept run's own values, which win.
+    Returns (args, script, carried); `carried` is the night a resumed run wakes from."""
     p = argparse.ArgumentParser(prog="game/main.py")
     p.add_argument("--arena", choices=tuple(C.ARENAS), help="which arena to land on")
     p.add_argument("--model", help="any tag `ollama list` shows, or a `-cloud` one")
@@ -151,8 +112,7 @@ def read_flags(argv, prefs):
         S.MODEL_THINK = True
         S.MODEL_TEMP = None
 
-    # Loaded before pygame opens a window: a run directory that is missing or has no
-    # calls in it should say so at the prompt, not behind a window that then closes.
+    # Loaded before the window opens, so a bad run directory is reported at the prompt.
     script = replay.load(pathlib.Path(args.replay)) if args.replay else None
     if script:
         script.use_settings(script.first_sol)
@@ -166,7 +126,7 @@ def read_flags(argv, prefs):
         # The map belongs to the arena it was drawn on, whatever is saved or flagged.
         registry.apply({"APP_ARENA": carried["arena"]})
 
-    # Before anything reads `config` -- the window is sized off it and so is the world.
+    # Before anything reads config: the window and the world are sized off it.
     C.use(C.APP_ARENA)
     # Last: the prompt is built from the arena and the turn caps.
     prompts.use()
@@ -192,39 +152,33 @@ def main():
     fonts = render.Fonts()
 
     def layout_surfaces(display):
-        """The window, and the arena's and the pane's parts of it, sized off it."""
+        """The window, and the arena's and the pane's parts of it."""
         game_rect, pane_rect = render.layout(*display.get_size())
         return display, display.subsurface(game_rect), display.subsurface(pane_rect)
 
-    # The window fills the desktop, less its border and the taskbar, and can be dragged to
-    # any size from there.
+    # The window fills the desktop, less its border and the taskbar.
     desktop = pygame.display.get_desktop_sizes()[0]
     screen, game, pane = layout_surfaces(pygame.display.set_mode(
         (max(960, desktop[0] - S.SCREEN_RESERVE_W), max(640, desktop[1] - S.SCREEN_RESERVE_H)),
         pygame.RESIZABLE))
 
-    # The run starts recording immediately. Whether it is kept is asked at the end;
-    # see logs.py for why that order and not the other one.
+    # The run is recorded from the start; whether it is kept is asked at the end.
     runs = pathlib.Path(__file__).resolve().parent.parent / "runs"
     run = logs.Run(runs, headless=headless())
 
-    # SIGTERM keeps the run and exits. SDL would turn it into a window-close, which asks
-    # K / D / ESC -- and a headless run has nobody to answer, so it waited for ever.
-    # Installed after the window opens, so this replaces SDL's handler.
+    # SIGTERM keeps the run and exits. SDL would turn it into the K/D/ESC question, which a
+    # headless run has nobody to answer.
     term = []
     signal.signal(signal.SIGTERM, lambda *_: term.append(True))
 
     def log_settings(sol):
-        """Every setting in force, and a hash of the prompt they built, once a sol.
-        Two runs of one probe once scored 22% and 56% and nothing on either tape said
-        which prompt they had been asked under. Replay reads these rows back."""
+        """Every setting in force, and a hash of the prompt they built, once a sol."""
         run.record("settings", sol=sol, values=registry.snapshot(),
                    prompt=hashlib.sha256(prompts.SYSTEM.encode()).hexdigest()[:12])
 
     w = World(recorder=run.record, carried=carried)
     if S.OUTAGE_SOLS:
-        # Staged, and the tape says so: a run whose sol 2 was answered by the fallback
-        # because someone asked for it is not evidence of an outage.
+        # A staged outage goes on the tape, so it is never mistaken for a real one.
         run.record("outage", sols=list(S.OUTAGE_SOLS), model=S.MODEL,
                    fallback=S.MODEL_FALLBACK)
     if args.resume:
@@ -232,18 +186,13 @@ def main():
     elif script and script.start:
         run.save_start(script.start, pathlib.Path(args.replay).resolve().name)
     log_settings(w.day)
-    nav.clear_plan(w)   # this session's route file starts empty, never yesterday's
+    nav.clear_plan(w)  # the route file starts empty, never with yesterday's leg
     tape = chat.Tape(run.chat_path)
     # Which model answers. One for the run: an outage does not end at nightfall.
     link = chat.Link()
 
     def talker():
-        """The thing on the other end of the pane: Ollama, or a kept run.
-
-        One function so the two construction sites below cannot drift -- a replay whose
-        second sol quietly went back to asking the model would be the hardest kind of
-        wrong to see, because it would look exactly right until the bill arrived.
-        """
+        """The other end of the chat: Ollama, or a kept run."""
         if script:
             return replay.Replay(w, script, tape)
         return chat.Conversation(w, tape, link)
@@ -252,15 +201,9 @@ def main():
     conv.open_day(w)
 
     reel = anim.Reel(w)
-    # **The planner waits for the rover.** No request goes out while a drive is still
-    # being drawn, so gemma sees the outcome of one call before it can make the next.
-    # It costs wall clock and that is the point: a planner seconds away from the body
-    # it drives is the architecture, and here you can watch it happen.
-    #
-    # The rover also sits still for `SETTLE_SECONDS` after the drawing stops. A 31B
-    # answers in under two seconds, so without a pause the sol is a burst of teleports
-    # with nothing legible between them. `settle` holds the earliest moment the next
-    # request may go out, and is pushed forward for as long as anything is moving.
+    # The planner waits for the rover: no request goes out while a drive is still being
+    # drawn, and for SETTLE_SECONDS after, so each drive can be seen. `settle` holds the
+    # earliest time the next request may go out.
     settle = [0.0]
 
     def ready():
@@ -271,11 +214,9 @@ def main():
         return now >= settle[0]
 
     conv.ready = ready
-    # The clock, and the desk's windows. One per sol. A replay's never waits, and nor does
-    # a run with no window: nobody is there.
+    # The clock and the desk's windows, new every sol. A replay or a headless run never waits.
     pilot = autopilot.Autopilot(live=not script, attended=not headless())
-    # Whether anyone was at the desk last frame. C and the settings screen both change
-    # COMMS, and both land at once, so the change is noticed here rather than at either.
+    # Whether anyone was at the desk last frame, so a change from C or the settings screen is noticed.
     at_desk = [S.COMMS]
     mode = "world"
     cursor = w.pos
@@ -283,10 +224,9 @@ def main():
     next_step = 0
     line, history = "", []
     said, typing, scroll, scroll_max = "", False, 0, 0
-    memory_shown = False    # P: the scratchpad shows her memory and the board, not the list
+    memory_shown = False  # P: the scratchpad shows her memory and the board, not the list
     picked, editing, notice, models = 0, None, "", None
-    # Where the caret sits in the line being typed. Only one line is typed at a time --
-    # her chat, the terminal or a setting's value -- so one caret serves all three.
+    # Only one line is typed at a time (her chat, the terminal or a setting), so one caret serves all three.
     caret = 0
     repeating = False
     items = [("preset", label) for label in registry.PRESETS] + \
@@ -307,13 +247,8 @@ def main():
         sys.exit()
 
     def place(text):
-        """`place X Y [high|medium|low] [cost]` -- an objective, on mapped ground, which
-        she sees at once. `place X Y interest COST TEXT` -- an interest, hidden until the
-        rover sees it again, and TEXT is what examining it finds.
-
-        The refusal wording comes back from the world rather than being written again
-        here: the guard and the explanation of the guard belong together.
-        """
+        """`place X Y [high|medium|low] [cost]` puts an objective on mapped ground.
+        `place X Y interest COST TEXT` hides an interest. Returns (refusal, None) or (None, done)."""
         words = text.split()
         if len(words) >= 3 and words[2].lower() == "interest":
             if (len(words) < 5 or not all(t.lstrip("-").isdigit() for t in words[:2])
@@ -343,14 +278,8 @@ def main():
         return pilot.live and pilot.phase == "day" and pilot.wait != "radio"
 
     def board(verb, rest):
-        """The orders board, from her chat. Returns the line for the pane.
-
-        Mission control, not conversation: it goes to its own store, which the night does
-        not clear. Refused rather than cut when too long, for the same reason `remember`
-        is. Every change is told to her -- by day as the one urgent message, otherwise as
-        a line she can answer -- and goes on the tape as its own row, which is how a
-        replay posts it again before the same call.
-        """
+        """The orders board, from her chat. Returns the line for the pane. Every change is told
+        to her (by day as the urgent message) and recorded, so a replay can post it again."""
         n = w.notes
         rest = rest.strip()
         if verb == "orders" and not rest:
@@ -402,8 +331,7 @@ def main():
         "Your terminal (T) has the rest: comms, sols, place -- type help there."]
 
     def chat_line(text):
-        """One line typed in her chat. Returns the pane's lines: why it did not go, or
-        what it did. Empty when it went to her as words."""
+        """One line typed in her chat. Returns the pane's lines: why it did not go, or what it did."""
         if not text.startswith("/"):
             if by_day():
                 why = pilot.send_urgent(conv, w, text)
@@ -424,24 +352,12 @@ def main():
         return [f"no such command: {word} -- /help lists them"]
 
     def await_rover(world, dirs):
-        """Hold everything until the operator says the rover has driven the leg.
-
-        `nav.goto` runs on this thread -- `chat._run` is deliberately main-thread, so a
-        drive cannot land halfway through a redraw -- which means waiting here stops the
-        game loop, redraw and events included. So this runs its own: it draws each frame
-        and reads the keyboard itself, and takes only the key that ends the wait. The
-        world must not change while the robot is a leg behind it, and refusing every
-        other key is what guarantees that rather than hoping nothing is pressed.
-
-        The screen still shows the rover where it was before this `goto`: the drive is
-        animated from `world.reel` once the call returns. On the floor the machine is
-        moving, which is the thing actually worth watching, and the HUD says what it
-        was sent.
-        """
+        """Wait until the rover has driven the leg: the SPACE pause. goto runs on this thread, so
+        this runs its own loop, drawing and reading keys, and takes only SPACE (or the quit question)."""
         if S.ROVER_PAUSE != "key":
             return
         world.awaiting_rover = list(dirs)
-        asking = False      # ESC asks the same keep-or-discard question as anywhere else
+        asking = False  # ESC asks the same keep-or-discard question as anywhere else
         try:
             while True:
                 if term:
@@ -470,19 +386,15 @@ def main():
     nav._await_rover = await_rover
 
     def mission_over():
-        """The last sol is done, or the rover is lost: too little charge ever to reach
-        the pad again, which is the only thing that recharges it. A length changed on the
-        settings screen counts already, though it lands at nightfall."""
+        """The last sol is done, or the rover is lost. A length changed on the settings screen counts already."""
         sols = prefs.pending.get("MISSION_SOLS", S.MISSION_SOLS)
         return w.day_over and (w.lost or bool(sols) and w.day >= sols)
 
-    # With a window, the end of the mission is a pause, not an exit: `sols N` in the
-    # terminal plays on, ESC finishes. Headless, nobody is there to choose, so the run is
-    # kept and ends.
+    # With a window the end of the mission waits (`sols N` plays on, ESC finishes); headless, it is kept and ends.
     at_end = [False]
 
     def add_sols(rest):
-        """The terminal's `sols N`: N more sols, this run only, like C."""
+        """The terminal's `sols N`: N more sols, this run only."""
         if not rest.strip().isdigit() or int(rest) < 1:
             return "sols needs a number of sols to add -- e.g.  sols 3", None
         if not S.MISSION_SOLS and not prefs.pending.get("MISSION_SOLS"):
@@ -495,7 +407,7 @@ def main():
                      f"{S.MISSION_SOLS}"
 
     def set_comms(rest):
-        """The terminal's `comms on|off` -- the same switch as C."""
+        """The terminal's `comms on|off`, the same switch as C."""
         if rest.strip().lower() not in ("on", "off"):
             return f"comms are {'on' if S.COMMS else 'off'} -- comms on, or comms off", None
         S.COMMS = rest.strip().lower() == "on"
@@ -512,12 +424,8 @@ def main():
         return e.key != pygame.K_ESCAPE
 
     def nightfall():
-        """The sol rolls over. Settings waiting for it go in force first, then the
-        prompt is rebuilt from them, so the new sol's planner is told the new numbers.
-
-        A replay does the operator's half itself, and does it *before* the rollover:
-        orders typed at nightfall are what the next sol opens holding.
-        """
+        """The sol rolls over. Settings waiting for it go in force first, then the prompt is rebuilt.
+        A replay does the operator's actions itself, before the rollover."""
         nonlocal conv, pilot
         notes = []
         if script:
@@ -528,7 +436,7 @@ def main():
             changed = prefs.nightfall()
             notes = [f"{k} {registry.show(v)}" for k, v in changed.items()]
         prompts.use()
-        run.save_night(w)     # a crash tomorrow still resumes from tonight
+        run.save_night(w)  # a crash tomorrow still resumes from tonight
         run.save_report(report.build(w))
         w.next_day()
         log_settings(w.day)
@@ -542,9 +450,7 @@ def main():
             conv.write("note", "settings from this sol: " + ", ".join(notes))
 
     def shift():
-        """Someone sat down at the desk, or left it, mid-sol. The prompt is rebuilt now
-        and swapped in at her next turn (`Conversation._on_shift`). An open line closes
-        on the clock's next tick if nobody is left on it."""
+        """Someone sat down at the desk, or left it, mid-sol. The prompt is rebuilt and she is told."""
         at_desk[0] = S.COMMS
         prompts.use()
         run.record("comms", sol=w.day, on=S.COMMS, steps=w.steps,
@@ -604,9 +510,7 @@ def main():
         dt = clock.tick(C.FPS) / 1000.0
         now = pygame.time.get_ticks()
 
-        # Held keys repeat while a line is being typed, so holding backspace keeps
-        # deleting. Off the rest of the time: WASD has its own repeat, and both at once
-        # would drive two cells for one.
+        # Held keys repeat while a line is typed; otherwise WASD has its own repeat.
         wants = typing or mode == "console" or editing is not None
         if wants != repeating:
             if wants:
@@ -637,14 +541,13 @@ def main():
             if e.type != pygame.KEYDOWN:
                 continue
 
-            # The quit question outranks everything, including the text field, or
-            # closing the window while mid-sentence would type into it.
+            # The quit question comes before everything, even the text field.
             if mode == "quit":
                 if not answer_quit(e):
                     mode = "world"
                 continue
 
-            # Typing to gemma eats every key, the same way the console does.
+            # Typing in her chat takes every key.
             if typing:
                 if e.key == pygame.K_ESCAPE:
                     typing = False
@@ -658,9 +561,9 @@ def main():
                     said, caret = edit(said, caret, e)
                 continue
 
-            # The console eats every key, or WASD would drive instead of typing.
+            # The terminal takes every key, or WASD would drive.
             if mode == "console":
-                # T closes only on an empty line, so "goto" and "distance" type fine.
+                # T closes only on an empty line, so "goto" types fine.
                 if e.key == pygame.K_ESCAPE or (e.key == pygame.K_t and not line):
                     mode, held, line = "world", None, ""
                 elif e.key == pygame.K_RETURN:
@@ -677,8 +580,7 @@ def main():
                     mode, editing = "world", None
                 continue
 
-            # Looking at the view eats every key, the way the console does, or the arrow
-            # keys would drive the rover out from under the block being read.
+            # Looking at the view takes every key, or the arrows would drive.
             if mode == "view":
                 if e.key in (pygame.K_v, pygame.K_ESCAPE):
                     mode, scroll = "world", 0
@@ -687,10 +589,9 @@ def main():
             if e.key in DIRS:
                 held, next_step = e.key, now + S.MOVE_DELAY_MS
                 if mode == "world":
-                    # Taking the wheel cuts the replay short rather than fighting it
-                    # for where the rover is drawn.
+                    # Driving by hand cuts the drawing short.
                     reel.skip()
-                    reel.destination = None     # a drive by hand has no target to label
+                    reel.destination = None  # a drive by hand has no target to label
                     w.move(*DIRS[e.key])
                 else:
                     cursor = clamp_cursor(cursor, DIRS[e.key], w.here)
@@ -706,8 +607,6 @@ def main():
                     mode, held, caret = "console", None, 0
                 elif e.key == pygame.K_q and w.phase == "day":
                     w.day_over = True
-                # Her chat always opens: what can reach her is the window's to say, and
-                # the commands in it are refused out loud when they cannot.
                 elif e.key == pygame.K_TAB:
                     typing, held, caret = True, None, len(said)
                 elif e.key == pygame.K_h:
@@ -715,18 +614,14 @@ def main():
                     scroll = 0
                 elif e.key == pygame.K_p:
                     memory_shown = not memory_shown
-                # Sit down at the desk, or leave it. For this run only: the setting on
-                # the settings screen is the one that is saved.
+                # C: sit down at the desk, or leave it, for this run only.
                 elif e.key == pygame.K_c:
                     S.COMMS = not S.COMMS
                 elif e.key == pygame.K_o:
                     mode, held, notice = "settings", None, ""
                     models = chat.installed_models()
                     registry.BY_NAME["MODEL"].choices = models
-                # V overlays the view block; V again puts it away. A thing you open to
-                # look at is a mode, not a message -- appending it instead once put
-                # twenty-two copies of four thousand characters into one tape. Nothing is
-                # written down here: every view gemma was sent is already a `view` row.
+                # V shows the exact view she was last sent; V again hides it.
                 elif e.key == pygame.K_v:
                     mode, scroll = "view", 0
                 elif e.key == pygame.K_ESCAPE:
@@ -760,19 +655,14 @@ def main():
         elif mode == "quit":
             render.draw_quit(game, w, fonts, run, mission_over())
 
-        # Pumped every frame now: the hold lives in `conv.ready` above, which stops the
-        # next *request* rather than the whole loop. Streaming text keeps arriving while
-        # the rover drives, and no world change can slip in because nothing has been
-        # asked for yet.
+        # Pumped every frame; `conv.ready` above is what holds the next request back.
         conv.pump()
         if S.COMMS != at_desk[0]:
             shift()
-        # Held while the desk is typing or deciding whether to quit: a word put in is not
-        # talked over, a line does not close under it, and the run is not kept from under
-        # the question. A replay plays every sol its tape holds, however long the mission
-        # was when it was kept, and stops at the end of its last one.
+        # Held while the desk is deciding whether to quit, though the day's clock runs on. A
+        # replay plays every sol its tape holds.
         if mode == "quit":
-            pilot.run_clock(w)      # the day's clock does not stop for the question
+            pilot.run_clock(w)  # the day's clock does not stop for the question
         else:
             if (pilot.tick(conv, w, typing=typing) == "night"
                     and not (script and script.spent)):
@@ -783,7 +673,7 @@ def main():
                     leave(True)
                 elif not at_end[0]:
                     at_end[0] = True
-                    run.save_night(w)     # kept on disk, whatever is pressed next
+                    run.save_night(w)  # kept on disk, whatever is pressed next
                     run.save_report(report.build(w))
                     conv.write("note", "the rover is lost -- ESC to finish" if w.lost else
                                "the mission is over -- `sols N` in your terminal (T) for "

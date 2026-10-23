@@ -1,21 +1,12 @@
-"""motors -- left and right power in, PWM on the SmartElex out. No ROS.
-
-The same mapping as PI_5's l298n_node.py, without the node around it: a power of
--1..1 for each side becomes a direction pin and a duty inside [MIN_DUTY, MAX_DUTY].
-Zero is duty 0, which the board reads as stopped.
-
-`FakeMotors` prints instead of driving, so everything above this file runs on a
-laptop. `open_motors()` falls back to it when gpiozero is not there, and says so.
-
-gpiozero picks its own pin backend: lgpio on a Pi 5, and lgpio or RPi.GPIO on a
-Pi 4. Nothing here names one, which is what keeps the code the same on both.
-"""
+"""Left and right power (-1..1) in, PWM on the SmartElex out. FakeMotors prints instead,
+so everything above this file runs on a laptop; open_motors() falls back to it without
+gpiozero."""
 
 import config as C
 
 
 def duty(power):
-    """Power -1..1 -> (forward?, duty). Clamped, never wrapped."""
+    """Power -1..1 -> (forward?, duty). Clamped."""
     p = max(-1.0, min(1.0, power))
     if abs(p) < 1e-3:
         return True, 0.0

@@ -1,16 +1,10 @@
-"""Measure how long one cell and one quarter turn take, on this floor, today.
+"""Measure how long a cell and a quarter turn take, on this floor, today.
 
-    python3 calibrate.py forward 3.0 --reps 3     drive 3 s, you measure the distance
-    python3 calibrate.py turn 1.5 --reps 4        turn 1.5 s, you measure the angle
+    python3 calibrate.py forward 3.0 --reps 3     drive 3 s; you measure the distance
+    python3 calibrate.py turn 1.5 --reps 4        turn 1.5 s; you measure the angle
 
-Every rep asks what you measured, then the mean and the spread are printed and the
-mean is saved to calib.json. Look at the spread before trusting the number: PI_5
-saw identical turn pulses 34 % apart. A spread that wide is the floor telling you
-open-loop turns will miss, and Level 1's checks will show it.
-
-Turns alternate direction so the rover unwinds instead of drifting round.
-Re-run after any change to tyres, load or battery.
-"""
+The mean is saved to calib.json. Check the spread first: a wide one means open-loop moves
+will miss. Turns alternate direction. Re-run after any change to tyres, load or battery."""
 
 import argparse
 import statistics
@@ -66,7 +60,7 @@ def main():
         print("it did not move -- check power and MIN_DUTY. Nothing saved.")
         return
     if args.what == "forward":
-        speed = m / 100                                   # cm/s -> m/s
+        speed = m / 100  # cm/s -> m/s
         C.save(FORWARD_M_PER_S=round(speed, 4))
         print(f"FORWARD_M_PER_S = {speed:.3f} m/s  (saved) -> {C.FORWARD_S_PER_CELL:.2f} s "
               f"for a {C.CELL_M} m cell; a new cell size follows by itself")

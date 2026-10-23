@@ -1,7 +1,5 @@
-"""Angaraka mission-control presentation. Reads game state; never changes it.
-
-All clickable controls return existing keyboard actions to main.py.
-"""
+"""Mission control's panels: the header, the cards, the scratchpad and the buttons.
+It reads the game's state and never changes it. A button click becomes its key."""
 import textwrap
 import pygame
 import config as C
@@ -12,8 +10,7 @@ AMBER = (190, 177, 148)
 CYAN = (111, 190, 183)
 PANEL = (30, 34, 39)
 BORDER = (53, 60, 67)
-# The rover pause's hint, here and in her chat. Level 3 sets it, since there the rover
-# says when it has stopped.
+# The rover pause's hint. Level 3 changes it, since there the rover says when it has stopped.
 ROVER_HINT = 'SPACE once the rover has stopped'
 
 
@@ -27,8 +24,7 @@ def text(surf, font, value, pos, color=None, width=None):
 
 
 def key_lines(font, hint, width):
-    """A hint like `TAB her chat   T terminal` as lines that fit `width`, broken between
-    keys and never inside one."""
+    """A hint like `TAB her chat   T terminal` as lines that fit `width`, broken between keys."""
     lines = [""]
     for group in hint.split("   "):
         group = group.strip()
@@ -87,7 +83,7 @@ def rover(surf, cx, cy, size=None):
 
 
 def map_telemetry(surf, w, f, view, ox, oy, tile, reel=None):
-    """Floating grid coordinates follow the displayed bot and its route target."""
+    """Labels on the map for the rover's cell and its drive's target (MAP_LABELS)."""
     pos = reel.where(w.pos) if reel else w.pos
     def label(cell, value, color, below=False):
         center = (ox + cell[0]*tile + tile//2, oy + cell[1]*tile + tile//2)
@@ -110,7 +106,6 @@ def map_telemetry(surf, w, f, view, ox, oy, tile, reel=None):
 
 
 def map_overlay(surf, w, f, view, ox, oy, reel):
-    # Labels go only on objects that are visible.
     old = surf.get_clip()
     surf.set_clip(view)
     for cell, obj in w.here.objectives.items():
@@ -126,8 +121,7 @@ def map_overlay(surf, w, f, view, ox, oy, reel):
 
 
 def controls_width(width):
-    """The bottom strip's left part, for the buttons and the keys. Messages get the rest.
-    312 is what the longer line of keys needs, so it never gets cut."""
+    """The bottom strip's left part, for the buttons and the keys. 312 fits the longer line of keys."""
     return min(380, max(312, (width - 54) // 2))
 
 
@@ -142,8 +136,7 @@ def buttons(size):
 
 
 def bottom(surf, w, f, reel):
-    """The strip under the arena: buttons and keys on the left; the stopwatch, and the
-    world's last three messages, on the right."""
+    """The strip under the arena: buttons and keys on the left, the world's last messages on the right."""
     rect = pygame.Rect(15, surf.get_height()-C.HUD_H+4, surf.get_width()-30, C.HUD_H-10)
     pygame.draw.rect(surf, PANEL, rect, border_radius=8)
     pygame.draw.rect(surf, BORDER, rect, 1, border_radius=8)
@@ -162,8 +155,7 @@ def bottom(surf, w, f, reel):
     x = 27 + left + 20
     clock = f'ELAPSED {w.elapsed:.0f}s   {S.ANIM_SPEED:g}x ANIMATION'
     text(surf, f.tiny, clock, (rect.right - 12 - f.tiny.size(clock)[0], rect.y + 10), C.MUTED)
-    # The world's last three messages, newest on top and brightest: what the terminal
-    # printed, or what X just marked.
+    # The world's last three messages, newest on top and brightest.
     for i, (msg, tone) in enumerate(reversed(w.log[-3:])):
         col = {"good": C.GOOD, "bad": C.BAD}.get(tone, C.INK)
         shade = tuple(min(255, int(v * (1 - i * 0.3))) for v in col)
@@ -196,8 +188,7 @@ def telemetry(surf, w, f, reel, memory=False):
     for i in (1,2):
         pygame.draw.line(surf,BORDER,(x+i*gap,HEADER+39),(x+i*gap,HEADER+99))
     mins,secs=divmod(max(0,int(w.time_left)),60)
-    # While a drive is being drawn the world is already at its end, so say both: where
-    # the rover is drawn, and where it already is.
+    # While a drive is drawn the world is already at its end, so show both positions.
     if reel and reel.at and reel.at != w.pos:
         where = f'({reel.at[0]}, {reel.at[1]}) -> ({w.pos[0]}, {w.pos[1]})'
     else:
@@ -209,19 +200,18 @@ def telemetry(surf, w, f, reel, memory=False):
         text(surf,f.tiny,heading,(xx,HEADER+39),C.MUTED,gap-20)
         text(surf,f.hud,value,(xx,HEADER+57),C.INK,gap-20)
         text(surf,f.tiny,sub,(xx,HEADER+84),C.GOOD,gap-20)
-    # At laptop height retain room for the full, scrollable planner below.
+    # On a short screen, leave room for the chat below.
     objective_h = 104 if height < 800 else 176
     top = HEADER+123
     scratchpad(surf, pygame.Rect(x, top, wide, objective_h), w, f, memory)
     return top + objective_h + 10
 
 
-# Left behind by the last drawing, for main.py: where the scratchpad is, for the wheel,
-# and where its switch is, for a click.
+# Left by the last drawing for main.py: the scratchpad's area (for the wheel) and its switch (for a click).
 pad_rect = pygame.Rect(0, 0, 0, 0)
 pad_switch = pygame.Rect(0, 0, 0, 0)
 pad_scroll = 0
-pad_memory = False      # the view drawn last, so a flip starts at the top
+pad_memory = False  # the view drawn last, so a flip starts at the top
 
 
 def list_rows(w):
@@ -235,7 +225,7 @@ def list_rows(w):
 
 
 def memory_rows(w, cols):
-    """What lasts past the night: her memory, then the board, wrapped to `cols`."""
+    """Her memory, then the board, wrapped to `cols`."""
     rows = []
     for name, value in w.notes.memory.items():
         for line in f'{name}: {value}'.splitlines():
@@ -270,8 +260,7 @@ def switch(surf, rect, f, memory):
 
 
 def scratchpad(surf, rect, w, f, memory):
-    """One card, two views: today's list, or her memory and the board. The switch at its
-    top right flips them, and so does P. The wheel scrolls whichever is showing."""
+    """One card, two views: today's list, or her memory and the board. P or the switch flips them."""
     global pad_rect, pad_switch, pad_scroll, pad_memory
     card(surf, rect, 'MEMORY AND ORDERS' if memory else 'SCRATCHPAD', f, AMBER)
     pad_rect, pad_switch = rect, switch(surf, rect, f, memory)
@@ -325,7 +314,7 @@ def click(pos, game_size, pane_size):
     # The scratchpad's switch is P. The pane sits right of the arena, so its rects move.
     if pad_switch.move(game_size[0], 0).collidepoint(pos):
         return pygame.K_p
-    # Clicking the planner's existing input has the same effect as TAB.
+    # A click on the chat's input line is TAB.
     if pos[0] >= game_size[0]+8 and pos[1] >= pane_size[1]-82:
         return pygame.K_TAB
     return None

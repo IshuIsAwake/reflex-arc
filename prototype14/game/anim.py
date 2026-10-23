@@ -1,33 +1,18 @@
-"""Replaying a drive that has already happened, one cell at a time.
+"""Draws a drive that has already happened, one cell at a time. nav.goto finishes at
+once and records what it did as (kind, payload) steps; this plays them back on screen:
 
-Nothing here slows the rover down. `nav.goto` finishes in one go and must -- the model
-has to be handed the true outcome in the same breath as the call. So the world jumps,
-`nav` writes down what it did as `(kind, payload)`, and this plays it back afterwards.
-Otherwise a goto through fog reads as teleporting.
-
-    plan     the route A* believed in, in yellow, drawn cell by cell
+    plan     the route A* believed in, yellow
     step     the rover moving, fog opening as it goes
-    block    the cell that refused -- flashed, then the yellow is torn up
-    probe    `distance` only, in blue: priced, never driven
-    work     `execute`, a step at a time at a driving step's pace
-
-The day's clock runs on the wall clock, and the planner waits for the reel, so the time a
-drive or a piece of work takes on the day is the time it takes to draw.
-
-The frame after `block` is the interesting one: the yellow ran through an outcrop nobody
-had seen, and it comes back a different shape. That is the fog lying, made visible.
+    block    the cell that refused; then the yellow route pulls back
+    probe    a `distance`, blue: priced, never driven
+    work     an `execute`, a step at a time
 """
 
 import settings as S
 
 
 def frames(timeline):
-    """Flatten a nav timeline into (kind, payload, seconds) frames.
-
-    A `plan` of forty cells becomes forty frames each showing one more cell, so the
-    route draws itself rather than appearing. Cheap: this is built once when the reel
-    is loaded, never per frame.
-    """
+    """A nav timeline as (kind, payload, seconds) frames, one cell more of a route each frame."""
     out = []
     for kind, data in timeline:
         if kind == "start":
@@ -42,10 +27,7 @@ def frames(timeline):
             cell, n = data
             out += [("work", (cell, i, n), S.ANIM_STEP) for i in range(1, n + 1)]
         elif kind == "block":
-            # The route does not blink out, it **retracts**: the far end withdraws a
-            # cell at a time back to the rover, then the next plan draws outward from
-            # there. Clearing it in one frame was correct and read as a glitch; pulling
-            # it back reads as the planner giving up on ground it had committed to.
+            # The route pulls back a cell at a time to the rover, rather than vanishing.
             out.append(("block", data, S.ANIM_BLOCK))
             out.append(("prune", None, S.ANIM_PRUNE))
     return out
@@ -57,46 +39,41 @@ def destination(timeline):
 
 
 class Reel:
-    """One drive at a time, drawn out of `world.reel`.
-
-    Everything on it is display state and none of it is ever read back into the world.
-    If this class stopped existing the game would still be correct, just instant.
-    """
+    """One drive at a time from `world.reel`. Display only: nothing here changes the world."""
 
     def __init__(self, world):
         self.world = world
         self.frames = []
         self.i = 0
         self.wait = 0.0
-        self.destination = None   # for MAP_LABELS; kept after the drive, to say REACHED
+        self.destination = None  # for MAP_LABELS; kept after the drive, to say REACHED
         self._clear()
 
     def _clear(self):
         self.frames, self.i, self.wait = [], 0, 0.0
-        self.at = None        # where the rover is drawn, or None to use world.pos
-        self.plan = []        # the route being believed in, yellow
-        self.probe = []       # the route being priced, blue
-        self.trail = []       # cells driven so far this reel
-        self.bump = None      # the cell that refused, flashed
-        self.work = None      # (cell, steps done, steps in all) while work is drawn
-        self.hidden = set()   # revealed already, held shut until the drive reaches it
+        self.at = None  # where the rover is drawn, or None to use world.pos
+        self.plan = []  # the route being believed in, yellow
+        self.probe = []  # the route being priced, blue
+        self.trail = []  # cells driven so far this reel
+        self.bump = None  # the cell that refused, flashed
+        self.work = None  # (cell, steps done, steps in all) while work is drawn
+        self.hidden = set()  # revealed already, but kept fogged until the drive reaches it
 
     @property
     def busy(self):
         return self.i < len(self.frames) or bool(self.world.reel)
 
     def tick(self, dt):
-        """Advance by `dt` seconds. Call once a frame; it is the only thing driving it."""
+        """Advance by `dt` seconds. Called once a frame."""
         if self.i >= len(self.frames):
             if not self.world.reel:
                 if self.frames:
-                    self._clear()     # the last one just finished
+                    self._clear()  # the last one just finished
                 return
             self._load(self.world.reel.pop(0))
 
         self.wait -= dt * S.ANIM_SPEED
-        # A long dt -- a stall, or a slow model turn holding the loop -- catches up
-        # rather than playing in slow motion afterwards.
+        # A long frame catches up rather than playing in slow motion afterwards.
         while self.wait <= 0 and self.i < len(self.frames):
             kind, data, secs = self.frames[self.i]
             self._apply(kind, data)
@@ -104,11 +81,7 @@ class Reel:
             self.wait += max(secs, 1e-4)
 
     def skip(self):
-        """Drop everything queued and show the world as it already is.
-
-        Nothing is lost: the drive happened the moment the skill was called, and this
-        only stops drawing the journey to it.
-        """
+        """Drop everything queued and show the world as it already is."""
         for timeline in self.world.reel:
             self.destination = destination(timeline)
         self.world.reel.clear()
@@ -118,8 +91,7 @@ class Reel:
         self._clear()
         self.frames = frames(timeline)
         self.destination = destination(timeline)
-        # Everything this call revealed starts hidden and is handed back as the reel
-        # reaches it. Without it the fog is already gone before the rover sets off.
+        # What this drive revealed stays fogged until the drawn rover reaches it.
         self.hidden = {c for kind, d in timeline if kind == "step" for c in d[1]}
 
     def _apply(self, kind, data):
@@ -139,14 +111,11 @@ class Reel:
         elif kind == "work":
             self.work = data
         elif kind == "prune":
-            # One cell off the far end per frame, re-queueing itself until the route
-            # ends where the rover is actually standing. What is left is ground it
-            # reached; what withdrew is the part of the guess that was wrong.
+            # One cell off the far end each frame, until the route ends where the rover is.
             if len(self.plan) > 1 and self.plan[-1] != self.at:
                 self.plan = self.plan[:-1]
                 self.frames.insert(self.i + 1, ("prune", None, S.ANIM_PRUNE))
 
-    # --- what the renderer asks -----------------------------------------
     @property
     def destination_status(self):
         if self.destination == self.where(self.world.pos):
@@ -158,7 +127,7 @@ class Reel:
         return "STOPPED"
 
     def veiled(self, cell):
-        """Is this cell fog *for drawing purposes*, even though the world has seen it?"""
+        """Fogged on screen, though the world has already seen it?"""
         return cell in self.hidden
 
     def where(self, fallback):

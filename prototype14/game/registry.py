@@ -1,15 +1,6 @@
-"""Every setting a person may change while the app runs, and when each change lands.
-
-    now        on the next frame
-    sol        at the next nightfall -- the planner and the day are fixed within a sol
-    relaunch   saved now, read at the next start
-
-Defaults are whatever `settings.py` and `config.py` say. A person's own choices live in
-`user_settings.json`, which git ignores, and only the values that differ from the
-default are written there -- so a pull that changes a default still reaches them.
-
-No pygame in here.
-"""
+"""The settings a person can change while the app runs (the O screen), and when each
+change lands: "now", at the next "sol", or on "relaunch". Only values that differ from the
+defaults in settings.py and config.py are saved, in user_settings.json."""
 
 import json
 import pathlib
@@ -24,8 +15,8 @@ TIER_NAMES = {"now": "applies now", "sol": "applies at the next sol",
 
 
 class Setting:
-    """One tunable. `replayed` says whether a replay takes the kept run's value: the
-    ones that change what the world does. Pace and window size stay the viewer's."""
+    """One setting. `replayed` says whether a replay takes the kept run's value: true for
+    the ones that change the world, false for pace and window size."""
 
     def __init__(self, name, kind, tier, desc, lo=None, hi=None, step=1, choices=None,
                  mod=S, replayed=True):
@@ -39,7 +30,7 @@ class Setting:
         return getattr(self.mod, self.name)
 
     def coerce(self, v):
-        """`v` as this setting's type, or ValueError saying why not. Takes typed text."""
+        """`v` as this setting's type, or ValueError saying why not. Takes typed text too."""
         if isinstance(v, str) and self.kind != "str" and v not in (self.choices or ()):
             v = _parse(v)
         if self.kind == "bool":
@@ -48,7 +39,7 @@ class Setting:
             return v
         if self.kind == "choice":
             for c in self.choices:
-                # 0 matches 0.0, but True must not match 1 and None matches only None.
+                # 0 matches 0.0, but True must not match 1, and None matches only None.
                 if c == v and isinstance(c, bool) == isinstance(v, bool):
                     return c
             raise ValueError("one of " + ", ".join(show(c) for c in self.choices))
@@ -102,7 +93,7 @@ def _parse(text):
 
 
 def show(v):
-    """A value as the settings screen and the error messages say it."""
+    """A value as the settings screen and the error messages show it."""
     if v is None:
         return "model's own"
     if isinstance(v, bool):
@@ -111,7 +102,7 @@ def show(v):
 
 
 SETTINGS = [
-    # --- now ---------------------------------------------------------------
+    # Now
     Setting("ANIM_SPEED", "float", "now", "how fast drives are drawn; 1 is the design "
             "pace, 0.5 the recording's. The day's clock runs while they are",
             0.25, 4.0, 0.25, replayed=False),
@@ -123,7 +114,7 @@ SETTINGS = [
             "tape keeps it either way", replayed=False),
     Setting("TIME_SCALE", "float", "now", "how fast the day's clock runs",
             0.25, 8.0, 0.25, replayed=False),
-    # The viewer's own on a replay: nobody on a tape can be talked to.
+    # On a replay these stay the viewer's.
     Setting("COMMS", "bool", "now", "someone is at the desk: each phase waits for "
             "them, and they can talk at dawn and night. Off, every phase moves on by "
             "itself. C in the app switches it for this run only", replayed=False),
@@ -134,7 +125,7 @@ SETTINGS = [
             "where a drive is headed and whether it got there", replayed=False),
     Setting("ROVER_PAUSE", "choice", "now", "key: press SPACE when the rover has driven "
             "each leg. none: do not wait", choices=("key", "none"), replayed=False),
-    # --- the next sol ------------------------------------------------------
+    # At the next sol
     Setting("MODEL", "str", "sol", "the planner: any model Ollama has, cloud ones "
             "through this machine's Ollama sign-in", replayed=False),
     Setting("MODEL_FALLBACK", "str", "now", "answers when the planner's model cannot, "
@@ -176,17 +167,15 @@ SETTINGS = [
             50, 1000, 25),
     Setting("ORDERS_CHARS", "int", "sol", "characters in one order on the board",
             50, 1000, 25),
-    # --- after a restart ---------------------------------------------------
+    # After a restart
     Setting("APP_ARENA", "choice", "relaunch", "the arena: 30x30 or 50x50",
             choices=tuple(C.ARENAS), mod=C),
-    # The tile and the pane are not settings: they come off the window's size.
     Setting("HUD_H", "int", "relaunch", "height of the strip under the arena",
             96, 250, 2, mod=C, replayed=False),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
 
-# The 29 Sept recording is what 10b to 10d ship with. The design set is what the 40/15/60
-# work costs were balanced for. Which should be the default is undecided.
+# The recording's values are today's defaults; the design set is what the work costs were balanced for.
 PRESETS = {
     "29 Sept recording": {"BATTERY": 500, "DAY_SECONDS": 600, "MOVE_HOPS": 20,
                           "FREE_HOPS": 10, "ANIM_SPEED": 0.5},
@@ -196,16 +185,13 @@ PRESETS = {
 
 
 def snapshot():
-    """Every setting's value in force, for the run log."""
+    """Every setting's value now, for the run log."""
     return {s.name: s.value for s in SETTINGS}
 
 
 def apply(values, only=None):
-    """Put `values` in force on the modules, skipping unknown names and bad values.
-
-    Returns the names that were refused. `only` filters by Setting, which is how replay
-    takes just the settings that change the world.
-    """
+    """Put `values` in force, skipping unknown names. Returns the names whose values were
+    refused. `only` picks which settings to take (replay takes the world's)."""
     bad = []
     for name, v in values.items():
         s = BY_NAME.get(name)
@@ -240,11 +226,11 @@ class Prefs:
                     self.warnings.append(f"{path.name}: {name}={v!r} ignored")
 
     def apply_all(self):
-        """At start-up every tier is in force: nothing has been read yet."""
+        """At start-up every tier applies at once."""
         apply(self.user)
 
     def shown(self, s):
-        """What the screen shows as this setting's value: the change if one is waiting."""
+        """What the screen shows: the waiting change if there is one."""
         if s.name in self.pending:
             return self.pending[s.name]
         if s.tier == "relaunch":
@@ -252,7 +238,7 @@ class Prefs:
         return s.value
 
     def set(self, name, v):
-        """Validate, save, and apply as the tier allows. Raises ValueError."""
+        """Check, save, and apply as the tier allows. Raises ValueError."""
         s = BY_NAME[name]
         v = s.coerce(v)
         if v == s.default and type(v) is type(s.default):
@@ -275,7 +261,7 @@ class Prefs:
             self.set(name, v)
 
     def nightfall(self):
-        """Put the waiting changes in force. Returns them, for the log and the pane."""
+        """Put the waiting changes in force. Returns them."""
         done, self.pending = self.pending, {}
         apply(done)
         return done

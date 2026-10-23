@@ -1,20 +1,5 @@
-"""Every system prompt, and the one in use.
-
-Prompts live here rather than in `chat.py` so that a prompt can be swapped without
-touching the conversation loop, and so that two of them can be compared on one arena
-by changing a flag. `main.py --prompt NAME` picks; `chat.Conversation` reads whatever
-`SYSTEM` holds at the moment it is built, and `main.py` writes the hash of that exact
-string onto the tape.
-
-**There is one prompt.** It descends from prototype 7's `terse`, because prototype 7 is
-the last arena whose physics match this one: the rover maps what it drives past. The
-blind prompt prototype 9 left here described a machine with no cameras and a flyer for
-an eye, and neither is true now -- it was still the default after sight came back.
-
-Nothing in a prompt may state a number the game owns. The arena size is substituted in
-from `config` and `settings`; a literal `50 x 50` here is a claim that goes silently
-wrong the moment a flag changes it, which has already cost two runs.
-"""
+"""The system prompt. It is built from config and settings, so no number in it can
+disagree with the game; main.py logs a hash of it every sol."""
 
 import config as C
 import settings as S
@@ -26,7 +11,7 @@ def _operator_line():
 
 
 def _sol_para():
-    """The four phases, and what `end` does. `autopilot.py`."""
+    """The four phases, and what `end` does (autopilot.py)."""
     return f"""\
 **A sol has four parts: dawn, day, dusk and night.** At dawn the day has not begun: no
 time passes and the rover does not move. Read your memory, the board and the work, and
@@ -44,7 +29,7 @@ driving, work and `end` only by day."""
 
 
 def _comms_para():
-    """Who can reach whom, which `COMMS` decides: someone at the desk, or nobody."""
+    """Who can reach whom: someone at the desk, or nobody."""
     if S.COMMS:
         return f"""\
 **Mission control is at the desk.** At dawn and at night you talk with them freely. By
@@ -96,14 +81,6 @@ the pad is."""
 
 
 def sighted():
-    """The only prompt here, and the only one that can be true of this arena.
-
-    Prototype 7's `terse`, carried forward: the sight paragraph is its, because the
-    rover maps what it drives past again. What is added over it is the two places to
-    write, which came in with prototype 9 and are the one thing from that line worth
-    keeping. `terse_sweep`'s sweep arithmetic is still out -- it was measured on the
-    50x50 and this arena is a 30.
-    """
     return f"""\
 You are the first language model deployed to the surface of Mars. You are the planner:
 the rover's control policy has the wheels, you have the judgement.
@@ -215,12 +192,11 @@ you have already decided, since `goto` reports its own cost when it finishes.
 """
 
 
-SYSTEM = None       # set by `use()`, below, at import and again from `main.read_flags`
+SYSTEM = None  # set by use(), at import and again from main.read_flags
 
 
 def use():
-    """Build the prompt and make it the live one. Rebuilt, not cached, because it is
-    written from the arena and the settings, which can change after import."""
+    """Build the prompt and make it the live one. Rebuilt because the settings can change."""
     global SYSTEM
     SYSTEM = sighted()
     return SYSTEM
