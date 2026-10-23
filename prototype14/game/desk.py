@@ -116,14 +116,14 @@ def place(world, text):
     words = text.split()
     if len(words) >= 3 and words[2].lower() == "interest":
         return place_interest(world, words)
-    numbers = [w for w in words if is_whole_number(w)]
+    numbers = [word for word in words if is_whole_number(word)]
     if len(numbers) < 2:
         return "place needs a cell -- try  place 21 8 high 40", None
     cell = (int(numbers[0]), int(numbers[1]))
     priority = "medium"
-    for w in words:
-        if w.lower() in ("high", "medium", "low"):
-            priority = w
+    for word in words:
+        if word.lower() in ("high", "medium", "low"):
+            priority = word
             break
     cost = 30
     if len(numbers) > 2:
