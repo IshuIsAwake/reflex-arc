@@ -3,8 +3,8 @@
     python level3.py --rover 10.7.12.41
     python level3.py --rover 127.0.0.1 --arena 50 --sols 3      anything after --rover goes to 10d
 
-The simulation is prototype16's own copy of 10d, in `prototype16/game/` (see
-`prototype16/COPIED_FROM.md`), and its files are not changed. This imports it and wraps, in
+The simulation is prototype12's own copy of 10d, in `prototype12/game/` (see
+`prototype12/COPIED_FROM.md`), and its files are not changed. This imports it and wraps, in
 memory, `nav.publish` -- where 10d hands a driven leg to the robot as N/E/S/W lines --
 and `pygame.event.get`, for the SPACE guard below. When a leg comes
 through, it goes to the rover over the link, and 10d is held at its rover pause
@@ -32,7 +32,7 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype16/game, the copy
+GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype12/game, the copy
 sys.path.insert(0, HERE)
 
 from link import LinkError, RoverLink, RoverStopped  # noqa: E402

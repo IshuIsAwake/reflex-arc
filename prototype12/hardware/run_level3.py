@@ -1,4 +1,4 @@
-"""Level 3: the simulation in prototype16/game plans the mission and the rover drives every
+"""Level 3: the simulation in prototype12/game plans the mission and the rover drives every
 leg. No LiDAR. Double-click to run.
 
 Needs Ollama running on this laptop, and the rover server running on the Pi. Options for

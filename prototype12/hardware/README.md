@@ -1,4 +1,4 @@
-# hardware/ — the rover side of prototype 16
+# hardware/ — the rover side of prototype 12
 
 ```
 hardware/
@@ -88,7 +88,7 @@ One simulation cell is `CELL_M` metres; the landing cell is the home spot; north
 the way the rover faces there. Timings are measured, not typed: `calibrate.py forward` and
 `calibrate.py turn`, again after any change of `CELL_M`, tyres or battery. The simulation's own
 values -- arena, sols, model -- are its options (`python run_level3.py --sols 2 --arena 30`) or
-its settings screen (O), saved in `prototype16/user_settings.json`.
+its settings screen (O), saved in `prototype12/user_settings.json`.
 
 ## On the Pi, setting up (server stopped: `pkill -f server.py`)
 
@@ -157,4 +157,4 @@ for that run only*; the files in `game/` stay as copied:
   set, then `world._arrive()` -- what the simulation's own `World.move` does, without `spend()`;
 - `nav.goto` is wrapped so its result names that cell and says, in one sentence, why.
 
-Run the simulation directly (`python game/main.py` from `prototype16/`) and none of this applies.
+Run the simulation directly (`python game/main.py` from `prototype12/`) and none of this applies.

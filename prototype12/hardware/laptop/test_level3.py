@@ -12,7 +12,7 @@ import sys
 import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype16/game, the copy
+GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype12/game, the copy
 sys.path.insert(0, GAME)
 sys.path.insert(0, HERE)
 

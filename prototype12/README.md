@@ -1,10 +1,10 @@
-# Prototype 16
+# Prototype 12
 
 Koushik's prototype: the rover's hardware, and its link to the simulation. Scope and levels are in
 [`DESIGN.md`](DESIGN.md).
 
 ```
-prototype16/
+prototype12/
   game/        the simulation: prototype 10d's game/, copied untouched (COPIED_FROM.md)
   hardware/    everything added for the rover -- how to run it is in hardware/README.md
 ```

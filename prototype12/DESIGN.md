@@ -1,4 +1,4 @@
-# Prototype 16 — the rover takes commands, and checks every one
+# Prototype 12 — the rover takes commands, and checks every one
 
 Koushik's integration lab. The rover drives a list of grid commands and, after each one, compares
 where it should be with where it is. Nothing in `prototype10*/` or `PI_5` is changed; this folder
@@ -150,4 +150,3 @@ recalibrating.
   its `DONE`/`SHORT`/`FAILED` map onto `DONE`/`OFF`/`LOST`. Not agreed by the team.
 - The start heading. Krish's `start-heading.md` covers it for the LiDAR; at Level 1 the rover is
   placed facing north by hand.
-- Whether this becomes the README's prototype 12 (hardware integration, the team with Koushik).
