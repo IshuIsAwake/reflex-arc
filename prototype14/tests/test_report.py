@@ -4,7 +4,7 @@
 
 
 import report
-import settings as S
+import settings
 import skills
 from world import World
 

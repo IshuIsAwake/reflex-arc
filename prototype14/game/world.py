@@ -6,10 +6,10 @@ the arena's own, hidden until the rover sees them; examining one says what it is
 
 import random
 
-import config as C
+import config
 import hazards
 import notes
-import settings as S
+import settings
 
 # Each objective's marker, freed when the work is done.
 GLYPHS = "123456789"
@@ -135,10 +135,10 @@ class Survey:
         return out
 
 
-def label_for(w, ch):
+def label_for(world, ch):
     """What to call a tile, on screen and in the view. An objective is named by its priority."""
     if ch in GLYPHS:
-        o = next((o for o in w.here.objectives.values() if o.glyph == ch), None)
+        o = next((o for o in world.here.objectives.values() if o.glyph == ch), None)
         return f"{o.priority}-priority objective" if o else None
     return LABELS.get(ch)
 
@@ -189,7 +189,7 @@ class Area:
     def reachable(self, start=None):
         """Every cell the rover could drive to from `start` on the true grid, ignoring the storm.
         Used to refuse work the rover could never reach."""
-        start = start or C.SPAWN
+        start = start or config.SPAWN
         seen, edge = {start}, [start]
         while edge:
             x, y = edge.pop()
@@ -204,7 +204,7 @@ class Area:
 
     def disc(self, px, py, r=None):
         """Every in-bounds cell the rover would see standing at (px, py)."""
-        r = S.VISION_RADIUS if r is None else r
+        r = settings.VISION_RADIUS if r is None else r
         return {(x, y)
                 for y in range(max(0, py - r), min(self.h, py + r + 1))
                 for x in range(max(0, px - r), min(self.w, px + r + 1))
@@ -232,14 +232,14 @@ class World:
 
     def __init__(self, recorder=None, carried=None):
         """`carried` is a carry() from an earlier run: the world wakes on the sol after it."""
-        self.here = Area(C.ARENA_NAME, C.ARENA, C.INTERESTS)
-        self.pos = C.SPAWN
+        self.here = Area(config.ARENA_NAME, config.ARENA, config.INTERESTS)
+        self.pos = config.SPAWN
         self.day = 1
         # dawn, day, dusk or night. autopilot moves it on
         self.phase = "dawn"
         self.day_over = False
-        self.time_left = float(S.DAY_SECONDS)  # the day's wall clock, run by autopilot
-        self.battery = S.BATTERY  # in steps. Only the pad recharges it
+        self.time_left = float(settings.DAY_SECONDS)  # the day's wall clock, run by autopilot
+        self.battery = settings.BATTERY  # in steps. Only the pad recharges it
         self.steps = 0  # taken today, for the record
         self.elapsed = 0.0  # stopwatch
         self.history = []  # one record per finished day
@@ -271,7 +271,7 @@ class World:
             return
         self._weather()
         # The landing site is visible on arrival.
-        self.here.reveal(*self.pos, r=S.BASE_REVEAL)
+        self.here.reveal(*self.pos, r=settings.BASE_REVEAL)
         self._arrive()
         self.record("day_open", at=self.pos, battery=self.battery, clock=self.time_left)
 
@@ -282,8 +282,8 @@ class World:
     @property
     def pad(self):
         """Every pad cell."""
-        a = self.here
-        return {(x, y) for y in range(a.h) for x in range(a.w) if a.at(x, y) == "H"}
+        area = self.here
+        return {(x, y) for y in range(area.h) for x in range(area.w) if area.at(x, y) == "H"}
 
     @property
     def docked(self):
@@ -294,9 +294,9 @@ class World:
     @property
     def base(self):
         """Where the pad is, read off the map."""
-        a = self.here
-        cells = [(x, y) for y in range(a.h) for x in range(a.w) if a.at(x, y) == "H"]
-        return min(cells) if cells else C.SPAWN
+        area = self.here
+        cells = [(x, y) for y in range(area.h) for x in range(area.w) if area.at(x, y) == "H"]
+        return min(cells) if cells else config.SPAWN
 
     def record(self, kind, **fields):
         """One line of the game log, if anything is listening."""
@@ -318,10 +318,10 @@ class World:
 
     def play(self, timeline):
         """Hand a finished drive to the screen, if anything is drawing. Capped, since a headless run draws nothing."""
-        if not S.ANIMATE or not timeline:
+        if not settings.ANIMATE or not timeline:
             return
         self.reel.append(timeline)
-        del self.reel[:-S.REEL_MAX]
+        del self.reel[:-settings.REEL_MAX]
 
     def say(self, msg, tone="plain"):
         self.log.append((msg, tone))
@@ -330,13 +330,13 @@ class World:
 
     def tick(self, dt):
         """The stopwatch, every frame. The day's clock is run_clock's."""
-        self.elapsed += dt * S.TIME_SCALE
+        self.elapsed += dt * settings.TIME_SCALE
 
     def run_clock(self, dt):
         """The day's wall clock, run down by autopilot while the day is on. Rounded so the tape and the world agree."""
         if dt <= 0 or self.day_over:
             return
-        self.time_left = max(0.0, round(self.time_left - dt * S.TIME_SCALE, 3))
+        self.time_left = max(0.0, round(self.time_left - dt * settings.TIME_SCALE, 3))
         if self.time_left <= 0:
             self.day_over = True
 
@@ -388,7 +388,7 @@ class World:
         """Everything the night resets. Shared with a resumed expedition, so the two wake the same."""
         self.phase = "dawn"
         self.day_over = False
-        self.time_left = float(S.DAY_SECONDS)
+        self.time_left = float(settings.DAY_SECONDS)
         self.steps = 0
         self.elapsed = 0.0
         self.log.clear()
@@ -396,8 +396,8 @@ class World:
         self.last_walk = ("", [])
         self.reel.clear()  # nobody wants to watch yesterday's drive
         if not self.stranded:
-            self.pos = C.SPAWN  # woken at the pad
-            self.battery = S.BATTERY
+            self.pos = config.SPAWN  # woken at the pad
+            self.battery = settings.BATTERY
         self._weather()  # yesterday's storm has blown out; today gets its own
         self._arrive()
         self.record("day_open", at=self.pos, battery=self.battery,
@@ -411,14 +411,14 @@ class World:
     def carry(self):
         """What the night keeps, as JSON, so a new session can wake on the next sol. Quitting
         mid-sol counts the sol as played."""
-        a, sv = self.here, self.survey
+        area, sv = self.here, self.survey
         cells = lambda cs: sorted([x, y] for x, y in cs)
-        return {"version": 2, "arena": str(a.w), "day": self.day,
-                "seen": cells(a.seen), "visited": cells(a.visited), "marks": cells(a.marks),
+        return {"version": 2, "arena": str(area.w), "day": self.day,
+                "seen": cells(area.seen), "visited": cells(area.visited), "marks": cells(area.marks),
                 "objectives": [[*o.cell, o.glyph, o.priority, o.cost, o.auto]
-                               for o in a.objectives.values()],
+                               for o in area.objectives.values()],
                 "interests": [[*i.cell, i.text, i.cost, i.found]
-                              for i in a.interests.values()],
+                              for i in area.interests.values()],
                 "reports": self.reports,
                 "survey": {"owner": sorted([x, y, f] for (x, y), f in sv.owner.items()),
                            "size": sorted([f, n] for f, n in sv.size.items()),
@@ -433,17 +433,17 @@ class World:
 
     def _restore(self, c):
         """The inverse of carry(): the world at the night after `c["day"]`."""
-        a, sv = self.here, self.survey
+        area, sv = self.here, self.survey
         if c.get("version") != 2:
             raise ValueError("saved by an earlier prototype, whose work was all objectives")
-        if c.get("arena") != str(a.w):
-            raise ValueError(f"saved on the {c.get('arena')}, and the {a.w} is loaded")
-        a.seen = {tuple(p) for p in c["seen"]}
-        a.visited = {tuple(p) for p in c["visited"]}
-        a.marks = {tuple(p) for p in c["marks"]}
-        a.objectives = {(x, y): Objective((x, y), g, pr, cost, auto)
+        if c.get("arena") != str(area.w):
+            raise ValueError(f"saved on the {c.get('arena')}, and the {area.w} is loaded")
+        area.seen = {tuple(p) for p in c["seen"]}
+        area.visited = {tuple(p) for p in c["visited"]}
+        area.marks = {tuple(p) for p in c["marks"]}
+        area.objectives = {(x, y): Objective((x, y), g, pr, cost, auto)
                         for x, y, g, pr, cost, auto in c["objectives"]}
-        a.interests = {(x, y): Interest((x, y), text, cost, found)
+        area.interests = {(x, y): Interest((x, y), text, cost, found)
                        for x, y, text, cost, found in c["interests"]}
         self.reports = list(c["reports"])
         sv.owner = {(x, y): f for x, y, f in c["survey"]["owner"]}
@@ -481,22 +481,22 @@ class World:
     def _placeable(self, cell, what):
         """Why `cell` can't take a piece of work, or None. Work is done from a neighbour, so at
         least one of its four neighbours must be reachable on the true grid."""
-        a = self.here
+        area = self.here
         x, y = cell
-        if not (0 <= x < a.w and 0 <= y < a.h):
-            return f"({x},{y}) is off the {a.name}, which is {a.w} by {a.h}."
-        if cell in a.objectives or cell in a.interests:
+        if not (0 <= x < area.w and 0 <= y < area.h):
+            return f"({x},{y}) is off the {area.name}, which is {area.w} by {area.h}."
+        if cell in area.objectives or cell in area.interests:
             return f"({x},{y}) already carries work."
-        if a.at(x, y) == "H":
+        if area.at(x, y) == "H":
             return f"({x},{y}) is the base pad."
-        if a.at(x, y) == "#":
+        if area.at(x, y) == "#":
             return (f"({x},{y}) is rock. {what} sits on drivable ground -- the rover "
                     f"stops beside it, not on it.")
         if cell == self.pos:
             return f"({x},{y}) is where the rover is standing."
-        if cell in a.storm_cells:
+        if cell in area.storm_cells:
             return f"({x},{y}) is under today's dust storm."
-        reach = a.reachable()
+        reach = area.reachable()
         if not any(c in reach for c in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y))):
             return (f"({x},{y}) has no approach the rover can reach -- every cell beside "
                     f"it is rock, off the arena, or walled off.")
@@ -533,13 +533,13 @@ class World:
         """The auto mode's dawn: three objectives, one of each priority, from sol 2, and a new set
         only once the last is done. On mapped open ground, away from the pad, the rover and other
         work. Seeded by arena and sol. Returns what it placed."""
-        if S.OBJECTIVES != "auto" or self.day < 2 or any(o.auto for o in self.objectives):
+        if settings.OBJECTIVES != "auto" or self.day < 2 or any(o.auto for o in self.objectives):
             return []
-        a = self.here
-        rng = random.Random(f"{a.name}:{a.w}x{a.h}:objectives:sol{self.day}")
+        area = self.here
+        rng = random.Random(f"{area.name}:{area.w}x{area.h}:objectives:sol{self.day}")
         near = lambda c, d, r: abs(c[0] - d[0]) <= r and abs(c[1] - d[1]) <= r
-        taken = set(a.objectives) | set(a.interests)
-        cells = [c for c in sorted(a.seen) if a.at(*c) == "."
+        taken = set(area.objectives) | set(area.interests)
+        cells = [c for c in sorted(area.seen) if area.at(*c) == "."
                  and not any(near(c, p, 2) for p in self.pad) and not near(c, self.pos, 2)
                  and not any(near(c, t, 1) for t in taken)]
         rng.shuffle(cells)
@@ -549,8 +549,8 @@ class World:
                 if any(near(c, o.cell, 1) for o in placed):
                     continue
                 o, _ = self.place_objective(c, priority,
-                                            rng.randrange(S.OBJECTIVE_COST[0],
-                                                          S.OBJECTIVE_COST[1] + 1, 5),
+                                            rng.randrange(settings.OBJECTIVE_COST[0],
+                                                          settings.OBJECTIVE_COST[1] + 1, 5),
                                             auto=True)
                 if o:
                     placed.append(o)
@@ -578,8 +578,8 @@ class World:
         if spent < o.cost:
             return spent  # ran out of battery; the work isn't finished
         o.done = True
-        a = self.here
-        del (a.objectives if o.kind == "objective" else a.interests)[o.cell]
+        area = self.here
+        del (area.objectives if o.kind == "objective" else area.interests)[o.cell]
         what = ({"priority": o.priority} if o.kind == "objective" else {"text": o.text})
         self.finished.append({"sol": self.day, "at": list(o.cell), "kind": o.kind,
                               "cost": o.cost, **what})
@@ -596,11 +596,11 @@ class World:
         self.spend()  # only a move that happened costs anything
 
     def toggle_mark(self, cell=None):
-        a = self.here
+        area = self.here
         cell = cell or self.pos
-        if cell in a.marks:
-            a.marks.discard(cell)
+        if cell in area.marks:
+            area.marks.discard(cell)
             self.say(f"Mark cleared at {cell}.")
         else:
-            a.marks.add(cell)
+            area.marks.add(cell)
             self.say(f"Marked {cell} with an X.")

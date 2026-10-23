@@ -4,10 +4,11 @@
 No display is opened, so this runs anywhere `render` imports.
 """
 
-import config as C
+import config
 import pygame
+import dashboard
 import render
-import settings as S
+import settings
 
 
 def test_the_whole_arena_fits_in_any_window():
@@ -15,20 +16,20 @@ def test_the_whole_arena_fits_in_any_window():
     that size less its border. When it did not fit, the HUD went under the taskbar and a
     running game looked like one that never started. 960x640 is the smallest a resize
     allows."""
-    tile, chat, size = C.TILE, S.CHAT_W, render.DISPLAY_SIZE
-    C.use("50")
+    tile, chat, size = config.TILE, settings.CHAT_W, render.DISPLAY_SIZE
+    config.use("50")
     try:
-        for width, height in ((1536 - S.SCREEN_RESERVE_W, 864 - S.SCREEN_RESERVE_H),
+        for width, height in ((1536 - settings.SCREEN_RESERVE_W, 864 - settings.SCREEN_RESERVE_H),
                               (960, 640), (3780, 2050)):
             game, pane = render.layout(width, height)
             assert game.w + pane.w == width and game.h == height, (width, height)
-            assert C.VIEW_W * C.TILE + render.MARGIN * 2 <= game.w, (width, C.TILE)
-            assert (C.VIEW_H * C.TILE + C.HUD_H + render.D.HEADER + render.MARGIN * 2
-                    <= height), (height, C.TILE)
+            assert config.VIEW_W * config.TILE + render.MARGIN * 2 <= game.w, (width, config.TILE)
+            assert (config.VIEW_H * config.TILE + config.HUD_H + dashboard.HEADER + render.MARGIN * 2
+                    <= height), (height, config.TILE)
             assert pane.w >= 460, "the pane wraps into uselessness below 460"
     finally:
-        C.TILE, S.CHAT_W, render.DISPLAY_SIZE = tile, chat, size
-        C.use(C.DEFAULT_ARENA)
+        config.TILE, settings.CHAT_W, render.DISPLAY_SIZE = tile, chat, size
+        config.use(config.DEFAULT_ARENA)
 
 
 def test_a_marked_cell_draws():
@@ -48,10 +49,10 @@ def test_dashboard_modes_draw_without_changing_the_world():
     import sight
     from world import World
     pygame.font.init()
-    old_tile, old_chat = C.TILE, S.CHAT_W
+    old_tile, old_chat = config.TILE, settings.CHAT_W
     try:
         for tile, pane_width in ((13, 544), (22, 650)):
-            C.TILE, S.CHAT_W = tile, pane_width
+            config.TILE, settings.CHAT_W = tile, pane_width
             w = World()
             conv = chat.Conversation(w)
             conv.lines = [("gemma", "Surveying the terrain. " * 20)] * 12
@@ -61,7 +62,7 @@ def test_dashboard_modes_draw_without_changing_the_world():
             before = pickle.dumps(w)
             f = render.Fonts()
             game = pygame.Surface(render.game_size())
-            pane = pygame.Surface((S.CHAT_W, game.get_height()))
+            pane = pygame.Surface((settings.CHAT_W, game.get_height()))
             render.draw_world(game, w, f, reel)
             for focused, overlay, pad in ((False, None, True), (True, None, False),
                                           (False, sight.view(w), True)):
@@ -72,13 +73,13 @@ def test_dashboard_modes_draw_without_changing_the_world():
             render.draw_console(game, w, f, "help", [("terminal output", "good")])
             assert pickle.dumps(w) == before, "drawing changed simulation state"
     finally:
-        C.TILE, S.CHAT_W = old_tile, old_chat
+        config.TILE, settings.CHAT_W = old_tile, old_chat
 
 
 def test_dashboard_buttons_use_existing_controls():
-    for rect, _, key in render.D.buttons(render.game_size()):
-        assert render.D.click(rect.center, render.game_size(), (544, 634)) == key
-    assert render.D.click((-1, -1), render.game_size(), (544, 634)) is None
+    for rect, _, key in dashboard.buttons(render.game_size()):
+        assert dashboard.click(rect.center, render.game_size(), (544, 634)) == key
+    assert dashboard.click((-1, -1), render.game_size(), (544, 634)) is None
 
 
 def test_the_scratchpad_switch_is_p_and_the_wheel_scrolls_it():
@@ -91,21 +92,21 @@ def test_the_scratchpad_switch_is_p_and_the_wheel_scrolls_it():
         w.notes.add(f"item {i}")
     f = render.Fonts()
     gw = render.game_size()[0]
-    pane = pygame.Surface((S.CHAT_W, render.game_size()[1]))
+    pane = pygame.Surface((settings.CHAT_W, render.game_size()[1]))
     render.draw_chat(pane, chat.Conversation(w), w, f, "", False, 0)
-    centre = render.D.pad_switch.move(gw, 0).center
-    assert render.D.click(centre, render.game_size(), pane.get_size()) == pygame.K_p
+    centre = dashboard.pad_switch.move(gw, 0).center
+    assert dashboard.click(centre, render.game_size(), pane.get_size()) == pygame.K_p
     wheel = pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1)
     real = pygame.mouse.get_pos
-    pygame.mouse.get_pos = lambda: render.D.pad_rect.move(gw, 0).center
+    pygame.mouse.get_pos = lambda: dashboard.pad_rect.move(gw, 0).center
     try:
-        assert render.D.pad_event(wheel, gw), "the wheel over the card should scroll it"
+        assert dashboard.pad_event(wheel, gw), "the wheel over the card should scroll it"
     finally:
         pygame.mouse.get_pos = real
     render.draw_chat(pane, chat.Conversation(w), w, f, "", False, 0)
-    assert render.D.pad_scroll == 1
+    assert dashboard.pad_scroll == 1
     render.draw_chat(pane, chat.Conversation(w), w, f, "", False, 0, memory=True)
-    assert render.D.pad_scroll == 0, "flipping the card starts it at the top"
+    assert dashboard.pad_scroll == 0, "flipping the card starts it at the top"
 
 
 def test_rock_art_and_weather_leave_simulation_rng_untouched():
@@ -151,7 +152,7 @@ def test_an_unseen_rock_changes_nothing_on_screen():
         surf = pygame.Surface(render.game_size())
         render.draw_world(surf, w, f)
         (ox, oy), _ = render.viewport(surf, a, w.pos)
-        r = pygame.Rect(ox + seen[0] * C.TILE, oy + seen[1] * C.TILE, C.TILE, C.TILE)
+        r = pygame.Rect(ox + seen[0] * config.TILE, oy + seen[1] * config.TILE, config.TILE, config.TILE)
         return pygame.image.tostring(surf.subsurface(r), "RGB")
 
     for ch in (".", "#"):          # the seen cell as ground, then as a rock

@@ -4,14 +4,14 @@ here knows whether it worked. Turns are the weak part: identical turn pulses hav
 
 import time
 
-import config as C
+import config
 
 # Left and right power for each move. L turns anticlockwise seen from above.
 POWER = {"F": (1, 1), "B": (-1, -1), "L": (-1, 1), "R": (1, -1)}
 
 
 def seconds(prim):
-    return C.FORWARD_S_PER_CELL if prim in "FB" else C.TURN_S_PER_90
+    return config.FORWARD_S_PER_CELL if prim in "FB" else config.TURN_S_PER_90
 
 
 def do(motors, prim, stop_check=None, n=1):
@@ -19,7 +19,7 @@ def do(motors, prim, stop_check=None, n=1):
     stop instead of three. `stop_check()` returning True cuts it short. Returns the seconds the
     motors were on."""
     left, right = POWER[prim]
-    p = C.DRIVE_POWER if prim in "FB" else C.TURN_POWER
+    p = config.DRIVE_POWER if prim in "FB" else config.TURN_POWER
     want = seconds(prim) * n
     t0 = time.monotonic()
     try:
@@ -32,5 +32,5 @@ def do(motors, prim, stop_check=None, n=1):
     finally:
         motors.stop()
     ran = time.monotonic() - t0
-    time.sleep(C.SETTLE_S)
+    time.sleep(config.SETTLE_S)
     return ran

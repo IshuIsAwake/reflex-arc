@@ -11,7 +11,7 @@ import json
 import os
 import sys
 
-import config as C
+import config
 
 MEANING = {
     "CELL_M": "metres of floor per simulation cell",
@@ -25,13 +25,13 @@ MEANING = {
     "MAX_DUTY": "PWM duty ceiling (PI_5's, keeps the taped tyres controllable)",
 }
 
-DEFAULTS = C.DEFAULTS
+DEFAULTS = config.DEFAULTS
 
 
 def saved():
-    if not os.path.exists(C.CALIB_FILE):
+    if not os.path.exists(config.CALIB_FILE):
         return {}
-    with open(C.CALIB_FILE, encoding="utf-8") as fh:
+    with open(config.CALIB_FILE, encoding="utf-8") as fh:
         return json.load(fh)
 
 
@@ -48,9 +48,9 @@ def parse(name, text):
 
 def show():
     mine = saved()
-    print(f"values from config.py, overridden by {C.CALIB_FILE}\n")
-    for name in C._CALIBRATED:
-        value = getattr(C, name)
+    print(f"values from config.py, overridden by {config.CALIB_FILE}\n")
+    for name in config._CALIBRATED:
+        value = getattr(config, name)
         where = "calib.json" if name in mine else "default"
         print(f"  {name:<20} {str(value):<10} {where:<11} {MEANING.get(name, '')}")
     print("\nset one: python3 settings.py NAME VALUE    then restart the server")
@@ -68,23 +68,23 @@ def main():
             print(f"{name} is already the default ({DEFAULTS.get(name)})")
             return
         del mine[name]
-        with open(C.CALIB_FILE, "w", encoding="utf-8") as fh:
+        with open(config.CALIB_FILE, "w", encoding="utf-8") as fh:
             json.dump(mine, fh, indent=2)
         print(f"{name} back to the default {DEFAULTS[name]}. Restart the server.")
         return
-    if len(args) != 2 or args[0] not in C._CALIBRATED:
+    if len(args) != 2 or args[0] not in config._CALIBRATED:
         sys.exit(f"usage: settings.py [NAME VALUE | --reset NAME]\nNAME is one of: "
-                 f"{', '.join(C._CALIBRATED)}")
+                 f"{', '.join(config._CALIBRATED)}")
     name, text = args
     try:
         value = parse(name, text)
     except ValueError as e:
         sys.exit(f"not a value for {name}: {text} ({e})")
-    C.save(**{name: value})
+    config.save(**{name: value})
     print(f"{name} = {value}  (saved in calib.json). Restart the server.")
     if name == "CELL_M":
-        print(f"FORWARD_S_PER_CELL is now {C.FORWARD_S_PER_CELL} s, from the measured speed."
-              if C.FORWARD_M_PER_S else
+        print(f"FORWARD_S_PER_CELL is now {config.FORWARD_S_PER_CELL} s, from the measured speed."
+              if config.FORWARD_M_PER_S else
               "No forward speed measured yet: run calibrate.py forward so a cell takes the "
               "right time.")
 

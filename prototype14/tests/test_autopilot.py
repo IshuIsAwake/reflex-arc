@@ -19,7 +19,7 @@ import autopilot
 import chat
 import prompts
 import replay
-import settings as S
+import settings
 import skills
 from world import World
 
@@ -28,7 +28,7 @@ pytestmark = pytest.mark.usefixtures("inline_threads")
 
 @pytest.fixture(autouse=True)
 def nobody_at_the_desk():
-    S.COMMS = False
+    settings.COMMS = False
 
 
 def call(skill, **args):
@@ -77,7 +77,7 @@ def fly(w, model, frames=400, link=None):
         convs[-1].pump()
         if pilot.tick(convs[-1], w, now=float(t)) == "night":
             nights += 1
-            if S.MISSION_SOLS and w.day >= S.MISSION_SOLS:
+            if settings.MISSION_SOLS and w.day >= settings.MISSION_SOLS:
                 break
             w.next_day()
             convs.append(model.talk(chat.Conversation(w, link=link)))
@@ -97,12 +97,12 @@ class Desk:
         self.on, self.sols = on, sols
 
     def __enter__(self):
-        self.keep = S.COMMS, S.MISSION_SOLS
-        S.COMMS, S.MISSION_SOLS = self.on, self.sols
+        self.keep = settings.COMMS, settings.MISSION_SOLS
+        settings.COMMS, settings.MISSION_SOLS = self.on, self.sols
         prompts.use()
 
     def __exit__(self, *exc):
-        S.COMMS, S.MISSION_SOLS = self.keep
+        settings.COMMS, settings.MISSION_SOLS = self.keep
         prompts.use()
 
 
@@ -129,7 +129,7 @@ def until(c, pilot, w, test, start=0, frames=300):
     return None, None
 
 
-WAIT = int(S.COMMS_WAIT)
+WAIT = int(settings.COMMS_WAIT)
 
 
 # --- the phases, with nobody at the desk ---------------------------------------
@@ -138,11 +138,11 @@ def test_a_sol_runs_its_four_phases_by_itself():
     model = Model([READY, ("", [call("count", kind="rock")]), END,
                    ("", [call("remember", name="plan", text="east first on sol 2")]),
                    REPORT])
-    S.MISSION_SOLS = 1
+    settings.MISSION_SOLS = 1
     try:
         convs, rows, nights = fly(w, model)
     finally:
-        S.MISSION_SOLS = 0
+        settings.MISSION_SOLS = 0
     c = convs[0]
     opened = said_by(c, "auto")
     assert len(opened) == 3, "three turns from the clock: dawn, the day, dusk"
@@ -173,25 +173,25 @@ def test_the_mission_stands_whatever_the_board_says():
 def test_dawn_drives_nothing_and_costs_no_time():
     w = World()
     model = Model([("", [call("goto", x=15, y=10)]), READY, END, REPORT])
-    S.MISSION_SOLS = 1
+    settings.MISSION_SOLS = 1
     try:
         convs, rows, _ = fly(w, model)
     finally:
-        S.MISSION_SOLS = 0
+        settings.MISSION_SOLS = 0
     c = convs[0]
     assert not [x for x in c.calls if x.name == "goto"] and w.pos == (15, 15), "a drive at dawn was refused, and nothing moved"
-    assert f"{S.DAY_SECONDS} seconds" in said_by(c, "auto")[1], "the day began with its whole clock"
+    assert f"{settings.DAY_SECONDS} seconds" in said_by(c, "auto")[1], "the day began with its whole clock"
 
 
 def test_the_day_runs_on_the_wall_clock_and_ends_when_it_runs_out():
-    keep = S.DAY_SECONDS
-    S.DAY_SECONDS = 20
+    keep = settings.DAY_SECONDS
+    settings.DAY_SECONDS = 20
     try:
         w = World()
         model = Model([READY] + [("Thinking it over.", [])] * 60 + [REPORT])
         convs, rows, _ = fly(w, model, frames=60)
     finally:
-        S.DAY_SECONDS = keep
+        settings.DAY_SECONDS = keep
     closed = [r for r in rows if r["kind"] == "sol_closed"]
     assert closed and closed[0]["why"] == "the clock ran out", "a planner that never ends is ended by the clock"
     assert w.time_left == 0 or w.day > 1, "which reads nought"
@@ -199,16 +199,16 @@ def test_the_day_runs_on_the_wall_clock_and_ends_when_it_runs_out():
 
 
 def test_a_flat_battery_ends_the_day():
-    keep = S.BATTERY
-    S.BATTERY = 8
+    keep = settings.BATTERY
+    settings.BATTERY = 8
     try:
         w = World()
         model = Model([READY, ("", [call("goto", x=15, y=0)]), ("Out of charge.", []),
                        REPORT])
-        S.MISSION_SOLS = 1
+        settings.MISSION_SOLS = 1
         convs, rows, _ = fly(w, model)
     finally:
-        S.BATTERY, S.MISSION_SOLS = keep, 0
+        settings.BATTERY, settings.MISSION_SOLS = keep, 0
     drive = [x for x in convs[0].calls if x.name == "goto"][0]
     assert drive.result.startswith("BATTERY_FLAT"), "the drive stopped flat"
     assert [r["why"] for r in rows if r["kind"] == "sol_closed"] == ["the battery is flat"], "and the day closed on it"
@@ -216,17 +216,17 @@ def test_a_flat_battery_ends_the_day():
 
 
 def test_a_cap_is_a_new_turn_and_her_end_is_the_day():
-    keep = S.MOVE_HOPS
-    S.MOVE_HOPS = 2
+    keep = settings.MOVE_HOPS
+    settings.MOVE_HOPS = 2
     try:
         w = World()
         model = Model([READY, ("", [call("goto", x=18, y=15)]),
                        ("", [call("goto", x=15, y=18)]),        # the cap ends the turn
                        ("", [call("goto", x=15, y=15)]), END, REPORT])
-        S.MISSION_SOLS = 1
+        settings.MISSION_SOLS = 1
         convs, rows, _ = fly(w, model)
     finally:
-        S.MOVE_HOPS, S.MISSION_SOLS = keep, 0
+        settings.MOVE_HOPS, settings.MISSION_SOLS = keep, 0
     c = convs[0]
     opened = said_by(c, "auto")
     assert [x.name for x in c.calls].count("goto") == 3, "three drives ran"
@@ -242,11 +242,11 @@ def test_three_sols_with_no_key_pressed():
     for n in (1, 2, 3):
         replies += [READY, ("", [call("count", kind="rock")]), END,
                     ("", [call("remember", name="note", text=f"sol {n}")]), REPORT]
-    S.MISSION_SOLS = 3
+    settings.MISSION_SOLS = 3
     try:
         convs, rows, nights = fly(w, Model(replies))
     finally:
-        S.MISSION_SOLS = 0
+        settings.MISSION_SOLS = 0
     assert nights == 3 and len(convs) == 3, "three sols, three nights"
     assert all(said_by(c, "auto")[0].startswith("Dawn of sol") for c in convs), "every sol opened at dawn"
     assert w.notes.memory == {"note": "sol 3"}, "and her memory carried"
@@ -384,11 +384,11 @@ def test_a_radio_call_opens_a_line_the_clock_runs_through():
         opened, _ = until(c, pilot, w, lambda got: pilot.wait == "radio", start=1)
         assert (opened is not None
                    and any(r["kind"] == "radio" for r in rows) and c.on_line), "her radio opens the line, from anywhere"
-        assert w.battery == S.BATTERY - S.RADIO_STEPS, "and cost its battery"
+        assert w.battery == settings.BATTERY - settings.RADIO_STEPS, "and cost its battery"
         model.replies = [("Understood, I will skip it.", [])]
         assert pilot.say(c, w, "no, leave the C") is None, "the desk answers on it"
         until(c, pilot, w, lambda got: not c.busy, start=opened + 1, frames=3)
-        assert w.battery == S.BATTERY - 2 * S.RADIO_STEPS, "her reply went over the radio, at the same cost"
+        assert w.battery == settings.BATTERY - 2 * settings.RADIO_STEPS, "her reply went over the radio, at the same cost"
         before = w.time_left
         t, _ = until(c, pilot, w, lambda got: pilot.wait is None, start=opened + 2)
         assert t is not None and t - opened >= WAIT, "nobody says more: after COMMS_WAIT it closes"
@@ -455,7 +455,7 @@ def test_the_prompt_says_how_a_sol_goes_and_who_can_be_reached():
     assert all("dawn, day, dusk and night" in p for p in (on, off)), "both say a sol is dawn, day, dusk and night"
     assert (all("`end` closes the day" in p
                                                    for p in (on, off))), "both say end closes the day"
-    assert "radio" in on and f"{S.RADIO_STEPS} steps of battery" in on, "with someone there, the radio and its cost"
+    assert "radio" in on and f"{settings.RADIO_STEPS} steps of battery" in on, "with someone there, the radio and its cost"
     assert "radio(" not in off and "Nobody is at" in off, "with nobody, no radio at all"
     assert "sos" not in on and "sos" not in skills.NAMES, "and sos is gone"
 
@@ -472,13 +472,13 @@ def test_flat_away_from_the_pad_ends_the_mission():
 def test_a_dropped_connection_is_asked_again_not_counted():
     w = World()
     model = Model([READY, "down", "down", ("", [call("count", kind="rock")]), END, REPORT])
-    keep, keep_fb = S.AUTO_RETRY_SECONDS, S.MODEL_FALLBACK
-    S.AUTO_RETRY_SECONDS, S.MODEL_FALLBACK = 10, S.MODEL
-    S.MISSION_SOLS = 1
+    keep, keep_fb = settings.AUTO_RETRY_SECONDS, settings.MODEL_FALLBACK
+    settings.AUTO_RETRY_SECONDS, settings.MODEL_FALLBACK = 10, settings.MODEL
+    settings.MISSION_SOLS = 1
     try:
         convs, rows, nights = fly(w, model, frames=60)
     finally:
-        S.AUTO_RETRY_SECONDS, S.MODEL_FALLBACK, S.MISSION_SOLS = keep, keep_fb, 0
+        settings.AUTO_RETRY_SECONDS, settings.MODEL_FALLBACK, settings.MISSION_SOLS = keep, keep_fb, 0
     c = convs[0]
     assert c.failures == 2, "both failures were noticed"
     assert sum("did not answer" in t for t in said_by(c, "auto")) == 2, "and said so"
@@ -494,7 +494,7 @@ def test_the_cloud_drops_for_a_sol_and_comes_back():
     class Cloud(Model):
         def talk(self, conv):
             def stream(messages, allowed=None):
-                if conv._sent_host == S.OUTAGE_HOST:
+                if conv._sent_host == settings.OUTAGE_HOST:
                     conv.q.put(("error", "URLError: [Errno 111] Connection refused"))
                     return
                 answered.append((conv.day, conv._sent_model))
@@ -507,10 +507,10 @@ def test_the_cloud_drops_for_a_sol_and_comes_back():
 
     def probe(model, host):
         probed.append(host)
-        return host != S.OUTAGE_HOST
+        return host != settings.OUTAGE_HOST
 
-    keep = S.OUTAGE_SOLS, S.PROBE_SECONDS, S.MISSION_SOLS
-    S.OUTAGE_SOLS, S.PROBE_SECONDS, S.MISSION_SOLS = (2,), 0, 3
+    keep = settings.OUTAGE_SOLS, settings.PROBE_SECONDS, settings.MISSION_SOLS
+    settings.OUTAGE_SOLS, settings.PROBE_SECONDS, settings.MISSION_SOLS = (2,), 0, 3
     try:
         replies = []
         for n in (1, 2, 3):
@@ -518,11 +518,11 @@ def test_the_cloud_drops_for_a_sol_and_comes_back():
         convs, rows, nights = fly(World(), Cloud(replies), frames=80,
                                   link=chat.Link(probe))
     finally:
-        S.OUTAGE_SOLS, S.PROBE_SECONDS, S.MISSION_SOLS = keep
+        settings.OUTAGE_SOLS, settings.PROBE_SECONDS, settings.MISSION_SOLS = keep
     by_sol = {d: {m for dd, m in answered if dd == d} for d in (1, 2, 3)}
-    assert by_sol[1] == {S.MODEL}, "sol 1 on the cloud"
-    assert by_sol[2] == {S.MODEL_FALLBACK}, "sol 2 on the fallback"
-    assert by_sol[3] == {S.MODEL}, "sol 3 back on the cloud from its dawn"
+    assert by_sol[1] == {settings.MODEL}, "sol 1 on the cloud"
+    assert by_sol[2] == {settings.MODEL_FALLBACK}, "sol 2 on the fallback"
+    assert by_sol[3] == {settings.MODEL}, "sol 3 back on the cloud from its dawn"
     assert (all(c.failures == 0 for c in convs)
                 and nights == 3), "the drop was not a failure"
 
@@ -542,8 +542,8 @@ def recorder(log):
 def live_then_replay(replies, sols=1, objectives="manual"):
     """A live run with nobody at the window, kept to a tape and a game log, then replayed
     from them. Returns (live world, live calls, replay world, replays, replayed calls)."""
-    keep = S.MISSION_SOLS, S.OBJECTIVES
-    S.MISSION_SOLS, S.OBJECTIVES = sols, objectives
+    keep = settings.MISSION_SOLS, settings.OBJECTIVES
+    settings.MISSION_SOLS, settings.OBJECTIVES = sols, objectives
 
     def run(w, make, live):
         convs = [make(w)]
@@ -575,14 +575,14 @@ def live_then_replay(replies, sols=1, objectives="manual"):
             w2 = World()
             again = run(w2, lambda w_: replay.Replay(w_, script), False)
     finally:
-        S.MISSION_SOLS, S.OBJECTIVES = keep
+        settings.MISSION_SOLS, settings.OBJECTIVES = keep
     return (w, [x for c in live for x in c.calls], w2, again,
             [x for c in again for x in c.calls])
 
 
 def test_a_two_sol_run_replays_exactly():
-    keep = S.MOVE_HOPS, S.COMMS
-    S.MOVE_HOPS, S.COMMS = 2, True
+    keep = settings.MOVE_HOPS, settings.COMMS
+    settings.MOVE_HOPS, settings.COMMS = 2, True
     try:
         replies = [("", [call("todo", text="north first"), call("todo", text="then east"),
                          call("remember", name="plan", text="north, then east")]), READY,
@@ -596,7 +596,7 @@ def test_a_two_sol_run_replays_exactly():
                    END, ("", [call("forget", name="plan")]), REPORT]
         w, live, w2, runs, again = live_then_replay(replies, sols=2, objectives="auto")
     finally:
-        S.MOVE_HOPS, S.COMMS = keep
+        settings.MOVE_HOPS, settings.COMMS = keep
     diverged = [c.diverged for c in runs if c.diverged]
     assert [x.name for x in live].count("goto") == 5 and "radio" in [x.name for x in live], "live: dawn, day and dusk calls all ran"
     assert (len(w.objectives) == 3
@@ -655,8 +655,8 @@ def test_a_list_made_at_night_wakes_with_her_and_replays():
 def test_a_replay_of_an_urgent_message_matches():
     """An urgent message cut a turn with no `end` in it. With two drives a turn, the
     replay only agrees if it ends that turn where the live one ended."""
-    keep = S.MOVE_HOPS
-    S.MOVE_HOPS = 2
+    keep = settings.MOVE_HOPS
+    settings.MOVE_HOPS = 2
     try:
         with Desk(sols=1), tempfile.TemporaryDirectory() as d:
             tape = chat.Tape(Path(d) / "chat.jsonl")
@@ -684,7 +684,7 @@ def test_a_replay_of_an_urgent_message_matches():
             until(r, autopilot.Autopilot(live=False), w2,
                   lambda got: got == "night" or r.diverged, frames=60)
     finally:
-        S.MOVE_HOPS = keep
+        settings.MOVE_HOPS = keep
     assert len(live) == 3, "live: three drives ran, across the cut"
     assert (not r.diverged and
                 [(x.name, x.result) for x in r.calls if x.name != "end"] == live), "the replay ran them to the same results"

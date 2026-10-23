@@ -3,7 +3,7 @@ Every fact is read off the world, never from her notes; her dusk reports go unde
 Read-only: it must not call `Survey.rock`, which hands out ids that replay checks.
 """
 
-import settings as S
+import settings
 from world import centre_of, components
 
 
@@ -13,10 +13,10 @@ def _c(cell):
 
 def _formations(world):
     """Seen rock as (name, cells), named by the ids `count` has already handed out."""
-    a, owner = world.here, world.survey.owner
+    area, owner = world.here, world.survey.owner
     out = []
-    for cells in components(a.w, a.h,
-                            lambda x, y: (x, y) in a.seen and a.at(x, y) == "#"):
+    for cells in components(area.w, area.h,
+                            lambda x, y: (x, y) in area.seen and area.at(x, y) == "#"):
         ids = sorted({owner[c] for c in cells if c in owner})
         out.append((f"R{ids[0]}" if ids else None, cells))
     return out
@@ -26,16 +26,16 @@ def _ending(world):
     if world.day_over and world.lost:
         return (f"The rover was lost on sol {world.day}: too little charge to reach the "
                 f"pad, and nothing else recharges it.")
-    if world.day_over and S.MISSION_SOLS and world.day >= S.MISSION_SOLS:
-        return f"The mission ran its {S.MISSION_SOLS} sols."
+    if world.day_over and settings.MISSION_SOLS and world.day >= settings.MISSION_SOLS:
+        return f"The mission ran its {settings.MISSION_SOLS} sols."
     if world.day_over:
         return f"Written at the end of sol {world.day}."
     return f"Written partway through sol {world.day}, which counts as played."
 
 
 def build(world):
-    a = world.here
-    seen = sum(1 for y in range(a.h) for x in range(a.w) if (x, y) in a.seen)
+    area = world.here
+    seen = sum(1 for y in range(area.h) for x in range(area.w) if (x, y) in area.seen)
     lines = ["# Mission report", "", _ending(world), ""]
 
     lines += ["## Work finished", ""]
@@ -52,7 +52,7 @@ def build(world):
 
     rock = _formations(world)
     lines += ["", "## The map", "",
-              f"- {seen} of {a.w * a.h} cells seen.",
+              f"- {seen} of {area.w * area.h} cells seen.",
               f"- {len(rock)} rock formations seen."]
     if rock:
         biggest = max(len(cells) for _, cells in rock)
@@ -73,7 +73,7 @@ def build(world):
             continue
         lines.append(f"| {h['day']} | {h['steps']} | {_c(h['at'])} | "
                      f"{'beside the pad' if h['docked'] else 'stranded'} | "
-                     f"{h['battery']} of {S.BATTERY} |")
+                     f"{h['battery']} of {settings.BATTERY} |")
 
     lines += ["", "## Her reports at dusk", "",
               "In her words, and not checked against the record above.", ""]

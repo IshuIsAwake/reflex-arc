@@ -12,7 +12,7 @@ three times.
 """
 
 
-import settings as S
+import settings
 import sight
 import skills
 from world import World
@@ -68,11 +68,11 @@ def test_the_same_item_is_never_written_twice():
     assert dup.result.startswith("ALREADY_ON_IT(1)"), "a repeat is refused by number"
     assert len(w.notes.todos) == 1, "and the list did not grow"
 
-    for i in range(S.TODO_MAX):
+    for i in range(settings.TODO_MAX):
         skills.call(w, "todo", {"text": f"item number {i}"})
     full = skills.call(w, "todo", {"text": "one more"})
     assert full.result.startswith("LIST_FULL"), "the list has a ceiling"
-    assert len(w.notes.todos) == S.TODO_MAX, "...that holds"
+    assert len(w.notes.todos) == settings.TODO_MAX, "...that holds"
 
 
 def test_an_entry_replaces_rather_than_appends():
@@ -89,12 +89,12 @@ def test_an_entry_replaces_rather_than_appends():
     assert w.notes.memory == {"ridge": "R4 has a gap at y12 -- I was wrong"}, "the same name, whatever its case, replaces it rather than appending"
     assert "replaced" in second.result, "and the answer says what it replaced"
 
-    long = skills.call(w, "remember", {"name": "ridge", "text": "x" * (S.MEMORY_CHARS + 1)})
+    long = skills.call(w, "remember", {"name": "ridge", "text": "x" * (settings.MEMORY_CHARS + 1)})
     assert long.result.startswith("BAD_ARGS"), "an over-long entry is refused"
     # Refused rather than truncated: cutting the end off a rewrite silently drops what
     # she wrote last, which is usually the part she has just changed her mind about.
     assert w.notes.memory["ridge"] == "R4 has a gap at y12 -- I was wrong", "...and what she had is untouched"
-    assert str(S.MEMORY_CHARS) in long.result, "...and it says both numbers"
+    assert str(settings.MEMORY_CHARS) in long.result, "...and it says both numbers"
 
     for bad in (None, "", "   ", "<nil>"):
         r = skills.call(w, "remember", {"name": "ridge", "text": bad})
@@ -106,8 +106,8 @@ def test_an_entry_replaces_rather_than_appends():
 
 def test_the_memory_has_a_cap_and_forget_makes_room():
     w = World()
-    keep = S.MEMORY_ENTRIES
-    S.MEMORY_ENTRIES = 2
+    keep = settings.MEMORY_ENTRIES
+    settings.MEMORY_ENTRIES = 2
     try:
         skills.call(w, "remember", {"name": "a", "text": "one"})
         skills.call(w, "remember", {"name": "b", "text": "two\n- a bullet\n- another"})
@@ -126,7 +126,7 @@ def test_the_memory_has_a_cap_and_forget_makes_room():
         assert miss.result.startswith("NOT_REMEMBERED") and "b, c" in miss.result, "forgetting what is not there changes nothing, and says what is"
         assert "- another" in w.notes.memory["b"], "bullets survive inside an entry"
     finally:
-        S.MEMORY_ENTRIES = keep
+        settings.MEMORY_ENTRIES = keep
 
 
 def test_the_night_takes_the_list_and_leaves_the_memory():

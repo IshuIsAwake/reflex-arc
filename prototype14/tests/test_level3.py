@@ -9,10 +9,10 @@ paused on it.
 
 import threading
 
-import config as C10
+import config
 import level3
 import nav
-import settings as S
+import settings
 from world import World
 
 
@@ -40,7 +40,7 @@ def test_every_leg_reaches_the_rover_while_the_game_waits():
     try:
         level3.install(nav, rover, done.set)
         nav._await_rover = wait
-        C10.use("50")
+        config.use("50")
         w = World(recorder=lambda *a, **k: None)
         nav.goto(w, 40, 40)
         assert handed, "the game handed the rover nothing"
@@ -48,7 +48,7 @@ def test_every_leg_reaches_the_rover_while_the_game_waits():
         assert open(nav.plan_file()).read() == "", "file not wiped after the last leg"
     finally:
         nav.publish, nav._await_rover = keep
-        C10.use(C10.DEFAULT_ARENA)
+        config.use(config.DEFAULT_ARENA)
     print(f"  {len(handed)} legs, {sum(map(len, handed))} moves handed over")
 
 
@@ -91,7 +91,7 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
         level3.install(nav, Slow(), finished,
                        still_waiting=lambda world, dirs: world.awaiting_rover == dirs)
         nav._await_rover = wait
-        C10.use("50")
+        config.use("50")
         w = World(recorder=lambda *a, **k: None)
         w.awaiting_rover = None
         handed = []
@@ -110,7 +110,7 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
         assert driven == handed, ("legs lost or out of order", driven, handed)
     finally:
         nav.publish, nav._await_rover = keep
-        C10.use(C10.DEFAULT_ARENA)
+        config.use(config.DEFAULT_ARENA)
     print(f"  {len(handed)} legs, first released by hand, all driven in order")
 
 
@@ -142,7 +142,7 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
         level3.install(nav, Stopped(), lambda: released.append(1), guard=guard,
                        tell=hints.append)
         nav._await_rover = wait
-        C10.use("50")
+        config.use("50")
         w = World(recorder=lambda *a, **k: None)
         nav.goto(w, w.pos[0] + 3, w.pos[1])
         deadline = time.time() + 5
@@ -150,7 +150,7 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
             time.sleep(0.01)
     finally:
         nav.publish, nav._await_rover = keep
-        C10.use(C10.DEFAULT_ARENA)
+        config.use(config.DEFAULT_ARENA)
     assert handed and not released, "SPACE was sent for a leg that never finished"
     assert told[0] == level3.leg_end({"x": 0, "y": 0, "heading": "N"}, handed[0]), told
     assert len(told) == len(handed), (told, handed)

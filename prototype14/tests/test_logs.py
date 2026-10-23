@@ -14,7 +14,7 @@ from pathlib import Path
 import chat
 import logs
 import nav
-import settings as S
+import settings
 from world import World
 
 
@@ -111,12 +111,12 @@ def test_every_record_survives_a_real_recorder():
     console call after them was a TypeError. So this drives one world with a real
     recorder through every path that writes a line.
     """
-    import config as C
+    import config
     import skills
-    S.STORM_ON = True                   # the storm records on spawn; that counts too
+    settings.STORM_ON = True                   # the storm records on spawn; that counts too
     rows = []
     try:
-        C.use("50")
+        config.use("50")
         w = World(recorder=lambda kind, **f: rows.append((kind, f)))
         w.here.reveal_all()
         w.place_objective((30, 30), "high", 20)
@@ -129,13 +129,13 @@ def test_every_record_survives_a_real_recorder():
                     w._arrive()
                     break
             skills.call(w, "execute", {"why": "the whole point of the sol"})
-        nav.goto(w, *C.SPAWN)
+        nav.goto(w, *config.SPAWN)
         nav.price(w, 5, 5)
         w.day_over = False
         w.next_day()
     finally:
-        S.STORM_ON = False
-        C.use(C.DEFAULT_ARENA)
+        settings.STORM_ON = False
+        config.use(config.DEFAULT_ARENA)
 
     kinds = {k for k, _ in rows}
     assert "objective" in kinds, "the objective was written down"

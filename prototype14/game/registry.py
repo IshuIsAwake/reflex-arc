@@ -5,8 +5,8 @@ defaults in settings.py and config.py are saved, in user_settings.json."""
 import json
 import pathlib
 
-import config as C
-import settings as S
+import config
+import settings
 
 USER_FILE = pathlib.Path(__file__).resolve().parent.parent / "user_settings.json"
 TIERS = ("now", "sol", "relaunch")
@@ -19,7 +19,7 @@ class Setting:
     the ones that change the world, false for pace and window size."""
 
     def __init__(self, name, kind, tier, desc, lo=None, hi=None, step=1, choices=None,
-                 mod=S, replayed=True):
+                 mod=settings, replayed=True):
         self.name, self.kind, self.tier, self.desc = name, kind, tier, desc
         self.lo, self.hi, self.step, self.choices = lo, hi, step, choices
         self.mod, self.replayed = mod, replayed
@@ -169,9 +169,9 @@ SETTINGS = [
             50, 1000, 25),
     # After a restart
     Setting("APP_ARENA", "choice", "relaunch", "the arena: 30x30 or 50x50",
-            choices=tuple(C.ARENAS), mod=C),
+            choices=tuple(config.ARENAS), mod=config),
     Setting("HUD_H", "int", "relaunch", "height of the strip under the arena",
-            96, 250, 2, mod=C, replayed=False),
+            96, 250, 2, mod=config, replayed=False),
 ]
 BY_NAME = {s.name: s for s in SETTINGS}
 

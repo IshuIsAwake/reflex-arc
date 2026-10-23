@@ -12,7 +12,7 @@ the clock, a flat battery or Q ends the day. A replay waits for nobody and runs 
 
 import time
 
-import settings as S
+import settings
 import skills
 
 
@@ -23,11 +23,11 @@ def _desk_line(text):
 def dawn(world, words="", placed=()):
     """The turn that opens the sol. Nothing drives yet and no time passes."""
     stuck = (f" The rover spent the night stranded, so the battery was not recharged: "
-             f"{world.battery} of {S.BATTERY}." if world.stranded else "")
+             f"{world.battery} of {settings.BATTERY}." if world.stranded else "")
     new = (f" Mission control has posted {len(placed)} new objectives; they are in your "
            f"view." if placed else "")
     desk = (" Mission control is at the desk and may talk with you before the day begins."
-            if S.COMMS else " Nobody is at mission control's desk.")
+            if settings.COMMS else " Nobody is at mission control's desk.")
     kept = " It holds what you put on it last night." if world.notes.todos else ""
     return (f"Dawn of sol {world.day}. The day has not begun: no time passes and the rover "
             f"does not move until it does.{stuck}{new} Read your memory, the board and the "
@@ -91,8 +91,8 @@ def dusk(world):
     out = ("" if world.docked else
            f" The rover is not beside the pad, so it is stranded tonight: no recharge, and "
            f"tomorrow it wakes where it stands on {world.battery} steps of battery.")
-    last = (" It was the last sol of the mission." if S.MISSION_SOLS and
-            world.day >= S.MISSION_SOLS else "")
+    last = (" It was the last sol of the mission." if settings.MISSION_SOLS and
+            world.day >= settings.MISSION_SOLS else "")
     return f"Sol {world.day} is over.{out}{last} {KEEP} {REPORT}"
 
 
@@ -142,9 +142,9 @@ class Autopilot:
             return self._waiting(conv, world, now)
         if conv.failures > self.failures:
             self.failures = conv.failures
-            self.retry_at = now + S.AUTO_RETRY_SECONDS
+            self.retry_at = now + settings.AUTO_RETRY_SECONDS
             conv.write("auto", f"the model did not answer -- asking again in "
-                               f"{S.AUTO_RETRY_SECONDS:g}s")
+                               f"{settings.AUTO_RETRY_SECONDS:g}s")
             return None
         if self.retry_at is not None:
             if now >= self.retry_at:
@@ -221,7 +221,7 @@ class Autopilot:
     def _night(self, conv, world, now):
         if not self.started:
             self.started = True
-            if self.words and self.attended and S.COMMS:
+            if self.words and self.attended and settings.COMMS:
                 conv.send(self.words, who="you")
                 self.words = ""
                 return None
@@ -248,7 +248,7 @@ class Autopilot:
 
     def _called(self, conv):
         """The turn just over ended on a radio call that got through."""
-        if len(conv.calls) <= self.mark or not self.live or not S.COMMS:
+        if len(conv.calls) <= self.mark or not self.live or not settings.COMMS:
             return False
         return skills.got_through(conv.calls[-1])
 
@@ -262,18 +262,18 @@ class Autopilot:
         # A request still owed a retry belongs to the turn the window has just ended.
         self.retry_at, self.failures = None, conv.failures
         world.record("window", opened=why)
-        if self.attended and S.COMMS:
+        if self.attended and settings.COMMS:
             conv.write("note", OPENED[why])
 
     def _waiting(self, conv, world, now):
         why = self.wait
-        if why == "radio" and (world.day_over or not S.COMMS or self._over(conv, world)):
+        if why == "radio" and (world.day_over or not settings.COMMS or self._over(conv, world)):
             return self._close(conv, world)
-        if not (self.attended and S.COMMS):  # nobody at the desk: it moves on by itself
+        if not (self.attended and settings.COMMS):  # nobody at the desk: it moves on by itself
             return self._close(conv, world)
         if self.quiet_since is None:
             self.quiet_since = now
-        if self.skip or now - self.quiet_since >= S.COMMS_WAIT:
+        if self.skip or now - self.quiet_since >= settings.COMMS_WAIT:
             return self._close(conv, world)
         return None
 
@@ -299,7 +299,7 @@ class Autopilot:
         """Why the desk's words can't reach her right now, or None if they can."""
         if not self.live:
             return "a replay is a tape -- nobody on it can be talked to"
-        if not S.COMMS:
+        if not settings.COMMS:
             return "comms are off -- nobody is at the desk, and nothing reaches her"
         if self.phase == "dusk":
             return "dusk is hers: she is writing her report. Talk at night, or /next"
@@ -334,7 +334,7 @@ class Autopilot:
         """Why an urgent message can't go now, or None if it can."""
         if not self.live:
             return "a replay is a tape -- nobody on it can be called"
-        if not S.COMMS:
+        if not settings.COMMS:
             return "comms are off -- nobody is at the desk to call her"
         if self.phase != "day" or world.day_over:
             return "it is not day -- just talk to her"
@@ -360,4 +360,4 @@ class Autopilot:
         if not self.wait or self.quiet_since is None:
             return None
         now = time.monotonic() if now is None else now
-        return max(0.0, S.COMMS_WAIT - (now - self.quiet_since))
+        return max(0.0, settings.COMMS_WAIT - (now - self.quiet_since))

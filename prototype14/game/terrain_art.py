@@ -6,7 +6,7 @@ import math
 import random
 import pygame
 
-import config as C
+import config
 
 SEED = 1224
 
@@ -41,8 +41,8 @@ def rocks(cols, rows, T, cells):
                   special_flags=pygame.BLEND_RGB_ADD)
         soft.fill((42, 42, 42), special_flags=pygame.BLEND_RGB_SUB)
         shape = pygame.mask.from_threshold(soft, (255, 255, 255), (127, 127, 127, 255))
-        _cache[key] = (shape.to_surface(setcolor=(*C.ROCK, 255), unsetcolor=(0, 0, 0, 0)),
-                       shape.to_surface(setcolor=(*C.ROCK_DIM, 255),
+        _cache[key] = (shape.to_surface(setcolor=(*config.ROCK, 255), unsetcolor=(0, 0, 0, 0)),
+                       shape.to_surface(setcolor=(*config.ROCK_DIM, 255),
                                         unsetcolor=(0, 0, 0, 0)))
         if len(_cache) > 3:
             _cache.popitem(last=False)

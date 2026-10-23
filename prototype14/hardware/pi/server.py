@@ -39,7 +39,7 @@ import socket
 import threading
 import time
 
-import config as C
+import config
 import grid
 import moves
 from motors import open_motors
@@ -170,8 +170,8 @@ def serve(conn, rover, fake, who=None):
                 op = msg.get("op")
                 if op == "hello":
                     send({"ok": True, "pose": pose_json(rover.pose), "fake": fake,
-                          "forward_s": C.FORWARD_S_PER_CELL, "turn_s": C.TURN_S_PER_90,
-                          "cell_m": C.CELL_M})
+                          "forward_s": config.FORWARD_S_PER_CELL, "turn_s": config.TURN_S_PER_90,
+                          "cell_m": config.CELL_M})
                 elif op == "reset":
                     h = grid.HEADING_NAMES.index(msg.get("heading", "N"))
                     rover.pose = grid.Pose(0, 0, h)
@@ -212,7 +212,7 @@ def main():
     ap.add_argument("--fast", action="store_true", help="with --fake: no waiting")
     args = ap.parse_args()
     if args.fast:
-        C.FORWARD_S_PER_CELL, C.TURN_S_PER_90, C.SETTLE_S = 0.05, 0.05, 0.0
+        config.FORWARD_S_PER_CELL, config.TURN_S_PER_90, config.SETTLE_S = 0.05, 0.05, 0.0
 
     rover = Rover(open_motors(args.fake))
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -220,7 +220,7 @@ def main():
     srv.bind(("0.0.0.0", args.port))
     srv.listen(8)
     print(f"rover listening on port {args.port}  ({'fake' if args.fake else 'real'} motors, "
-          f"{C.FORWARD_S_PER_CELL:.2f} s/cell, {C.TURN_S_PER_90:.2f} s/90)")
+          f"{config.FORWARD_S_PER_CELL:.2f} s/cell, {config.TURN_S_PER_90:.2f} s/90)")
     print("place it on its start cell facing grid north. Ctrl-C to quit.")
 
     def window(conn, addr, n):

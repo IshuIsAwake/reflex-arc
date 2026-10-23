@@ -11,10 +11,10 @@ import os
 import tempfile
 from collections import deque
 
-import config as C
+import config
 import console
 import nav
-import settings as S
+import settings
 from nav import DIRS
 from world import SOLID, THINGS, World
 
@@ -28,7 +28,7 @@ def _roomy():
     They need a goal far enough off to force replans, and (40,40) does not exist on
     the 30. `C.use` is put back by the runner at the bottom of the file.
     """
-    C.use("50")
+    config.use("50")
     return World(recorder=lambda *a, **k: None)
 
 
@@ -88,7 +88,7 @@ def test_never_routes_through_known_rock():
         assert path, (start, goal)
         assert path[0] == start and len(path) == len(set(path)), path
         for cell in path:
-            assert C.ARENA[cell[1]][cell[0]] not in SOLID, (cell, path)
+            assert config.ARENA[cell[1]][cell[0]] not in SOLID, (cell, path)
         for a, b in zip(path, path[1:]):
             assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1, (a, b)
 
@@ -99,7 +99,7 @@ def test_a_surveyed_arena_agrees_with_bfs():
              ((0, 29), (15, 0)), ((15, 15), (15, 16))]   # the last is the pad
     for start, goal in pairs:
         path = nav.plan(w.here, start, goal)
-        want = reference_bfs(C.ARENA, start, goal)
+        want = reference_bfs(config.ARENA, start, goal)
         assert path is not None and want is not None, (start, goal)
         assert len(path) - 1 == want, (start, goal, len(path) - 1, want)
 
@@ -119,7 +119,7 @@ def test_the_planner_is_not_omniscient():
     # separated this is the test that would fail first -- and that the fix would be
     # concave rock rather than a smaller margin. That is exactly what happened when the
     # 30 was rebuilt for prototype 10, and the C is the fix it called for.
-    truth = reference_bfs(C.ARENA, C.SPAWN, (2, 14))
+    truth = reference_bfs(config.ARENA, config.SPAWN, (2, 14))
     assert truth is not None, "(2,14) has to be reachable at all"
 
     w = World()                      # only the landing site is seen
@@ -127,12 +127,12 @@ def test_the_planner_is_not_omniscient():
     assert path, "fog has to be plannable through, or exploring is impossible"
     assert len(path) - 1 <= truth - 4, \
         (len(path) - 1, truth, "the fogged plan should be too good, by a real margin")
-    assert any(C.ARENA[y][x] == "#" for x, y in path), \
+    assert any(config.ARENA[y][x] == "#" for x, y in path), \
         "a plan through fog that dodges unseen rock means the planner can see it"
 
     w2 = surveyed()
     real = nav.plan(w2.here, w2.pos, (2, 14))
-    assert not any(C.ARENA[y][x] == "#" for x, y in real)
+    assert not any(config.ARENA[y][x] == "#" for x, y in real)
     assert len(real) - 1 == truth, (len(real) - 1, truth)
 
 
@@ -149,7 +149,7 @@ def test_distance_is_optimistic():
     known. Every other crossing is a straight line the fog cannot flatter."""
     w = World()
     guess = nav.price(w, 2, 14)
-    truth = reference_bfs(C.ARENA, w.pos, (2, 14))
+    truth = reference_bfs(config.ARENA, w.pos, (2, 14))
     assert guess is not None and guess < truth, (guess, truth)
     assert w.steps == 0, "distance must not cost a step"
 
@@ -163,15 +163,15 @@ def test_the_arena_has_no_rim_wall():
     UNREACHABLE. Here the outer rows and columns are ordinary ground and the system
     prompt says so, which only stays true while this passes."""
     w = surveyed()
-    n = len(C.ARENA)
+    n = len(config.ARENA)
     edge = ([(x, 0) for x in range(n)] + [(x, n - 1) for x in range(n)] +
             [(0, y) for y in range(n)] + [(n - 1, y) for y in range(n)])
-    open_edge = [c for c in edge if C.ARENA[c[1]][c[0]] == "."]
+    open_edge = [c for c in edge if config.ARENA[c[1]][c[0]] == "."]
     assert len(open_edge) > len(edge) * 0.7, \
         f"only {len(open_edge)} of {len(edge)} edge cells are drivable"
-    cx, cy = C.SPAWN
+    cx, cy = config.SPAWN
     for goal in ((cx, 0), (cx, n - 1), (0, cy), (0, n - 1)):
-        assert nav.plan(w.here, C.SPAWN, goal), f"cannot reach the edge at {goal}"
+        assert nav.plan(w.here, config.SPAWN, goal), f"cannot reach the edge at {goal}"
 
 
 # --- the drive --------------------------------------------------------------
@@ -216,7 +216,7 @@ def test_a_known_rock_is_not_somewhere_you_can_arrive():
     leaves the caller nothing to correct. It cost four days on 2026-08-26."""
     w = surveyed()
     w.pos = (16, 20)
-    assert C.ARENA[20][17] == "#", "this test is about rock"
+    assert config.ARENA[20][17] == "#", "this test is about rock"
 
     r = nav.goto(w, 17, 20)
     assert r.code == "UNREACHABLE", str(r)
@@ -226,7 +226,7 @@ def test_a_known_rock_is_not_somewhere_you_can_arrive():
     # whole design. Only known rock is refused. A far boulder, because BASE_REVEAL lights
     # up six cells and the one above is inside that.
     fresh = World()
-    assert C.ARENA[2][20] == "#"
+    assert config.ARENA[2][20] == "#"
     assert not fresh.here.visible(20, 2), "needs to still be fogged"
     assert nav.plan(fresh.here, fresh.pos, (20, 2)) is not None, \
         "fogged rock must still be plannable, or exploring is impossible"
@@ -257,12 +257,12 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     assert r.code in ("BLOCKED", "DONE"), str(r)
 
     area, walk = w.last_walk
-    assert area == w.area and walk[0] == C.SPAWN and walk[-1] == w.pos
+    assert area == w.area and walk[0] == config.SPAWN and walk[-1] == w.pos
     assert len(walk) - 1 == r.steps, (len(walk) - 1, r.steps)
     for a, b in zip(walk, walk[1:]):
         assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1, (a, b)
     for x, y in walk:
-        assert C.ARENA[y][x] not in SOLID, ("the drive never crosses rock", x, y)
+        assert config.ARENA[y][x] not in SOLID, ("the drive never crosses rock", x, y)
 
     # ...while a plan, made through fog, is still allowed to be wrong.
     #
@@ -271,7 +271,7 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     # right. Every plan the drive actually laid is in the reel.
     plans = [cells for kind, cells in w.reel[-1] if kind == "plan"]
     assert plans, "a drive lays at least one plan"
-    assert any(C.ARENA[y][x] == "#" for cells in plans for x, y in cells), \
+    assert any(config.ARENA[y][x] == "#" for cells in plans for x, y in cells), \
         "some plan ran through rock nobody had seen -- that is what fog costs"
 
     nav.price(w, 15, 0)
@@ -336,7 +336,7 @@ def test_running_into_rock_reveals_the_cell_that_stopped_the_drive():
     rover was driven at rather than one it stood next to and looked at, and at
     VISION_RADIUS 2 the disc trails the drive rather than leading it.
     """
-    C.use("50")
+    config.use("50")
     try:
         w = World()
         walls = set()
@@ -355,7 +355,7 @@ def test_running_into_rock_reveals_the_cell_that_stopped_the_drive():
             assert w.here.visible(*cell), f"{cell} was hit and is still fogged"
             assert cell not in w.here.visited, "hit, not stood on"
     finally:
-        C.use(C.DEFAULT_ARENA)
+        config.use(config.DEFAULT_ARENA)
 
 
 def test_pricing_a_trip_says_what_it_costs_and_nothing_else():
@@ -446,7 +446,7 @@ def test_the_log_records_what_the_plan_promised():
     nav.goto(w, 10, 0)
     last = w.nav_log[-1]
     assert last["planned"] < last["steps"] or last["code"] != "DONE", last
-    assert last["area"] == C.ARENA_NAME and last["to"] == (10, 0)
+    assert last["area"] == config.ARENA_NAME and last["to"] == (10, 0)
 
 
 def test_the_directions_replay_to_the_planned_path():
@@ -495,8 +495,8 @@ def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
     the current plan and never a backlog somebody has to work out the order of.
     """
     out = os.path.join(tempfile.gettempdir(), "reflex_live_plan.txt")
-    keep = S.PLAN_FILE
-    S.PLAN_FILE = out
+    keep = settings.PLAN_FILE
+    settings.PLAN_FILE = out
     try:
         if os.path.exists(out):
             os.remove(out)
@@ -515,8 +515,8 @@ def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
         assert len([f for f in os.listdir(os.path.dirname(out))
                     if f.startswith("reflex_live_plan")]) == 1
     finally:
-        S.PLAN_FILE = keep
-        C.use(C.DEFAULT_ARENA)
+        settings.PLAN_FILE = keep
+        config.use(config.DEFAULT_ARENA)
         if os.path.exists(out):
             os.remove(out)
 
@@ -557,8 +557,8 @@ def test_the_robot_is_only_ever_handed_ground_the_simulation_drove():
     the robot is pointed at an outcrop.
     """
     out = os.path.join(tempfile.gettempdir(), "reflex_driven_only.txt")
-    keep = S.PLAN_FILE
-    S.PLAN_FILE = out
+    keep = settings.PLAN_FILE
+    settings.PLAN_FILE = out
     try:
         # Fogged, so (14,9) drives into rock it cannot see -- the case the whole
         # write-after-driving order exists for. A recorder, or nothing is written.
@@ -578,7 +578,7 @@ def test_the_robot_is_only_ever_handed_ground_the_simulation_drove():
         assert pos == w.pos, (pos, w.pos)
         assert pos != r.at, "the robot was driven onto the wall the sim stopped at"
     finally:
-        S.PLAN_FILE = keep
+        settings.PLAN_FILE = keep
         if os.path.exists(out):
             os.remove(out)
 
@@ -589,8 +589,8 @@ def test_a_replan_hands_over_the_leg_before_planning_the_next_one():
     reached yet belongs to somebody else. So each leg goes over and is driven before
     the next is worked out -- several handovers for one `goto`, not one at the end."""
     out = os.path.join(tempfile.gettempdir(), "reflex_pause.txt")
-    keep = S.PLAN_FILE
-    S.PLAN_FILE = out
+    keep = settings.PLAN_FILE
+    settings.PLAN_FILE = out
     try:
         w = _roomy()
         # (40,40) is rock, so this replans its way across the arena and ends BLOCKED.
@@ -603,8 +603,8 @@ def test_a_replan_hands_over_the_leg_before_planning_the_next_one():
         # sent twice is the rover driving a stretch it has already covered.
         assert sum(len(leg) for leg in legs) == len(w.last_walk[1]) - 1
     finally:
-        S.PLAN_FILE = keep
-        C.use(C.DEFAULT_ARENA)
+        settings.PLAN_FILE = keep
+        config.use(config.DEFAULT_ARENA)
         if os.path.exists(out):
             os.remove(out)
 
@@ -619,8 +619,8 @@ def test_a_call_that_did_not_arrive_leaves_nothing_for_the_next_one():
     robot has to work out the order of.
     """
     out = os.path.join(tempfile.gettempdir(), "reflex_journey.txt")
-    keep_file, keep_replans = S.PLAN_FILE, S.NAV_REPLANS
-    S.PLAN_FILE, S.NAV_REPLANS = out, 0     # stop at the first wall, so it takes several
+    keep_file, keep_replans = settings.PLAN_FILE, settings.NAV_REPLANS
+    settings.PLAN_FILE, settings.NAV_REPLANS = out, 0     # stop at the first wall, so it takes several
     try:
         w = _roomy()
         nav.clear_plan(w)
@@ -634,7 +634,7 @@ def test_a_call_that_did_not_arrive_leaves_nothing_for_the_next_one():
                 break
         assert handed, "several calls and the robot was never given anything"
     finally:
-        S.PLAN_FILE, S.NAV_REPLANS = keep_file, keep_replans
-        C.use(C.DEFAULT_ARENA)
+        settings.PLAN_FILE, settings.NAV_REPLANS = keep_file, keep_replans
+        config.use(config.DEFAULT_ARENA)
         if os.path.exists(out):
             os.remove(out)

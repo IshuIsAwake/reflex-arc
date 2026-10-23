@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 
 import autopilot
-import settings as S
+import settings
 import sight
 import skills
 import prompts
@@ -72,7 +72,7 @@ def _args(a):
 
 def installed_models(timeout=2):
     """What `ollama list` shows, as tags, or None if Ollama didn't answer."""
-    url = S.OLLAMA_HOST.rsplit("/api/", 1)[0] + "/api/tags"
+    url = settings.OLLAMA_HOST.rsplit("/api/", 1)[0] + "/api/tags"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
             return sorted(m["name"] for m in json.load(r).get("models", ()))
@@ -82,19 +82,19 @@ def installed_models(timeout=2):
 
 def host_for(model, day):
     """Where a request to `model` goes on sol `day`. An --outage sol sends it to a dead port, so it fails for real."""
-    if model == S.MODEL and day in S.OUTAGE_SOLS:
-        return S.OUTAGE_HOST
-    return S.OLLAMA_HOST
+    if model == settings.MODEL and day in settings.OUTAGE_SOLS:
+        return settings.OUTAGE_HOST
+    return settings.OLLAMA_HOST
 
 
 def _probe(model, host):
     """One token from `model`. True if it answered at all."""
-    body = json.dumps({"model": model, "stream": False, "keep_alive": S.MODEL_KEEP_ALIVE,
+    body = json.dumps({"model": model, "stream": False, "keep_alive": settings.MODEL_KEEP_ALIVE,
                        "messages": [{"role": "user", "content": "ok"}],
                        "options": {"num_predict": 1}}).encode()
     req = urllib.request.Request(host, body, {"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=S.PROBE_TIMEOUT) as r:
+        with urllib.request.urlopen(req, timeout=settings.PROBE_TIMEOUT) as r:
             return "error" not in json.load(r)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         return False
@@ -115,15 +115,15 @@ class Link:
 
     @property
     def model(self):
-        return S.MODEL_FALLBACK if self.down else S.MODEL
+        return settings.MODEL_FALLBACK if self.down else settings.MODEL
 
     def failed(self, model):
         """A request to `model` got no answer. True if the link has switched to the fallback."""
-        if (self.down or model != S.MODEL or not S.MODEL_FALLBACK
-                or S.MODEL_FALLBACK == S.MODEL):
+        if (self.down or model != settings.MODEL or not settings.MODEL_FALLBACK
+                or settings.MODEL_FALLBACK == settings.MODEL):
             return False
         self.down = True
-        self._next = time.monotonic() + S.PROBE_SECONDS
+        self._next = time.monotonic() + settings.PROBE_SECONDS
         return True
 
     def morning(self):
@@ -145,10 +145,10 @@ class Link:
             if answered and self.down:
                 self.down = False
                 return True
-            self._next = time.monotonic() + S.PROBE_SECONDS
+            self._next = time.monotonic() + settings.PROBE_SECONDS
         if self.down and not self._probing and time.monotonic() >= self._next:
             self._probing = True
-            model, host = S.MODEL, host_for(S.MODEL, day)
+            model, host = settings.MODEL, host_for(settings.MODEL, day)
             threading.Thread(target=lambda: self._results.put(self._probe(model, host)),
                              daemon=True).start()
         return False
@@ -192,12 +192,12 @@ class Conversation:
         self._t0 = 0.0
         self._tools_sent = None  # which schemas the request carried; a capped turn carries fewer
 
-    def open_day(self, w):
+    def open_day(self, world):
         """The morning: the status line. The map comes with the first request."""
         self.link.morning()
-        self.link.poll(w.day)
-        self.write("status", status_line(w))
-        self.messages.append({"role": "user", "content": status_line(w)})
+        self.link.poll(world.day)
+        self.write("status", status_line(world))
+        self.messages.append({"role": "user", "content": status_line(world)})
 
     def send(self, text, who="you"):
         """A turn opened by `who`, shown as theirs in the pane and on the tape."""
@@ -224,7 +224,7 @@ class Conversation:
         if self.messages[0]["content"] == prompts.SYSTEM:
             return
         self.messages[0] = {"role": "system", "content": prompts.SYSTEM}
-        note = autopilot.desk(S.COMMS)
+        note = autopilot.desk(settings.COMMS)
         self.write("note", note)
         self.messages.append({"role": "user", "content": note})
 
@@ -261,7 +261,7 @@ class Conversation:
                  "forget"]
         if self.world.phase == "day" and not self.world.day_over:
             names += ["goto", "execute", "end"]
-            if S.COMMS:
+            if settings.COMMS:
                 names.append("radio")
         return tuple(n for n in skills.NAMES if n in names)
 
@@ -315,25 +315,25 @@ class Conversation:
     def _stream(self, messages, allowed=None):
         """Ollama, streamed, on a thread. Nothing here touches the screen."""
         # MODEL_TEMP None sends no sampler options at all: the model's own defaults.
-        options = {"num_ctx": S.MODEL_CTX}
-        if S.MODEL_TEMP is not None:
-            options["temperature"] = S.MODEL_TEMP
+        options = {"num_ctx": settings.MODEL_CTX}
+        if settings.MODEL_TEMP is not None:
+            options["temperature"] = settings.MODEL_TEMP
         # A fixed seed doesn't make the model repeat itself, but leaving it unset guarantees it won't.
-        if S.MODEL_SEED is not None:
-            options["seed"] = S.MODEL_SEED
-        model = getattr(self, "_sent_model", S.MODEL)
+        if settings.MODEL_SEED is not None:
+            options["seed"] = settings.MODEL_SEED
+        model = getattr(self, "_sent_model", settings.MODEL)
         payload = {
             "model": model, "messages": messages, "stream": True,
-            "think": S.MODEL_THINK, "keep_alive": S.MODEL_KEEP_ALIVE,
+            "think": settings.MODEL_THINK, "keep_alive": settings.MODEL_KEEP_ALIVE,
             "options": options,
         }
         payload["tools"] = skills.tools_for(allowed)
         body = json.dumps(payload).encode()
-        req = urllib.request.Request(getattr(self, "_sent_host", S.OLLAMA_HOST), body,
+        req = urllib.request.Request(getattr(self, "_sent_host", settings.OLLAMA_HOST), body,
                                      {"Content-Type": "application/json"})
         wanted, finished = [], False
         try:
-            with urllib.request.urlopen(req, timeout=S.MODEL_TIMEOUT) as r:
+            with urllib.request.urlopen(req, timeout=settings.MODEL_TIMEOUT) as r:
                 for raw in r:
                     if not raw.strip():
                         continue
@@ -361,7 +361,7 @@ class Conversation:
         """Drain one frame's worth. Returns True if anything on screen changed."""
         changed = False
         if self.link.poll(self.world.day):
-            self.write("note", f"{S.MODEL} answered a probe -- it takes the next request "
+            self.write("note", f"{settings.MODEL} answered a probe -- it takes the next request "
                                f"again")
         while True:
             try:
@@ -377,14 +377,14 @@ class Conversation:
                 self.say_buf += payload
             elif kind == "error":
                 self._settle()
-                asked = getattr(self, "_sent_model", S.MODEL)
+                asked = getattr(self, "_sent_model", settings.MODEL)
                 if self.link.failed(asked):
                     # Not a failure to count: the same request goes out again now, to the fallback.
                     staged = (" (a simulated outage, --outage)"
-                              if self.world.day in S.OUTAGE_SOLS else "")
+                              if self.world.day in settings.OUTAGE_SOLS else "")
                     self.write("error", f"{asked} did not answer{staged}: {payload} -- "
-                                        f"{S.MODEL_FALLBACK} answers until it is back",
-                               fallback=S.MODEL_FALLBACK)
+                                        f"{settings.MODEL_FALLBACK} answers until it is back",
+                               fallback=settings.MODEL_FALLBACK)
                     self._next()
                 else:
                     self.failures += 1
@@ -407,7 +407,7 @@ class Conversation:
         self.write("cost", f"{secs}s   {tin} tok in, {tout} out", pane=False,
                    seconds=secs, tokens_in=tin, tokens_out=tout,
                    hops=self.hops, tools=list(self._tools_sent or skills.NAMES),
-                   model=getattr(self, "_sent_model", S.MODEL))
+                   model=getattr(self, "_sent_model", settings.MODEL))
         said, junk, faked = self._reply()
         if faked:
             self.faked += 1
@@ -427,12 +427,12 @@ class Conversation:
         self._settle(wanted, said, junk)
         # Words spoken on an open line cost battery; `drain` goes on the tape for replay.
         if self.on_line and said and self.world.phase == "day":
-            self.world.drain(S.RADIO_STEPS)
-            self.write("note", f"her reply went over the radio: {S.RADIO_STEPS} steps of "
-                               f"battery", drain=S.RADIO_STEPS)
+            self.world.drain(settings.RADIO_STEPS)
+            self.write("note", f"her reply went over the radio: {settings.RADIO_STEPS} steps of "
+                               f"battery", drain=settings.RADIO_STEPS)
         # Say it in the pane when the context is nearly full.
-        if used > S.MODEL_CTX * 0.9:
-            self.write("error", f"context {used}/{S.MODEL_CTX} -- the morning is "
+        if used > settings.MODEL_CTX * 0.9:
+            self.write("error", f"context {used}/{settings.MODEL_CTX} -- the morning is "
                                 f"being dropped. Raise MODEL_CTX.")
         if wanted:
             self._run(wanted)
@@ -498,11 +498,11 @@ class Conversation:
 
     def _room(self):
         """Either allowance used up ends the turn; by day the clock opens the next one."""
-        if self.moves >= S.MOVE_HOPS:
-            self._stop(f"{S.MOVE_HOPS} drives this turn")
+        if self.moves >= settings.MOVE_HOPS:
+            self._stop(f"{settings.MOVE_HOPS} drives this turn")
             return False
-        if self.frees >= S.FREE_HOPS:
-            self._stop(f"{S.FREE_HOPS} looks without a drive")
+        if self.frees >= settings.FREE_HOPS:
+            self._stop(f"{settings.FREE_HOPS} looks without a drive")
             return False
         return True
 
@@ -532,7 +532,7 @@ class Conversation:
 
     def _left(self):
         """What the turn has left, sent with every result."""
-        drives, looks = S.MOVE_HOPS - self.moves, S.FREE_HOPS - self.frees
+        drives, looks = settings.MOVE_HOPS - self.moves, settings.FREE_HOPS - self.frees
         if self.world.phase != "day":
             return f" [{looks} looks left this turn]"
         return (f" [{drives} drives left this turn; "

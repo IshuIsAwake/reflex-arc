@@ -10,9 +10,9 @@ depends on how long somebody watched it, which is not a world at all.
 
 
 import anim
-import config as C
+import config
 import nav
-import settings as S
+import settings
 from world import SOLID, World
 
 
@@ -35,12 +35,12 @@ def test_a_drive_is_recorded_as_it_happens():
     # route surprises it. The shipped value is left alone deliberately: this test is
     # about what the reel records, not about the knob, and pinning it is how the two
     # stop being one measurement.
-    keep = S.NAV_REPLANS
-    S.NAV_REPLANS = 10
+    keep = settings.NAV_REPLANS
+    settings.NAV_REPLANS = 10
     try:
         return _a_drive_is_recorded()
     finally:
-        S.NAV_REPLANS = keep
+        settings.NAV_REPLANS = keep
 
 
 def _a_drive_is_recorded():
@@ -55,7 +55,7 @@ def _a_drive_is_recorded():
     assert len(w.reel) == 1, "one reel queued"
 
     tl = w.reel[0]
-    assert tl[0] == ("start", C.SPAWN), "it starts where the rover did"
+    assert tl[0] == ("start", config.SPAWN), "it starts where the rover did"
     ks = kinds(tl)
     assert ks[1] == "plan", "it plans before it moves"
     assert ks.count("block") > 1, "it was surprised"
@@ -65,12 +65,12 @@ def _a_drive_is_recorded():
 
     steps = [d for k, d in tl if k == "step"]
     assert len(steps) == r.steps, "a step per tile actually driven"
-    assert all(C.ARENA[c[1]][c[0]] not in SOLID for c, _ in steps), "and none of them is rock"
+    assert all(config.ARENA[c[1]][c[0]] not in SOLID for c, _ in steps), "and none of them is rock"
     assert steps[-1][0] == w.pos, "the last step is where it ended up"
-    assert all(C.ARENA[c[1]][c[0]] == "#" for k, c in tl if k == "block"), "every block really is rock"
+    assert all(config.ARENA[c[1]][c[0]] == "#" for k, c in tl if k == "block"), "every block really is rock"
 
     first_plan = next(d for k, d in tl if k == "plan")
-    assert any(C.ARENA[y][x] == "#" for x, y in first_plan), "the first plan drove through rock it had not seen"
+    assert any(config.ARENA[y][x] == "#" for x, y in first_plan), "the first plan drove through rock it had not seen"
 
     # The one case that legitimately has a single plan: the target itself turns out to
     # be rock, so there is nowhere else to re-route to and nav stops rather than
@@ -118,7 +118,7 @@ def test_the_fog_opens_in_time_with_the_drive():
     reel = anim.Reel(w)
     reel.tick(0.001)
     assert reel.veiled(far), "but the reel holds it back until the rover is drawn there"
-    assert reel.where(w.pos) == C.SPAWN, "and it is drawn back at the pad"
+    assert reel.where(w.pos) == config.SPAWN, "and it is drawn back at the pad"
 
     play(reel)
     assert not reel.veiled(far), "by the end nothing is veiled"
@@ -137,7 +137,7 @@ def test_the_plan_is_torn_up_when_it_is_wrong():
     lengths = []
     while reel.busy:
         reel.tick(1 / 60)
-        if any(C.ARENA[y][x] == "#" for x, y in reel.plan):
+        if any(config.ARENA[y][x] == "#" for x, y in reel.plan):
             saw_plan_over_rock = True
         if reel.bump:
             lengths.append(len(reel.plan))
@@ -196,7 +196,7 @@ def test_a_long_stall_catches_up_rather_than_crawling():
 
 
 def test_turning_it_off_records_nothing():
-    S.ANIMATE = False
+    settings.ANIMATE = False
     try:
         w = World()
         nav.goto(w, 15, 0)
@@ -205,7 +205,7 @@ def test_turning_it_off_records_nothing():
         assert w.pos == (15, 0), "but the drive still happened"
         assert not anim.Reel(w).busy, "and a reel over an empty queue is never busy"
     finally:
-        S.ANIMATE = True
+        settings.ANIMATE = True
 
 
 def test_work_takes_time_on_screen_like_driving():
@@ -224,14 +224,14 @@ def test_work_takes_time_on_screen_like_driving():
     reel.tick(1 / 60)
     assert reel.busy and reel.work and reel.work[0] == i.cell, "while it plays, the reel is busy and shows the progress"
     drawn = play(reel) / 60
-    step = S.ANIM_STEP / S.ANIM_SPEED
+    step = settings.ANIM_STEP / settings.ANIM_SPEED
     assert abs(drawn - i.cost * step) <= step + 0.05, "and it takes a driving step's time per step of work, to within one"
     assert not reel.busy and reel.work is None, "then it clears"
 
 
 def test_the_queue_cannot_grow_forever():
     w = World()
-    for i in range(S.REEL_MAX * 3):
-        w.pos = C.SPAWN
+    for i in range(settings.REEL_MAX * 3):
+        w.pos = config.SPAWN
         nav.price(w, 15, 0)
-    assert len(w.reel) == S.REEL_MAX, "capped"
+    assert len(w.reel) == settings.REEL_MAX, "capped"

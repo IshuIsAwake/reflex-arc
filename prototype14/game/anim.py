@@ -8,7 +8,7 @@ once and records what it did as (kind, payload) steps; this plays them back on s
     work     an `execute`, a step at a time
 """
 
-import settings as S
+import settings
 
 
 def frames(timeline):
@@ -18,18 +18,18 @@ def frames(timeline):
         if kind == "start":
             out.append(("at", data, 0.0))
         elif kind == "plan":
-            out += [("plan", data[:n], S.ANIM_PLAN) for n in range(1, len(data) + 1)]
+            out += [("plan", data[:n], settings.ANIM_PLAN) for n in range(1, len(data) + 1)]
         elif kind == "probe":
-            out += [("probe", data[:n], S.ANIM_PROBE) for n in range(1, len(data) + 1)]
+            out += [("probe", data[:n], settings.ANIM_PROBE) for n in range(1, len(data) + 1)]
         elif kind == "step":
-            out.append(("step", data, S.ANIM_STEP))
+            out.append(("step", data, settings.ANIM_STEP))
         elif kind == "work":
             cell, n = data
-            out += [("work", (cell, i, n), S.ANIM_STEP) for i in range(1, n + 1)]
+            out += [("work", (cell, i, n), settings.ANIM_STEP) for i in range(1, n + 1)]
         elif kind == "block":
             # The route pulls back a cell at a time to the rover, rather than vanishing.
-            out.append(("block", data, S.ANIM_BLOCK))
-            out.append(("prune", None, S.ANIM_PRUNE))
+            out.append(("block", data, settings.ANIM_BLOCK))
+            out.append(("prune", None, settings.ANIM_PRUNE))
     return out
 
 
@@ -72,7 +72,7 @@ class Reel:
                 return
             self._load(self.world.reel.pop(0))
 
-        self.wait -= dt * S.ANIM_SPEED
+        self.wait -= dt * settings.ANIM_SPEED
         # A long frame catches up rather than playing in slow motion afterwards.
         while self.wait <= 0 and self.i < len(self.frames):
             kind, data, secs = self.frames[self.i]
@@ -114,7 +114,7 @@ class Reel:
             # One cell off the far end each frame, until the route ends where the rover is.
             if len(self.plan) > 1 and self.plan[-1] != self.at:
                 self.plan = self.plan[:-1]
-                self.frames.insert(self.i + 1, ("prune", None, S.ANIM_PRUNE))
+                self.frames.insert(self.i + 1, ("prune", None, settings.ANIM_PRUNE))
 
     @property
     def destination_status(self):

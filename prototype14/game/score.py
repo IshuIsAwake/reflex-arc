@@ -20,7 +20,7 @@ def _rows(path):
 
 
 def _words(text):
-    return {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 3}
+    return {word for word in re.findall(r"[a-z]+", text.lower()) if len(word) > 3}
 
 
 def _mentions(text, said):

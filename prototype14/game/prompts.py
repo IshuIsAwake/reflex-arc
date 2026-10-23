@@ -1,8 +1,8 @@
 """The system prompt. It is built from config and settings, so no number in it can
 disagree with the game; main.py logs a hash of it every sol."""
 
-import config as C
-import settings as S
+import config
+import settings
 
 
 def _operator_line():
@@ -15,7 +15,7 @@ def _sol_para():
     return f"""\
 **A sol has four parts: dawn, day, dusk and night.** At dawn the day has not begun: no
 time passes and the rover does not move. Read your memory, the board and the work, and
-set up today's list. The day is {S.DAY_SECONDS} seconds of real time from the moment it
+set up today's list. The day is {settings.DAY_SECONDS} seconds of real time from the moment it
 begins, and nothing pauses it: your thinking, every drive and every piece of work as the
 rover does it, and any radio call all happen on that clock. **Use the whole day.** Keep
 working until the battery is down to what the trip back to the pad needs, with a margin,
@@ -30,12 +30,12 @@ driving, work and `end` only by day."""
 
 def _comms_para():
     """Who can reach whom: someone at the desk, or nobody."""
-    if S.COMMS:
+    if settings.COMMS:
         return f"""\
 **Mission control is at the desk.** At dawn and at night you talk with them freely. By
 day they leave you be: if they must reach you, a message marked URGENT stops your turn
 after the call in hand -- act on it and carry on. To speak to them by day, from anywhere,
-call `radio`: it costs {S.RADIO_STEPS} steps of battery, and while the line is open every
+call `radio`: it costs {settings.RADIO_STEPS} steps of battery, and while the line is open every
 reply you speak goes over it at the same cost. If nobody answers within a minute the line
 closes and you carry on alone. The clock does not stop while you talk, so mind it and
 the battery, and ask them to close the line when you need to get back to work."""
@@ -62,7 +62,7 @@ COUNT = {10: "ten", 11: "eleven"}
 
 def _skills():
     offered = [(sig, what) for sig, what in SKILLS
-               if S.COMMS or not sig.startswith("radio(")]
+               if settings.COMMS or not sig.startswith("radio(")]
     lines = "\n".join(f"  {sig:<26} {what}" for sig, what in offered)
     return f"You have {COUNT[len(offered)]} skills:\n\n{lines}"
 
@@ -105,7 +105,7 @@ during the sol that you want to carry forward must go into your memory, as it ha
 and anything you mean to do must go on your list. The list makes a decision once instead
 of every turn: `todo` puts an item on it and `strike` crosses it off. It is cleared when
 dusk ends, so what you put on it at night is waiting for you at dawn. Your memory
-survives every night: named entries, at most {S.MEMORY_ENTRIES} of {S.MEMORY_CHARS} characters
+survives every night: named entries, at most {settings.MEMORY_ENTRIES} of {settings.MEMORY_CHARS} characters
 each, all of it in your view. `remember` writes an entry -- a name you already have
 replaces it whole -- and `forget` drops one; at the cap, forget before you add. Keep it
 lean: one subject to an entry, bullets inside it if they help; change an entry rather
@@ -160,8 +160,8 @@ of everything near you, so you do not have to work out which way is which.
 call in it ends your turn, and the clock gives you another, so never announce what you
 are about to do -- do it, then describe it.
 
-{S.MOVE_HOPS} drives a turn. Looking drains no battery, so it is limited another way: \
-{S.FREE_HOPS} looks, and driving anywhere gives them all back. Reaching either limit ends \
+{settings.MOVE_HOPS} drives a turn. Looking drains no battery, so it is limited another way: \
+{settings.FREE_HOPS} looks, and driving anywhere gives them all back. Reaching either limit ends \
 the turn, and the next starts with both back. Every result says what is left.
 
 **`goto` has no range limit.** One call drives the whole way to any coordinate on the

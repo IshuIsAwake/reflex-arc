@@ -12,9 +12,9 @@ piece gets done for free on the way past, and nothing looks broken.
 """
 
 
-import config as C
+import config
 import nav
-import settings as S
+import settings
 import sight
 import skills
 from world import World
@@ -61,7 +61,7 @@ def test_an_interest_is_hidden_until_seen():
     assert hidden is not None, "an interest can be placed on mapped ground"
     assert nav.known(w.here, *cell) == "." and "*" not in sight.grid(w), "...and the map she reads still says open ground there"
 
-    c = skills.call(w, "goto", {"x": cell[0], "y": cell[1] + S.VISION_RADIUS})
+    c = skills.call(w, "goto", {"x": cell[0], "y": cell[1] + settings.VISION_RADIUS})
     assert hidden.found, "driving within sight finds it"
     assert f"({cell[0]},{cell[1]})" in c.result and "closer look" in c.result, "...the drive's result says so, with where"
     assert nav.known(w.here, *cell) == "*" and len(sight.interests(w)) == 1, "...and now it is on the map and listed"
@@ -129,8 +129,8 @@ def test_the_environment_does_not_rank_them():
 
 
 def test_auto_objectives_come_in_sets():
-    keep = S.OBJECTIVES
-    S.OBJECTIVES = "auto"
+    keep = settings.OBJECTIVES
+    settings.OBJECTIVES = "auto"
     try:
         w = World()
         assert not w.auto_objectives(), "none on sol 1"
@@ -139,7 +139,7 @@ def test_auto_objectives_come_in_sets():
         placed = w.auto_objectives()
         assert sorted(o.priority for o in placed) == ["high", "low", "medium"], "three on sol 2, one of each priority"
         assert all(w.here.visible(*o.cell) for o in placed), "...all on mapped open ground"
-        assert (all(S.OBJECTIVE_COST[0] <= o.cost <= S.OBJECTIVE_COST[1]
+        assert (all(settings.OBJECTIVE_COST[0] <= o.cost <= settings.OBJECTIVE_COST[1]
                         and o.cost % 5 == 0 for o in placed)), "...with work in fives between the bounds"
         assert [o.cell for o in placed] == [o.cell for o in _again(w)], "...and the same three for the same sol"
         w.next_day()
@@ -147,14 +147,14 @@ def test_auto_objectives_come_in_sets():
         for o in list(w.objectives):
             _beside(w, o.cell)
             skills.call(w, "execute", {})
-        w.pos = C.SPAWN
+        w.pos = config.SPAWN
         w.next_day()
         assert len(w.auto_objectives()) == 3, "a new set once the last is finished"
-        S.OBJECTIVES = "manual"
+        settings.OBJECTIVES = "manual"
         w.next_day()
         assert not w.auto_objectives(), "manual places none"
     finally:
-        S.OBJECTIVES = keep
+        settings.OBJECTIVES = keep
 
 
 def _again(w):
@@ -181,15 +181,15 @@ def test_a_battery_that_runs_flat_mid_task_still_pays_for_what_it_used():
 
 def test_the_arena_survives_them_being_solid():
     for name in ("30", "50"):
-        C.use(name)
+        config.use(name)
         w = World()
         w.here.reveal_all()
         for i in w.interests:
             i.found = True
         for i in w.interests:
-            path = nav.plan(w.here, C.SPAWN, i.cell)
+            path = nav.plan(w.here, config.SPAWN, i.cell)
             assert path is not None and path[-1] != i.cell, f"{name}: the interest at {i.cell} can be reached"
-    C.use(C.DEFAULT_ARENA)
+    config.use(config.DEFAULT_ARENA)
 
 
 def test_interests_cannot_be_placed_where_work_cannot_happen():

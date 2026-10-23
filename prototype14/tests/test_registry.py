@@ -12,12 +12,13 @@ from pathlib import Path
 import pygame
 
 import chat
-import config as C
+import config
 import prompts
 import registry
+import dashboard
 import render
 import replay
-import settings as S
+import settings
 from world import World
 
 
@@ -78,28 +79,28 @@ def test_each_tier_lands_when_it_says():
     with Sandbox() as sb:
         p = sb.prefs()
         p.set("ANIM_SPEED", 2.0)
-        assert S.ANIM_SPEED == 2.0, "now: in force straight away"
+        assert settings.ANIM_SPEED == 2.0, "now: in force straight away"
 
-        before = S.BATTERY
+        before = settings.BATTERY
         p.set("BATTERY", 150)
-        assert S.BATTERY == before, "next sol: not in force mid-sol"
+        assert settings.BATTERY == before, "next sol: not in force mid-sol"
         assert p.shown(registry.BY_NAME["BATTERY"]) == 150, "...but shown as the value"
         done = p.nightfall()
-        assert S.BATTERY == 150, "...and in force after nightfall"
+        assert settings.BATTERY == 150, "...and in force after nightfall"
         assert p.pending == {}, "...once"
 
         p.set("MODEL", "gemma4:e4b")
-        assert (S.MODEL != "gemma4:e4b"
+        assert (settings.MODEL != "gemma4:e4b"
                     or registry.BY_NAME["MODEL"].default == "gemma4:e4b"), "the model waits for the sol too"
-        p.set("MODEL", S.MODEL)
+        p.set("MODEL", settings.MODEL)
         assert "MODEL" not in p.pending, "changing it back cancels the wait"
 
-        hud = C.HUD_H
+        hud = config.HUD_H
         p.set("HUD_H", 200)
         p.nightfall()
-        assert C.HUD_H == hud, "relaunch: not applied by nightfall either"
+        assert config.HUD_H == hud, "relaunch: not applied by nightfall either"
         registry.Prefs(sb.path).apply_all()
-        assert C.HUD_H == 200, "...only at the next start"
+        assert config.HUD_H == 200, "...only at the next start"
 
 
 def test_bad_values_are_refused():
@@ -124,7 +125,7 @@ def test_bad_values_are_refused():
 
 def test_the_prompt_states_the_settings():
     with Sandbox():
-        S.MOVE_HOPS, S.FREE_HOPS = 7, 3
+        settings.MOVE_HOPS, settings.FREE_HOPS = 7, 3
         text = prompts.use()
         assert "7 drives a turn" in text, "drives"
         assert "3 looks" in text, "looks"
@@ -141,13 +142,13 @@ def test_replay_uses_the_logs_settings():
         (run / "game.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
         (run / "chat.jsonl").write_text("")
         script = replay.Script(run)
-        hud, model = C.HUD_H, S.MODEL
+        hud, model = config.HUD_H, settings.MODEL
         script.use_settings(1)
-        assert S.BATTERY == 150, "sol 1's world settings"
-        assert C.HUD_H == hud, "the viewer keeps their own window"
-        assert S.MODEL == model, "...and nothing about the model is taken"
+        assert settings.BATTERY == 150, "sol 1's world settings"
+        assert config.HUD_H == hud, "the viewer keeps their own window"
+        assert settings.MODEL == model, "...and nothing about the model is taken"
         script.use_settings(2)
-        assert S.BATTERY == 300, "sol 2's own"
+        assert settings.BATTERY == 300, "sol 2's own"
         assert not sb.path.exists(), "nothing was saved as the viewer's"
 
 
@@ -164,10 +165,10 @@ def test_the_screens_draw():
     pane = pygame.Surface((600, 700))
     for memory in (False, True):
         render.draw_chat(pane, conv, w, f, "", False, 0, memory=memory)
-    rows = render.D.list_rows(w)
+    rows = dashboard.list_rows(w)
     assert ("drive to objective 2", "struck") in rows, "struck items are ticked"
     assert ("a long item " * 12, "open") in rows, "open ones are not"
-    lines = [t for t, _ in render.D.memory_rows(w, 60)]
+    lines = [t for t, _ in dashboard.memory_rows(w, 60)]
     assert (lines.index("the C: east of the pad")
                 < lines.index("STANDING ORDERS") < lines.index("1. finish objective 2")), "the memory, then the orders"
     assert "drive to objective 2" not in lines, "the list is not in the memory view"

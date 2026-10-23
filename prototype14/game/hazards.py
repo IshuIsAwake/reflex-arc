@@ -3,7 +3,7 @@ so nav plans around it. Seeded from the arena and the sol, so a replay gets the 
 
 import random
 
-import settings as S
+import settings
 
 
 class Storm:
@@ -38,7 +38,7 @@ def _disc(cx, cy, r, w, h):
 def spawn_for_day(area, day, start, keep_clear=()):
     """The storm for `day`, or None. It never covers `start` (where the rover wakes), and
     every cell in `keep_clear` (the pad and the work) keeps an open neighbour the rover can reach."""
-    if not S.STORM_ON:
+    if not settings.STORM_ON:
         return None
 
     keep = set(keep_clear) | {start}
@@ -49,7 +49,7 @@ def spawn_for_day(area, day, start, keep_clear=()):
 
     for _ in range(20):
         cx, cy = rng.randrange(area.w), rng.randrange(area.h)
-        cells = _disc(cx, cy, S.STORM_RADIUS, area.w, area.h)
+        cells = _disc(cx, cy, settings.STORM_RADIUS, area.w, area.h)
         if not cells or cells & keep:
             continue
         if not _all_approachable(area, start, frozenset(cells), keep_clear):

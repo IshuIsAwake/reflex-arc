@@ -19,7 +19,7 @@ import types
 
 import chat
 import prompts
-import settings as S
+import settings
 import sight
 import skills
 import world
@@ -283,7 +283,7 @@ def test_looking_is_paid_for_with_driving():
     c.open_day(w)
     c.send("how far is (2,2)?")
     c.pump()
-    assert len(_ran(c)) == S.FREE_HOPS, "looking stopped at the allowance"
+    assert len(_ran(c)) == settings.FREE_HOPS, "looking stopped at the allowance"
     assert (c.ended and not any(
         m["content"].startswith("REFUSED") for m in c.messages if m["role"] == "tool")), "and the turn ended by itself, with nothing refused"
     assert any(who == "error" and "looks without a drive" in t for who, t in c.lines), "...and says why"
@@ -291,14 +291,14 @@ def test_looking_is_paid_for_with_driving():
     # A drive buys the looking back.
     w2 = World()
     drive = {"name": "goto", "arguments": {"x": 15, "y": 12}}
-    script = ([("", [look])] * (S.FREE_HOPS - 1) + [("", [drive])]
-              + [("", [look])] * (S.FREE_HOPS - 1)
+    script = ([("", [look])] * (settings.FREE_HOPS - 1) + [("", [drive])]
+              + [("", [look])] * (settings.FREE_HOPS - 1)
               + [("", [{"name": "end", "arguments": {}}])])
     d, _ = rig(w2, script)
     d.open_day(w2)
     d.send("look around")
     d.pump()
-    assert len(_ran(d)) == (S.FREE_HOPS - 1) * 2 + 2, "driving gives the looking allowance back"
+    assert len(_ran(d)) == (settings.FREE_HOPS - 1) * 2 + 2, "driving gives the looking allowance back"
 
 
 def test_driving_is_capped_and_the_turn_ends_itself():
@@ -308,14 +308,14 @@ def test_driving_is_capped_and_the_turn_ends_itself():
     c.open_day(w)
     c.send("explore")
     c.pump()
-    assert len(_ran(c)) == S.MOVE_HOPS, "driving stopped at the cap"
+    assert len(_ran(c)) == settings.MOVE_HOPS, "driving stopped at the cap"
     assert (c.ended and not any(
         m["content"].startswith("REFUSED") for m in c.messages if m["role"] == "tool")), "and the turn ended itself, with nothing refused"
     assert (sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
                 == sum(1 for m in c.messages if m["role"] == "tool")), "every call asked for has an answer"
     c.send("carry on")
     assert (c.moves == 0 and c.frees == 0
-                and "20 drives left" in c._left().replace(str(S.MOVE_HOPS), "20")), "the next turn has both back"
+                and "20 drives left" in c._left().replace(str(settings.MOVE_HOPS), "20")), "the next turn has both back"
 
 
 def test_what_each_phase_allows():
@@ -324,12 +324,12 @@ def test_what_each_phase_allows():
     c, _ = rig(w, [])
     assert (set(c._allowed()) == free | {"goto", "execute",
                                                                   "end", "radio"}), "by day, everything"
-    keep = S.COMMS
-    S.COMMS = False
+    keep = settings.COMMS
+    settings.COMMS = False
     try:
         assert "radio" not in c._allowed(), "...but no radio with nobody at the desk"
     finally:
-        S.COMMS = keep
+        settings.COMMS = keep
     for phase in ("dawn", "dusk", "night"):
         w.phase = phase
         assert set(c._allowed()) == free, f"at {phase}, looking and writing only"
@@ -359,21 +359,21 @@ def test_words_on_an_open_line_cost_battery():
     c.send("work")
     c.pump()
     assert c.ended, "a radio call ends her turn"
-    assert w.battery == S.BATTERY - S.RADIO_STEPS and w.steps == 0, "...and costs its battery, from anywhere"
+    assert w.battery == settings.BATTERY - settings.RADIO_STEPS and w.steps == 0, "...and costs its battery, from anywhere"
     d, _ = rig(w, [("Yes, sampling it now.", [{"name": "count", "arguments": {}}]),
                    ("", [{"name": "count", "arguments": {}}]), ("Done.", [])])
     d.on_line = True
     d.open_day(w)
     d.send("go ahead")
     d.pump()
-    assert w.battery == S.BATTERY - 3 * S.RADIO_STEPS, "every reply she speaks on the line costs the same, and silent calls do not"
+    assert w.battery == settings.BATTERY - 3 * settings.RADIO_STEPS, "every reply she speaks on the line costs the same, and silent calls do not"
     w.phase = "night"
     e, _ = rig(w, [("Good night.", [])])
     e.on_line = True
     e.open_day(w)
     e.send("night")
     e.pump()
-    assert w.battery == S.BATTERY - 3 * S.RADIO_STEPS, "at night words are free"
+    assert w.battery == settings.BATTERY - 3 * settings.RADIO_STEPS, "at night words are free"
 
 
 def test_a_call_written_as_text_is_read_and_run():
@@ -529,8 +529,8 @@ def test_the_request_pins_the_temperature():
         urllib.request.urlopen = real
 
     assert "temperature" in seen.get("options", {}), "temperature is sent"
-    assert seen["options"]["temperature"] == S.MODEL_TEMP, "and it is the setting, not a literal"
-    assert seen["options"].get("num_ctx") == S.MODEL_CTX, "num_ctx is still set too, and explicitly"
+    assert seen["options"]["temperature"] == settings.MODEL_TEMP, "and it is the setting, not a literal"
+    assert seen["options"].get("num_ctx") == settings.MODEL_CTX, "num_ctx is still set too, and explicitly"
     assert ([t["function"]["name"] for t in seen.get("tools", [])]
                 == skills.NAMES), "the tools went with it"
 
@@ -610,7 +610,7 @@ def test_full_context_is_shouted():
     c = chat.Conversation(w)
     c.busy = True
     c.q.put(("say", "fine"))
-    c.q.put(("done", ({"prompt_eval_count": int(S.MODEL_CTX * 0.95),
+    c.q.put(("done", ({"prompt_eval_count": int(settings.MODEL_CTX * 0.95),
                        "eval_count": 2}, [])))
     c.pump()
     # Ollama drops the oldest messages without a word, so the model reads as forgetful

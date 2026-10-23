@@ -2,7 +2,7 @@
 so everything above this file runs on a laptop; open_motors() falls back to it without
 gpiozero."""
 
-import config as C
+import config
 
 
 def duty(power):
@@ -10,23 +10,23 @@ def duty(power):
     p = max(-1.0, min(1.0, power))
     if abs(p) < 1e-3:
         return True, 0.0
-    return p > 0, C.MIN_DUTY + abs(p) * (C.MAX_DUTY - C.MIN_DUTY)
+    return p > 0, config.MIN_DUTY + abs(p) * (config.MAX_DUTY - config.MIN_DUTY)
 
 
 class Motors:
     def __init__(self):
         from gpiozero import DigitalOutputDevice, PWMOutputDevice
-        self._pwm = (PWMOutputDevice(C.M1_PWM, frequency=C.PWM_HZ),
-                     PWMOutputDevice(C.M2_PWM, frequency=C.PWM_HZ))
-        self._dir = (DigitalOutputDevice(C.M1_DIR), DigitalOutputDevice(C.M2_DIR))
+        self._pwm = (PWMOutputDevice(config.M1_PWM, frequency=config.PWM_HZ),
+                     PWMOutputDevice(config.M2_PWM, frequency=config.PWM_HZ))
+        self._dir = (DigitalOutputDevice(config.M1_DIR), DigitalOutputDevice(config.M2_DIR))
         self.stop()
 
     def set(self, left, right):
-        if C.INVERT_LEFT:
+        if config.INVERT_LEFT:
             left = -left
-        if C.INVERT_RIGHT:
+        if config.INVERT_RIGHT:
             right = -right
-        m1, m2 = (left, right) if C.LEFT_IS_M1 else (right, left)
+        m1, m2 = (left, right) if config.LEFT_IS_M1 else (right, left)
         for pwm, pin, power in zip(self._pwm, self._dir, (m1, m2)):
             fwd, d = duty(power)
             pin.value = 1 if fwd else 0

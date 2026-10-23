@@ -10,7 +10,7 @@ import argparse
 import statistics
 import time
 
-import config as C
+import config
 from motors import open_motors
 
 POWER = {"forward": (1, 1), "turn": (1, -1)}
@@ -42,11 +42,11 @@ def main():
             input(f"rep {r + 1}/{args.reps}: place the rover, Enter to go ")
             left, right = POWER[args.what]
             sign = -1 if (args.what == "turn" and r % 2) else 1
-            p = C.DRIVE_POWER if args.what == "forward" else C.TURN_POWER
+            p = config.DRIVE_POWER if args.what == "forward" else config.TURN_POWER
             motors.set(sign * left * p, sign * right * p)
             time.sleep(args.seconds)
             motors.stop()
-            time.sleep(C.SETTLE_S)
+            time.sleep(config.SETTLE_S)
             got.append(abs(ask(f"  measured, in {unit}: ")))
     finally:
         motors.close()
@@ -61,12 +61,12 @@ def main():
         return
     if args.what == "forward":
         speed = m / 100  # cm/s -> m/s
-        C.save(FORWARD_M_PER_S=round(speed, 4))
-        print(f"FORWARD_M_PER_S = {speed:.3f} m/s  (saved) -> {C.FORWARD_S_PER_CELL:.2f} s "
-              f"for a {C.CELL_M} m cell; a new cell size follows by itself")
+        config.save(FORWARD_M_PER_S=round(speed, 4))
+        print(f"FORWARD_M_PER_S = {speed:.3f} m/s  (saved) -> {config.FORWARD_S_PER_CELL:.2f} s "
+              f"for a {config.CELL_M} m cell; a new cell size follows by itself")
     else:
         value = 90 / m
-        C.save(TURN_S_PER_90=round(value, 3))
+        config.save(TURN_S_PER_90=round(value, 3))
         print(f"TURN_S_PER_90 = {value:.2f} s  (saved)")
     if spread > 15:
         print("spread over 15 % -- open-loop moves will miss often.")

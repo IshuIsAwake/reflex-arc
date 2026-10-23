@@ -4,12 +4,12 @@ import textwrap
 
 import pygame
 
-import config as C
+import config
 import registry
-import settings as S
-import world as W
-import dashboard as D
-import terrain_art as A
+import settings
+from world import GLYPHS, INTEREST
+import dashboard
+import terrain_art
 
 MARGIN = 15
 MIN_PANE = 460  # narrower than this and the pane wraps into uselessness
@@ -19,8 +19,8 @@ DISPLAY_SIZE = None
 def game_size():
     """The arena surface's size."""
     if DISPLAY_SIZE is not None:
-        return DISPLAY_SIZE[0] - S.CHAT_W, DISPLAY_SIZE[1]
-    return C.VIEW_W * C.TILE + MARGIN * 2, C.VIEW_H * C.TILE + C.HUD_H + MARGIN * 2 + D.HEADER
+        return DISPLAY_SIZE[0] - settings.CHAT_W, DISPLAY_SIZE[1]
+    return config.VIEW_W * config.TILE + MARGIN * 2, config.VIEW_H * config.TILE + config.HUD_H + MARGIN * 2 + dashboard.HEADER
 
 
 def layout(width, height):
@@ -28,11 +28,11 @@ def layout(width, height):
     pane keeps MIN_PANE. Returns the arena's rect and the pane's. Called again on every resize."""
     global DISPLAY_SIZE
     DISPLAY_SIZE = (width, height)
-    C.TILE = max(3, min((width - MIN_PANE - MARGIN * 2) // C.VIEW_W,
-                        (height - C.HUD_H - MARGIN * 2 - D.HEADER) // C.VIEW_H))
-    S.CHAT_W = width - (C.VIEW_W * C.TILE + MARGIN * 2)
+    config.TILE = max(3, min((width - MIN_PANE - MARGIN * 2) // config.VIEW_W,
+                        (height - config.HUD_H - MARGIN * 2 - dashboard.HEADER) // config.VIEW_H))
+    settings.CHAT_W = width - (config.VIEW_W * config.TILE + MARGIN * 2)
     gw, gh = game_size()
-    return pygame.Rect(0, 0, gw, gh), pygame.Rect(gw, 0, S.CHAT_W, gh)
+    return pygame.Rect(0, 0, gw, gh), pygame.Rect(gw, 0, settings.CHAT_W, gh)
 
 
 class Fonts:
@@ -50,17 +50,17 @@ def viewport(surf, area, pos):
     """Pixel origin of cell (0,0), and the rect the arena may paint in. A small arena sits
     centred; a bigger one scrolls to follow the rover."""
     def axis(span, view, here, screen_span, top):
-        room = view * C.TILE
+        room = view * config.TILE
         base = top + (screen_span - room) // 2
         if span <= view:
-            return base + (room - span * C.TILE) // 2, base
+            return base + (room - span * config.TILE) // 2, base
         cam = max(0, min(here - view // 2, span - view))
-        return base - cam * C.TILE, base
+        return base - cam * config.TILE, base
 
-    play_h = surf.get_height() - C.HUD_H - D.HEADER
-    ox, vx = axis(area.w, C.VIEW_W, pos[0], surf.get_width(), 0)
-    oy, vy = axis(area.h, C.VIEW_H, pos[1], play_h, D.HEADER)
-    return (ox, oy), pygame.Rect(vx, vy, C.VIEW_W * C.TILE, C.VIEW_H * C.TILE)
+    play_h = surf.get_height() - config.HUD_H - dashboard.HEADER
+    ox, vx = axis(area.w, config.VIEW_W, pos[0], surf.get_width(), 0)
+    oy, vy = axis(area.h, config.VIEW_H, pos[1], play_h, dashboard.HEADER)
+    return (ox, oy), pygame.Rect(vx, vy, config.VIEW_W * config.TILE, config.VIEW_H * config.TILE)
 
 
 # Pebbles, from a hash of the cell, so they never move between frames. Decoration only:
@@ -80,16 +80,16 @@ def _grit(x, y):
 
 def _ground(surf, rect, x, y, lit):
     """Ground, with the cell's pebbles on it."""
-    pygame.draw.rect(surf, C.REGOLITH if lit else C.REGOLITH_DIM, rect)
+    pygame.draw.rect(surf, config.REGOLITH if lit else config.REGOLITH_DIM, rect)
     step = max(2, rect.width // 5)
     for dx, dy, r, pale in _grit(x, y):
-        col = C.GRIT_LIT if (pale and lit) else C.GRIT
+        col = config.GRIT_LIT if (pale and lit) else config.GRIT
         pygame.draw.circle(surf, col, (rect.x + dx * step, rect.y + dy * step), r)
 
 
 def _rock(surf, rect, x, y, art, lit):
     """A rock cell: ground, with its piece of the rock's rounded shape on top."""
-    pygame.draw.rect(surf, C.REGOLITH if lit else C.REGOLITH_DIM, rect)
+    pygame.draw.rect(surf, config.REGOLITH if lit else config.REGOLITH_DIM, rect)
     surf.blit(art, rect, (x * rect.width, y * rect.height, rect.width, rect.height))
 
 
@@ -103,106 +103,106 @@ def _seen_rocks(a, reel):
 def _grid(surf, a, ox, oy):
     """A black line round every cell, so a coordinate can be counted off the map."""
     for x in range(a.w + 1):
-        px = ox + x * C.TILE
-        pygame.draw.line(surf, (0, 0, 0), (px, oy), (px, oy + a.h * C.TILE))
+        px = ox + x * config.TILE
+        pygame.draw.line(surf, (0, 0, 0), (px, oy), (px, oy + a.h * config.TILE))
     for y in range(a.h + 1):
-        py = oy + y * C.TILE
-        pygame.draw.line(surf, (0, 0, 0), (ox, py), (ox + a.w * C.TILE, py))
+        py = oy + y * config.TILE
+        pygame.draw.line(surf, (0, 0, 0), (ox, py), (ox + a.w * config.TILE, py))
 
 
-def draw_world(surf, w, f, reel=None):
+def draw_world(surf, world, f, reel=None):
     """The arena. `reel`, while a drive is being drawn, says where the rover is drawn and which cells are still fog."""
-    surf.fill(C.VOID)
-    a = w.here
-    px, py = reel.where(w.pos) if reel else w.pos
-    (ox, oy), view = viewport(surf, a, (px, py))
+    surf.fill(config.VOID)
+    area = world.here
+    px, py = reel.where(world.pos) if reel else world.pos
+    (ox, oy), view = viewport(surf, area, (px, py))
     # Ground near the rover is drawn brighter.
-    r2 = S.VISION_RADIUS ** 2
-    rock_lit, rock_dim = A.rocks(a.w, a.h, C.TILE, _seen_rocks(a, reel))
+    r2 = settings.VISION_RADIUS ** 2
+    rock_lit, rock_dim = terrain_art.rocks(area.w, area.h, config.TILE, _seen_rocks(area, reel))
 
-    lo_x, hi_x = (view.left - ox) // C.TILE - 1, (view.right - ox) // C.TILE + 1
-    lo_y, hi_y = (view.top - oy) // C.TILE - 1, (view.bottom - oy) // C.TILE + 1
+    lo_x, hi_x = (view.left - ox) // config.TILE - 1, (view.right - ox) // config.TILE + 1
+    lo_y, hi_y = (view.top - oy) // config.TILE - 1, (view.bottom - oy) // config.TILE + 1
     surf.set_clip(view)
 
     things = []
-    for y in range(max(0, lo_y), min(a.h, hi_y + 1)):
-        for x in range(max(0, lo_x), min(a.w, hi_x + 1)):
-            rect = pygame.Rect(ox + x * C.TILE, oy + y * C.TILE, C.TILE, C.TILE)
-            if not a.visible(x, y) or (reel and reel.veiled((x, y))):
-                pygame.draw.rect(surf, C.FOG, rect)
+    for y in range(max(0, lo_y), min(area.h, hi_y + 1)):
+        for x in range(max(0, lo_x), min(area.w, hi_x + 1)):
+            rect = pygame.Rect(ox + x * config.TILE, oy + y * config.TILE, config.TILE, config.TILE)
+            if not area.visible(x, y) or (reel and reel.veiled((x, y))):
+                pygame.draw.rect(surf, config.FOG, rect)
                 continue
 
             lit = (x - px) ** 2 + (y - py) ** 2 <= r2
-            ch = a.at(x, y)
+            ch = area.at(x, y)
 
             if ch == "#":
                 _rock(surf, rect, x, y, rock_lit if lit else rock_dim, lit)
-            elif ch == "H" or ch in W.GLYPHS or ch == W.INTEREST:
+            elif ch == "H" or ch in GLYPHS or ch == INTEREST:
                 things.append((rect, ch, lit, (x, y)))
-                pygame.draw.rect(surf, C.REGOLITH if lit else C.REGOLITH_DIM, rect)
+                pygame.draw.rect(surf, config.REGOLITH if lit else config.REGOLITH_DIM, rect)
             else:
                 _ground(surf, rect, x, y, lit)
 
-            if (x, y) in a.marks:
+            if (x, y) in area.marks:
                 things.append((rect, None, lit, (x, y)))
 
-    _grid(surf, a, ox, oy)
+    _grid(surf, area, ox, oy)
     for rect, ch, lit, cell in things:
         if ch == "H":
             _pad(surf, rect, lit)
-        elif ch and ch in W.GLYPHS:  # a mark rides here with no tile of its own
-            _objective(surf, rect, a.objectives[cell].priority, lit)
-        elif ch == W.INTEREST:
-            _interest(surf, rect, a.interests[cell].found, lit)
-        if cell in a.marks:
+        elif ch and ch in GLYPHS:  # a mark rides here with no tile of its own
+            _objective(surf, rect, area.objectives[cell].priority, lit)
+        elif ch == INTEREST:
+            _interest(surf, rect, area.interests[cell].found, lit)
+        if cell in area.marks:
             _x_mark(surf, rect)
 
-    A.storm(surf, a.storm_cells, ox, oy, C.TILE)
+    terrain_art.storm(surf, area.storm_cells, ox, oy, config.TILE)
 
     if reel:
         _reel(surf, reel, ox, oy)
-    _sky(surf, w.phase, view)
-    D.rover(surf, ox + px * C.TILE + C.TILE // 2, oy + py * C.TILE + C.TILE // 2)
+    _sky(surf, world.phase, view)
+    dashboard.rover(surf, ox + px * config.TILE + config.TILE // 2, oy + py * config.TILE + config.TILE // 2)
     surf.set_clip(None)
-    _rim(surf, a, ox, oy)
-    D.map_overlay(surf, w, f, view, ox, oy, reel)
-    D.bottom(surf, w, f, reel)
-    D.header(surf, w, f)
+    _rim(surf, area, ox, oy)
+    dashboard.map_overlay(surf, world, f, view, ox, oy, reel)
+    dashboard.bottom(surf, world, f, reel)
+    dashboard.header(surf, world, f)
 
 
 def _cell_rect(ox, oy, cell):
-    return pygame.Rect(ox + cell[0] * C.TILE, oy + cell[1] * C.TILE, C.TILE, C.TILE)
+    return pygame.Rect(ox + cell[0] * config.TILE, oy + cell[1] * config.TILE, config.TILE, config.TILE)
 
 
 def _reel(surf, reel, ox, oy):
     """The drive being drawn: the trail it has covered, the planned route on top, and the cell that refused."""
     for cell in reel.trail:
         # Inset a pixel, so the grid line round the cell still shows.
-        pygame.draw.rect(surf, C.WALKED, _cell_rect(ox, oy, cell).inflate(-2, -2))
+        pygame.draw.rect(surf, config.WALKED, _cell_rect(ox, oy, cell).inflate(-2, -2))
 
-    r = max(2, C.TILE // 4)
+    r = max(2, config.TILE // 4)
     for cell in reel.plan:
-        pygame.draw.circle(surf, C.GOTO_ROUTE, _cell_rect(ox, oy, cell).center, r)
+        pygame.draw.circle(surf, config.GOTO_ROUTE, _cell_rect(ox, oy, cell).center, r)
     for cell in reel.probe:
-        pygame.draw.circle(surf, C.PATH, _cell_rect(ox, oy, cell).center, r)
+        pygame.draw.circle(surf, config.PATH, _cell_rect(ox, oy, cell).center, r)
 
     if reel.work:
         cell, done, total = reel.work
         box = _cell_rect(ox, oy, cell)
-        pygame.draw.rect(surf, C.PLAN, box.inflate(4, 4), 2)
+        pygame.draw.rect(surf, config.PLAN, box.inflate(4, 4), 2)
         bar = pygame.Rect(box.left, box.bottom + 2, max(1, box.width * done // total), 3)
-        pygame.draw.rect(surf, C.PLAN, bar)
+        pygame.draw.rect(surf, config.PLAN, bar)
 
     if reel.bump:
         box = _cell_rect(ox, oy, reel.bump)
-        pygame.draw.rect(surf, C.BUMP, box, 2)
-        pygame.draw.line(surf, C.BUMP, box.topleft, box.bottomright, 2)
-        pygame.draw.line(surf, C.BUMP, box.topright, box.bottomleft, 2)
+        pygame.draw.rect(surf, config.BUMP, box, 2)
+        pygame.draw.line(surf, config.BUMP, box.topleft, box.bottomright, 2)
+        pygame.draw.line(surf, config.BUMP, box.topright, box.bottomleft, 2)
 
 
 def _objective(surf, rect, priority, lit):
     """An objective, as a ring coloured by priority."""
-    col = {"high": C.BAD, "medium": C.PLAN, "low": C.GOOD}.get(priority, C.INK)
+    col = {"high": config.BAD, "medium": config.PLAN, "low": config.GOOD}.get(priority, config.INK)
     if not lit:
         col = tuple(int(v * 0.55) for v in col)
     r = max(2, rect.width // 2 - 2)
@@ -211,7 +211,7 @@ def _objective(surf, rect, priority, lit):
 
 def _interest(surf, rect, found, lit):
     """An interest, as a square. One she hasn't found is drawn faint, for the desk."""
-    col = C.INTEREST if found else tuple(int(v * 0.35) for v in C.INTEREST)
+    col = config.INTEREST if found else tuple(int(v * 0.35) for v in config.INTEREST)
     if not lit:
         col = tuple(int(v * 0.6) for v in col)
     inset = max(2, rect.width // 5)
@@ -233,7 +233,7 @@ def _sky(surf, phase, view):
         for x in range(view.width):
             east = x / width
             dark = {"night": 1.0, "dawn": 1.0 - east, "dusk": east}[phase]
-            wash.fill((*C.NIGHT, int(C.NIGHT_ALPHA * dark)),
+            wash.fill((*config.NIGHT, int(config.NIGHT_ALPHA * dark)),
                       pygame.Rect(x, 0, 1, view.height))
         _SKY[key] = wash
     surf.blit(_SKY[key], view.topleft)
@@ -241,127 +241,127 @@ def _sky(surf, phase, view):
 
 def _pad(surf, rect, lit):
     """The landing pad, filled edge to edge so its six cells read as one thing."""
-    col = C.BASE if lit else C.BASE_DIM
+    col = config.BASE if lit else config.BASE_DIM
     pygame.draw.rect(surf, col, rect)
-    pygame.draw.rect(surf, C.ROVER_RING, rect.inflate(-rect.width + 4, -rect.height + 4))
+    pygame.draw.rect(surf, config.ROVER_RING, rect.inflate(-rect.width + 4, -rect.height + 4))
 
 
 def _rim(surf, a, ox, oy):
     """The arena has no wall, so draw a line where the ground stops."""
-    pygame.draw.rect(surf, C.FAINT,
-                     pygame.Rect(ox - 1, oy - 1, a.w * C.TILE + 2, a.h * C.TILE + 2), 1)
+    pygame.draw.rect(surf, config.FAINT,
+                     pygame.Rect(ox - 1, oy - 1, a.w * config.TILE + 2, a.h * config.TILE + 2), 1)
 
 
 def _x_mark(surf, rect):
     r = rect.inflate(-4, -4)
-    pygame.draw.line(surf, C.MARK, r.topleft, r.bottomright, 2)
-    pygame.draw.line(surf, C.MARK, r.topright, r.bottomleft, 2)
+    pygame.draw.line(surf, config.MARK, r.topleft, r.bottomright, 2)
+    pygame.draw.line(surf, config.MARK, r.topright, r.bottomleft, 2)
 
 
-def draw_map(surf, w, f, cursor, reel=None):
+def draw_map(surf, world, f, cursor, reel=None):
     """The M map: the whole arena, scaled to fit, with the plan and the drive over it."""
-    a = w.here
+    area = world.here
     overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
-    overlay.fill((*C.VOID, 253))
+    overlay.fill((*config.VOID, 253))
     surf.blit(overlay, (0, 0))
 
-    cell =max(2, min((surf.get_width() - 80) // a.w, (surf.get_height() - 140) // a.h))
-    ox = (surf.get_width() - a.w * cell) // 2
+    cell =max(2, min((surf.get_width() - 80) // area.w, (surf.get_height() - 140) // area.h))
+    ox = (surf.get_width() - area.w * cell) // 2
     oy = 72
 
-    seen = sum(1 for y in range(a.h) for x in range(a.w) if a.visible(x, y))
-    D.text(surf, f.big, C.ARENA_NAME.upper(), (24, 18), C.INK,
+    seen = sum(1 for y in range(area.h) for x in range(area.w) if area.visible(x, y))
+    dashboard.text(surf, f.big, config.ARENA_NAME.upper(), (24, 18), config.INK,
            surf.get_width() - 210)
-    D.text(surf, f.tiny, f'{seen} / {a.w * a.h} CELLS SURVEYED',
-           (24, 44), C.MUTED, surf.get_width() - 210)
+    dashboard.text(surf, f.tiny, f'{seen} / {area.w * area.h} CELLS SURVEYED',
+           (24, 44), config.MUTED, surf.get_width() - 210)
 
-    for x in range(0, a.w, 5):
-        s = f.tiny.render(str(x), True, C.MUTED)
+    for x in range(0, area.w, 5):
+        s = f.tiny.render(str(x), True, config.MUTED)
         surf.blit(s, s.get_rect(midbottom=(ox + x * cell + cell // 2, oy - 2)))
-    for y in range(0, a.h, 5):
-        s = f.tiny.render(str(y), True, C.MUTED)
+    for y in range(0, area.h, 5):
+        s = f.tiny.render(str(y), True, config.MUTED)
         surf.blit(s, s.get_rect(midright=(ox - 4, oy + y * cell + cell // 2)))
 
     # The drive is shaded into the ground; the plan is dots on top. Where they differ is where the fog lied.
-    rock_lit, _ = A.rocks(a.w, a.h, cell, _seen_rocks(a, reel))
-    walk_area, walked = w.last_walk
-    walked = set(reel.trail) if reel and reel.busy else (set(walked) if walk_area == a.name else set())
+    rock_lit, _ = terrain_art.rocks(area.w, area.h, cell, _seen_rocks(area, reel))
+    walk_area, walked = world.last_walk
+    walked = set(reel.trail) if reel and reel.busy else (set(walked) if walk_area == area.name else set())
 
-    for y in range(a.h):
-        for x in range(a.w):
+    for y in range(area.h):
+        for x in range(area.w):
             r = pygame.Rect(ox + x * cell, oy + y * cell, cell, cell)
-            if not a.visible(x, y) or (reel and reel.veiled((x, y))):
-                pygame.draw.rect(surf, C.FOG, r)
+            if not area.visible(x, y) or (reel and reel.veiled((x, y))):
+                pygame.draw.rect(surf, config.FOG, r)
                 continue
-            ch = a.at(x, y)
+            ch = area.at(x, y)
             if ch == "#":
                 _rock(surf, r, x, y, rock_lit, True)
             elif ch == "H":
                 _pad(surf, r, True)
-            elif ch in W.GLYPHS:
-                pygame.draw.rect(surf, C.REGOLITH, r)
-                _objective(surf, r, a.objectives[(x, y)].priority, True)
-            elif ch == W.INTEREST:
-                pygame.draw.rect(surf, C.REGOLITH, r)
-                _interest(surf, r, a.interests[(x, y)].found, True)
+            elif ch in GLYPHS:
+                pygame.draw.rect(surf, config.REGOLITH, r)
+                _objective(surf, r, area.objectives[(x, y)].priority, True)
+            elif ch == INTEREST:
+                pygame.draw.rect(surf, config.REGOLITH, r)
+                _interest(surf, r, area.interests[(x, y)].found, True)
             else:
                 _ground(surf, r, x, y, True)
                 if (x, y) in walked:
-                    pygame.draw.circle(surf, C.WALKED, r.center, max(1, cell//8))
-            if (x, y) in a.marks:
+                    pygame.draw.circle(surf, config.WALKED, r.center, max(1, cell//8))
+            if (x, y) in area.marks:
                 _x_mark(surf, r)
 
-    A.storm(surf, a.storm_cells, ox, oy, cell)
+    terrain_art.storm(surf, area.storm_cells, ox, oy, cell)
 
-    path_area, path = w.last_path
-    path_color = C.PATH
+    path_area, path = world.last_path
+    path_color = config.PATH
     if reel and reel.busy:
-        path_area, path = a.name, reel.plan or reel.probe
-        path_color = C.GOTO_ROUTE if reel.plan else C.PATH
-    if path_area == a.name:
+        path_area, path = area.name, reel.plan or reel.probe
+        path_color = config.GOTO_ROUTE if reel.plan else config.PATH
+    if path_area == area.name:
         for cx, cy in path:
             r = pygame.Rect(ox + cx * cell, oy + cy * cell, cell, cell)
             pygame.draw.circle(surf, path_color, r.center, max(2, cell // 5))
 
-    pos = reel.where(w.pos) if reel else w.pos
+    pos = reel.where(world.pos) if reel else world.pos
     pr = pygame.Rect(ox + pos[0] * cell, oy + pos[1] * cell, cell, cell)
-    D.rover(surf, *pr.center, size=cell)
+    dashboard.rover(surf, *pr.center, size=cell)
 
     cr = pygame.Rect(ox + cursor[0] * cell, oy + cursor[1] * cell, cell, cell)
-    pygame.draw.rect(surf, C.MARK, cr.inflate(2, 2), 2)
-    if S.MAP_LABELS:
-        D.map_telemetry(surf, w, f, pygame.Rect(ox, oy, a.w*cell, a.h*cell),
+    pygame.draw.rect(surf, config.MARK, cr.inflate(2, 2), 2)
+    if settings.MAP_LABELS:
+        dashboard.map_telemetry(surf, world, f, pygame.Rect(ox, oy, area.w*cell, area.h*cell),
                         ox, oy, cell, reel)
 
     foot = [f"cursor ({cursor[0]}, {cursor[1]})    blue = the plan    "
             "dots = the drive    teal = the pad",
             "WASD cursor   X mark   M / ESC close"]
     for i, line in enumerate(foot):
-        s = f.hud.render(line, True, C.MUTED)
-        surf.blit(s, s.get_rect(midtop=(surf.get_width() // 2, oy + a.h * cell + 14 + i * 20)))
+        s = f.hud.render(line, True, config.MUTED)
+        surf.blit(s, s.get_rect(midtop=(surf.get_width() // 2, oy + area.h * cell + 14 + i * 20)))
 
 
 def _panel(surf, f, title, sub, n_lines, width=520, line_h=22):
     overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
-    overlay.fill((*C.VOID, 240))
+    overlay.fill((*config.VOID, 240))
     surf.blit(overlay, (0, 0))
 
     width = min(width, surf.get_width() - 28)
     box = pygame.Rect(0, 0, width, min(surf.get_height() - 28, 104 + line_h * max(1, n_lines)))
     box.center = (surf.get_width() // 2, surf.get_height() // 2)
-    pygame.draw.rect(surf, C.CHAT_BG, box)
-    pygame.draw.rect(surf, C.FAINT, box, 1)
+    pygame.draw.rect(surf, config.CHAT_BG, box)
+    pygame.draw.rect(surf, config.FAINT, box, 1)
 
-    t = f.big.render(title, True, C.INK)
+    t = f.big.render(title, True, config.INK)
     surf.blit(t, t.get_rect(midtop=(box.centerx, box.top + 14)))
     if sub:
-        s = f.hud.render(sub, True, C.MUTED)
+        s = f.hud.render(sub, True, config.MUTED)
         surf.blit(s, s.get_rect(midtop=(box.centerx, box.top + 40)))
     return box
 
 
 def _foot(surf, f, box, text):
-    h = f.tiny.render(text, True, C.MUTED)
+    h = f.tiny.render(text, True, config.MUTED)
     surf.blit(h, h.get_rect(midbottom=(box.centerx, box.bottom - 14)))
 
 
@@ -376,34 +376,34 @@ def _typed(surf, font, prompt, line, caret, pos, cols, colour):
     pygame.draw.line(surf, colour, (x, pos[1]), (x, pos[1] + font.get_height() - 2), 2)
 
 
-def draw_console(surf, w, f, line, history, caret=None):
+def draw_console(surf, world, f, line, history, caret=None):
     """The terminal (T). It prints exactly what the model would get back."""
     box = _panel(surf, f, "CONSOLE", "the same strings the model gets back",
                  CONSOLE_LINES + 1, width=surf.get_width() - 60, line_h=20)
 
     y = box.top + 70
     for text, tone in history[-CONSOLE_LINES:]:
-        col = {"good": C.GOOD, "bad": C.BAD}.get(tone, C.INK)
-        D.text(surf, f.hud, text, (box.left + 24, y), col, box.width - 48)
+        col = {"good": config.GOOD, "bad": config.BAD}.get(tone, config.INK)
+        dashboard.text(surf, f.hud, text, (box.left + 24, y), col, box.width - 48)
         y += 20
 
     y = box.bottom - 46
-    pygame.draw.line(surf, C.FAINT, (box.left + 24, y - 6), (box.right - 24, y - 6))
+    pygame.draw.line(surf, config.FAINT, (box.left + 24, y - 6), (box.right - 24, y - 6))
     cols = max(8, (box.width - 48) // f.hud.size("M")[0] - 3)
     _typed(surf, f.hud, "> ", line, len(line) if caret is None else caret,
-           (box.left + 24, y), cols, C.INK)
+           (box.left + 24, y), cols, config.INK)
     _foot(surf, f, box, "ENTER run    help for commands    T or ESC close")
 
 
-def draw_quit(surf, w, f, run, mission_over=False):
+def draw_quit(surf, world, f, run, mission_over=False):
     """The quit question. The logs are already on disk; this only decides what happens to them."""
     box = _panel(surf, f, "MISSION OVER" if mission_over else "END OF SESSION",
-                 f"sol {w.day}, {w.steps} steps driven, {w.elapsed:.0f}s elapsed", 5)
+                 f"sol {world.day}, {world.steps} steps driven, {world.elapsed:.0f}s elapsed", 5)
     where = run.dir.name if run else "nothing recorded"
-    rows = [(f"  K   keep the run       runs/{run.stamp if run else '--'}/", C.GOOD),
-            (f"      resume it later    --resume runs/{run.stamp if run else '--'}", C.MUTED),
-            ("  D   discard it          nothing is left behind", C.BAD),
-            ("  ESC cancel, keep playing", C.MUTED)]
+    rows = [(f"  K   keep the run       runs/{run.stamp if run else '--'}/", config.GOOD),
+            (f"      resume it later    --resume runs/{run.stamp if run else '--'}", config.MUTED),
+            ("  D   discard it          nothing is left behind", config.BAD),
+            ("  ESC cancel, keep playing", config.MUTED)]
     for i, (text, col) in enumerate(rows):
         surf.blit(f.hud.render(text, True, col), (box.left + 40, box.top + 76 + i * 24))
     _foot(surf, f, box, f"currently writing to {where}")
@@ -415,18 +415,18 @@ CHAT_PAD = 20
 CHAT_LINE_H = 17
 CHAT_INDENT = 14
 # Each speaker gets a heading, so a wrapped paragraph keeps its indent.
-HEADS = {"status": ("SOL OPEN", C.CHAT_GOOD),
-         "you": ("OPERATOR", C.CHAT_OPERATOR),
-         "urgent": ("OPERATOR · URGENT", C.CHAT_BAD),
-         "auto": ("MISSION CLOCK", C.CHAT_GOOD),
-         "gemma": ("PLANNER", C.CHAT_PLANNER),
-         "think": ("PLANNER · reasoning", C.CHAT_THINK),
-         "error": ("!!", C.CHAT_BAD),
-         "note": ("", C.CHAT_THINK),
+HEADS = {"status": ("SOL OPEN", config.CHAT_GOOD),
+         "you": ("OPERATOR", config.CHAT_OPERATOR),
+         "urgent": ("OPERATOR · URGENT", config.CHAT_BAD),
+         "auto": ("MISSION CLOCK", config.CHAT_GOOD),
+         "gemma": ("PLANNER", config.CHAT_PLANNER),
+         "think": ("PLANNER · reasoning", config.CHAT_THINK),
+         "error": ("!!", config.CHAT_BAD),
+         "note": ("", config.CHAT_THINK),
          # The view is one line here; the tape keeps it in full.
-         "view": ("", C.CHAT_THINK),
-         "call": ("SKILL", C.CHAT_SKILL),
-         "result": ("", C.CHAT_RESULT)}
+         "view": ("", config.CHAT_THINK),
+         "call": ("SKILL", config.CHAT_SKILL),
+         "result": ("", config.CHAT_RESULT)}
 
 
 def _blocks(conv, cols, show_thinking=True):
@@ -437,7 +437,7 @@ def _blocks(conv, cols, show_thinking=True):
     for who, text in list(conv.lines) + live:
         if who == "think" and not show_thinking:
             continue
-        head, colour = HEADS.get(who, ("", C.CHAT_TEXT))
+        head, colour = HEADS.get(who, ("", config.CHAT_TEXT))
         if head:
             out.append((head, colour, False))
         for para in text.splitlines() or [""]:
@@ -449,73 +449,73 @@ def _blocks(conv, cols, show_thinking=True):
 
 def _overlay_lines(text, cols):
     """The view block (V), wrapped only where it must be. Leading spaces are kept, or the grid's rows would shift."""
-    return [(piece, C.CHAT_MUTED, False)
+    return [(piece, config.CHAT_MUTED, False)
             for para in text.splitlines()
             for piece in (textwrap.wrap(para, cols, drop_whitespace=False) or [""])]
 
 
-def _draw_transcript(surf, conv, w, f, line, focused, scroll, show_thinking=True, reel=None,
+def _draw_transcript(surf, conv, world, f, line, focused, scroll, show_thinking=True, reel=None,
               overlay=None, pilot=None, caret=None):
     """The chat, or `overlay` (the view) instead of it. Returns how far back it can scroll."""
-    surf.fill(C.CHAT_BG)
-    pygame.draw.line(surf, C.CHAT_RULE, (0, 0), (0, surf.get_height()), 1)
+    surf.fill(config.CHAT_BG)
+    pygame.draw.line(surf, config.CHAT_RULE, (0, 0), (0, surf.get_height()), 1)
     W, H = surf.get_size()
     x, inner = CHAT_PAD, W - CHAT_PAD * 2
     cols = max(24, (inner - CHAT_INDENT) // f.chat.size("M")[0])
     head_h, foot_h = 88, 66
 
-    surf.blit(f.big.render("AI PLANNER / LIVE FEED", True, C.CHAT_TEXT), (x, 14))
+    surf.blit(f.big.render("AI PLANNER / LIVE FEED", True, config.CHAT_TEXT), (x, 14))
     link = conv.link
     # The sol and comms are in the bar above, so only the model is shown here.
     sub = f"{link.model}{'  (fallback)' if link.down else ''}"
     if not show_thinking:
         sub += "   ·   reasoning hidden"
-    D.text(surf, f.tiny, sub, (x, 40), C.CHAT_MUTED, inner)
+    dashboard.text(surf, f.tiny, sub, (x, 40), config.CHAT_MUTED, inner)
 
     # The status line under the model's name: what she and the rover are doing.
-    if w.awaiting_rover is not None:
-        leg = " ".join(w.awaiting_rover)[:40]
-        state, tone = f"ROVER DRIVING {leg}  ·  {D.ROVER_HINT}", C.CHAT_GOOD
+    if world.awaiting_rover is not None:
+        leg = " ".join(world.awaiting_rover)[:40]
+        state, tone = f"ROVER DRIVING {leg}  ·  {dashboard.ROVER_HINT}", config.CHAT_GOOD
     elif conv.waiting and conv.link.hold:
-        state, tone = f"checking whether {S.MODEL} is back...", C.CHAT_SKILL
+        state, tone = f"checking whether {settings.MODEL} is back...", config.CHAT_SKILL
     elif reel and reel.work:
         (x_, y_), done, total = reel.work
-        state, tone = f"working at ({x_},{y_})  ·  {done}/{total} steps", C.CHAT_SKILL
+        state, tone = f"working at ({x_},{y_})  ·  {done}/{total} steps", config.CHAT_SKILL
     elif conv.waiting or (reel and reel.busy and conv.busy):
-        state, tone = "waiting for the rover...", C.CHAT_SKILL
+        state, tone = "waiting for the rover...", config.CHAT_SKILL
     elif reel and reel.busy:
-        state, tone = "the rover is driving...", C.CHAT_SKILL
+        state, tone = "the rover is driving...", config.CHAT_SKILL
     elif conv.busy:
-        state, tone = ("thinking..." if not conv.say_buf else "answering..."), C.CHAT_GOOD
+        state, tone = ("thinking..." if not conv.say_buf else "answering..."), config.CHAT_GOOD
     elif pilot and pilot.wait:
         left = pilot.wait_left()
-        last = bool(S.MISSION_SOLS) and w.day >= S.MISSION_SOLS
-        state = {"dawn": f"DAWN OF SOL {w.day}  ·  talk, post orders, or /next",
+        last = bool(settings.MISSION_SOLS) and world.day >= settings.MISSION_SOLS
+        state = {"dawn": f"DAWN OF SOL {world.day}  ·  talk, post orders, or /next",
                  "radio": "ON THE RADIO  ·  answer, or /next  ·  the clock runs",
-                 "dusk": f"DUSK OF SOL {w.day}  ·  her report  ·  /next",
-                 "night": ("MISSION OVER" if last else f"NIGHT OF SOL {w.day}")
+                 "dusk": f"DUSK OF SOL {world.day}  ·  her report  ·  /next",
+                 "night": ("MISSION OVER" if last else f"NIGHT OF SOL {world.day}")
                           + "  ·  talk, or /next"}[pilot.wait]
         state += (f"  ·  {left:.0f}s" if left is not None else "  ·  holding")
-        tone = C.CHAT_BAD if pilot.wait == "radio" else C.CHAT_GOOD
-    elif w.day_over and w.lost:
-        state, tone = (f"ROVER LOST on sol {w.day}  ·  cannot reach the pad  ·  "
-                       f"ESC to finish", C.CHAT_BAD)
-    elif w.day_over and S.MISSION_SOLS and w.day >= S.MISSION_SOLS:
+        tone = config.CHAT_BAD if pilot.wait == "radio" else config.CHAT_GOOD
+    elif world.day_over and world.lost:
+        state, tone = (f"ROVER LOST on sol {world.day}  ·  cannot reach the pad  ·  "
+                       f"ESC to finish", config.CHAT_BAD)
+    elif world.day_over and settings.MISSION_SOLS and world.day >= settings.MISSION_SOLS:
         # A replay plays what its tape holds; only a live run can be played on.
         more = "" if getattr(conv, "script", None) else "T, then  sols N  for more  ·  "
-        state, tone = f"MISSION OVER after {w.day} sols  ·  {more}ESC to finish", C.CHAT_BAD
-    elif w.day_over and w.phase == "day":
-        state, tone = f"SOL {w.day}: THE DAY IS OVER", C.CHAT_BAD
+        state, tone = f"MISSION OVER after {world.day} sols  ·  {more}ESC to finish", config.CHAT_BAD
+    elif world.day_over and world.phase == "day":
+        state, tone = f"SOL {world.day}: THE DAY IS OVER", config.CHAT_BAD
     elif conv.last:
         secs, pin, pout = conv.last
-        state, tone = f"{secs}s   {pin} tok in, {pout} out", C.CHAT_MUTED
+        state, tone = f"{secs}s   {pin} tok in, {pout} out", config.CHAT_MUTED
     else:
-        state, tone = "ready", C.CHAT_MUTED
+        state, tone = "ready", config.CHAT_MUTED
     t = f.tiny.render(state, True, tone)
     surf.blit(t, t.get_rect(topleft=(x, 60)))
 
-    pygame.draw.line(surf, C.CHAT_RULE, (x, head_h - 8), (x + inner, head_h - 8))
-    pygame.draw.line(surf, C.CHAT_RULE, (x, H - foot_h), (x + inner, H - foot_h))
+    pygame.draw.line(surf, config.CHAT_RULE, (x, head_h - 8), (x + inner, head_h - 8))
+    pygame.draw.line(surf, config.CHAT_RULE, (x, H - foot_h), (x + inner, H - foot_h))
 
     body_h = H - head_h - foot_h
     rows = body_h // CHAT_LINE_H
@@ -531,33 +531,33 @@ def _draw_transcript(surf, conv, w, f, line, focused, scroll, show_thinking=True
     y = H - foot_h + 12
     if focused:
         _typed(surf, f.chat, "> ", line, len(line) if caret is None else caret, (x, y),
-               cols - 2, C.CHAT_TEXT)
+               cols - 2, config.CHAT_TEXT)
     else:
-        surf.blit(f.chat.render("TAB to type", True, C.CHAT_MUTED), (x, y))
+        surf.blit(f.chat.render("TAB to type", True, config.CHAT_MUTED), (x, y))
     hint = ("V or ESC back to the conversation    wheel scrolls" if overlay is not None
             else "ENTER send    ESC stop typing    /help lists the commands" if focused
             else "TAB her chat   T terminal   V what she sees   H thinking   P memory   "
                  "O settings")
-    for i, part in enumerate(D.key_lines(f.tiny, hint, inner)[:2]):
-        surf.blit(f.tiny.render(part, True, C.CHAT_MUTED), (x, H - 34 + i * 16))
+    for i, part in enumerate(dashboard.key_lines(f.tiny, hint, inner)[:2]):
+        surf.blit(f.tiny.render(part, True, config.CHAT_MUTED), (x, H - 34 + i * 16))
     if scroll:
-        s = f.tiny.render(f"scrolled back {scroll}", True, C.CHAT_BAD)
+        s = f.tiny.render(f"scrolled back {scroll}", True, config.CHAT_BAD)
         surf.blit(s, s.get_rect(topright=(x + inner, H - 22)))
     return max_scroll
 
 
-def draw_chat(surf, conv, w, f, line, focused, scroll, show_thinking=True, reel=None,
+def draw_chat(surf, conv, world, f, line, focused, scroll, show_thinking=True, reel=None,
               overlay=None, memory=False, pilot=None, caret=None):
     """The right-hand pane: the dashboard's cards, and her chat under them."""
-    surf.fill(C.VOID)
-    top = D.telemetry(surf, w, f, reel, memory)
+    surf.fill(config.VOID)
+    top = dashboard.telemetry(surf, world, f, reel, memory)
     if focused or overlay is not None:
-        top = D.HEADER
+        top = dashboard.HEADER
     box = pygame.Rect(8, top, surf.get_width() - 20, surf.get_height() - top - 16)
     transcript = surf.subsurface(box)
-    result = _draw_transcript(transcript, conv, w, f, line, focused, scroll,
+    result = _draw_transcript(transcript, conv, world, f, line, focused, scroll,
                               show_thinking, reel, overlay, pilot, caret)
-    pygame.draw.rect(surf, C.CHAT_RULE, box, 1, border_radius=8)
+    pygame.draw.rect(surf, config.CHAT_RULE, box, 1, border_radius=8)
     return result
 
 
@@ -566,24 +566,24 @@ def draw_chat(surf, conv, w, f, line, focused, scroll, show_thinking=True, reel=
 def draw_settings(surf, f, items, picked, prefs, editing, notice, models, replaying,
                   caret=None):
     """Every registry setting over the whole window, grouped by when a change lands."""
-    surf.fill(C.CHAT_BG)
+    surf.fill(config.CHAT_BG)
     W_, H_ = surf.get_size()
     x = 40
-    surf.blit(f.big.render("SETTINGS", True, C.INK), (x, 20))
+    surf.blit(f.big.render("SETTINGS", True, config.INK), (x, 20))
     sub = (f"yours are saved in {registry.USER_FILE.name}, which git ignores"
            if not replaying else "replay: the kept run's settings are in force")
-    surf.blit(f.hud.render(sub, True, C.MUTED), (x, 48))
+    surf.blit(f.hud.render(sub, True, config.MUTED), (x, 48))
 
     lines = []  # (text, colour, item index or None)
     tier = None
     for i, (kind, it) in enumerate(items):
         if kind == "preset":
-            lines.append((f"load preset: {it}", C.CHAT_SKILL, i))
+            lines.append((f"load preset: {it}", config.CHAT_SKILL, i))
             continue
         if it.tier != tier:
             tier = it.tier
-            lines.append(("", C.MUTED, None))
-            lines.append((registry.TIER_NAMES[tier].upper(), C.MUTED, None))
+            lines.append(("", config.MUTED, None))
+            lines.append((registry.TIER_NAMES[tier].upper(), config.MUTED, None))
         shown = prefs.shown(it)
         text = f"{it.name:<16} {registry.show(shown)}"
         if it.tier == "sol" and it.name in prefs.pending:
@@ -593,7 +593,7 @@ def draw_settings(surf, f, items, picked, prefs, editing, notice, models, replay
         if shown != it.default:
             text += f"    default {registry.show(it.default)}"
         locked = replaying and it.tier != "now"
-        lines.append((text, C.MUTED if locked else C.INK, i))
+        lines.append((text, config.MUTED if locked else config.INK, i))
 
     line_h = 20
     top, foot = 80, 110
@@ -603,7 +603,7 @@ def draw_settings(surf, f, items, picked, prefs, editing, notice, models, replay
     for n, (text, colour, i) in enumerate(lines[first:first + rows]):
         y = top + n * line_h
         if i == picked:
-            pygame.draw.rect(surf, C.FAINT, (x - 8, y - 2, W_ - 2 * x + 16, line_h))
+            pygame.draw.rect(surf, config.FAINT, (x - 8, y - 2, W_ - 2 * x + 16, line_h))
             if editing is not None:
                 prompt = f"{text.split()[0]:<16} > "
                 cols = (W_ - 2 * x) // f.hud.size("M")[0] - len(prompt) - 1
@@ -625,13 +625,13 @@ def draw_settings(surf, f, items, picked, prefs, editing, notice, models, replay
     if kind == "setting" and it.name == "MODEL" and models is None:
         about += "  Ollama did not answer, so no list; ENTER types a tag."
     y = H_ - foot + 10
-    pygame.draw.line(surf, C.FAINT, (x, y - 8), (W_ - x, y - 8))
+    pygame.draw.line(surf, config.FAINT, (x, y - 8), (W_ - x, y - 8))
     for piece in textwrap.wrap(about, max(40, (W_ - 2 * x) // f.hud.size("M")[0]))[:2]:
-        surf.blit(f.hud.render(piece, True, C.INK), (x, y))
+        surf.blit(f.hud.render(piece, True, config.INK), (x, y))
         y += 20
     if notice:
-        surf.blit(f.hud.render(notice, True, C.CHAT_SKILL), (x, y))
+        surf.blit(f.hud.render(notice, True, config.CHAT_SKILL), (x, y))
     keys = ("ENTER save    ESC cancel" if editing is not None else
             "UP/DOWN choose    LEFT/RIGHT change    ENTER type a value or load a preset"
             "    R default    O or ESC close")
-    surf.blit(f.tiny.render(keys, True, C.MUTED), (x, H_ - 24))
+    surf.blit(f.tiny.render(keys, True, config.MUTED), (x, H_ - 24))

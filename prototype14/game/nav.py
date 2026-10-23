@@ -10,7 +10,7 @@ import os
 import tempfile
 import time
 
-import settings as S
+import settings
 from world import SOLID, THINGS
 
 NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
@@ -38,9 +38,9 @@ def known(area, x, y):
 
 def drive_seconds(steps):
     """About how long a drive of `steps` takes on the day's clock: drawn, then settled."""
-    if not S.ANIMATE or not steps:
+    if not settings.ANIMATE or not steps:
         return 0.0
-    return steps * (S.ANIM_STEP + S.ANIM_PLAN) / S.ANIM_SPEED + S.SETTLE_SECONDS
+    return steps * (settings.ANIM_STEP + settings.ANIM_PLAN) / settings.ANIM_SPEED + settings.SETTLE_SECONDS
 
 
 def _around(cell):
@@ -180,7 +180,7 @@ class Result:
         if self.new is not None:
             bits.append(f"new={self.new}")
         if self.walls:
-            bits.append("rock=[" + ", ".join(_c(w) for w in self.walls) + "]")
+            bits.append("rock=[" + ", ".join(_c(cell) for cell in self.walls) + "]")
         return f"{self.code}({', '.join(bits)})"
 
     @property
@@ -214,11 +214,11 @@ class Result:
 
 def plan_file():
     """Absolute path of the live route file, or None when it is switched off."""
-    if not S.PLAN_FILE:
+    if not settings.PLAN_FILE:
         return None
-    if os.path.isabs(S.PLAN_FILE):
-        return S.PLAN_FILE
-    return os.path.join(PLAN_ROOT, S.PLAN_FILE)
+    if os.path.isabs(settings.PLAN_FILE):
+        return settings.PLAN_FILE
+    return os.path.join(PLAN_ROOT, settings.PLAN_FILE)
 
 
 def _replace(tmp, out, tries=10, wait=0.05):
@@ -330,7 +330,7 @@ def goto(world, x, y, avoid=None):
     world.last_path = (area_name, list(path))
     reel.append(("plan", list(path)))
 
-    walls, steps, replans = [], 0, S.NAV_REPLANS
+    walls, steps, replans = [], 0, settings.NAV_REPLANS
     # What the drive revealed. world.revealed holds one move's worth, so it is gathered as we go.
     gained = set()
     # Where in `walk` the current leg started. The rover is handed one leg at a time.

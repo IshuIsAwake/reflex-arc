@@ -12,9 +12,9 @@ hypothetical; it was watched on 2026-08-26.
 
 import re
 
-import config as C
+import config
 import nav
-import settings as S
+import settings
 import skills
 from world import World
 
@@ -264,10 +264,10 @@ def test_counting_is_exact_where_reading_the_map_is_not():
     # The failure this exists for, measured 2026-09-04 on the 50x50: nine bounding boxes
     # named, nine of them real formations, one of nine sizes correct. It knows where the
     # rocks are and cannot say how many cells they have. So the sizes must be exact.
-    import config as C
-    was = C.ARENA
+    import config
+    was = config.ARENA
     try:
-        C.use("50")
+        config.use("50")
         w = _surveyed()
         r = skills.call(w, "count", {"kind": "rock"})
         assert r.steps == 0, "it costs no steps"
@@ -286,14 +286,14 @@ def test_counting_is_exact_where_reading_the_map_is_not():
         assert bool(big), "the middle of the concave one is a cell of it"
         if big:
             x, y = int(big.group(2)), int(big.group(3))
-            assert C.ARENA[y][x] == "#", "...and it really is rock"
+            assert config.ARENA[y][x] == "#", "...and it really is rock"
             cells = skills.call(w, "count_cells", {"x": x, "y": y})
             assert "30 cells" in cells.result, "count_cells resolves it"
             assert "y15: x30-39" in cells.result, "...as runs, not a wall of coordinates"
             assert cells.steps == 0, "...costing nothing"
     finally:
-        C.ARENA = was
-        C.use(C.DEFAULT_ARENA)
+        config.ARENA = was
+        config.use(config.DEFAULT_ARENA)
 
 
 def test_counting_only_ever_counts_what_she_has_seen():
@@ -313,10 +313,10 @@ def test_counting_only_ever_counts_what_she_has_seen():
 def test_a_formation_keeps_its_name_as_it_comes_out_of_the_fog():
     # Revealed rock only ever grows, so an id is worth carrying: the one event is a
     # merge, and she may have said the losing name out loud.
-    import config as C
-    was = C.ARENA
+    import config
+    was = config.ARENA
     try:
-        C.use("50")
+        config.use("50")
         w = World()
         w.here.reveal(31, 16, r=3)          # part of the C
         first = skills.call(w, "count", {"kind": "rock"}).result
@@ -327,8 +327,8 @@ def test_a_formation_keeps_its_name_as_it_comes_out_of_the_fog():
         assert f"R{got.group(1)}:" in second, "the same rock keeps its id"
         assert "new since you last asked" in second, "and the newly revealed cells are called out"
     finally:
-        C.ARENA = was
-        C.use(C.DEFAULT_ARENA)
+        config.ARENA = was
+        config.use(config.DEFAULT_ARENA)
 
 
 def test_every_dialect_of_a_written_call_is_recovered():
@@ -459,18 +459,18 @@ def test_the_way_home_is_warned_about_in_time():
     w = World()
     w.pos = (15, 5)                                # ten rows north of the landing site
     back = nav.home_steps(w)
-    w.spend(S.BATTERY - back - S.BATTERY // 10 - 1)
+    w.spend(settings.BATTERY - back - settings.BATTERY // 10 - 1)
     assert "Head back" not in skills.budget_note(w), "with charge to spare, no warning"
     w.spend(1)
     note = skills.budget_note(w)
     assert "Head back now" in note, "once the margin is gone, it says go home"
     assert f"at least {back} steps away" in note, "and how far the pad is"
-    w.pos = C.SPAWN
+    w.pos = config.SPAWN
     assert ("Head back" not in
                 skills.budget_note(w)), "beside the pad, only the plain count"
 
     # The clock can be the one that runs short: a full battery and little day left.
     w = World()
     w.pos, w.phase = (15, 5), "day"
-    w.run_clock(w.time_left - nav.drive_seconds(back) - S.DAY_SECONDS / 10)
+    w.run_clock(w.time_left - nav.drive_seconds(back) - settings.DAY_SECONDS / 10)
     assert "Head back now" in skills.budget_note(w), "short of time with charge to spare, it still says go home"

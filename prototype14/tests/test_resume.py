@@ -10,10 +10,10 @@ import json
 import tempfile
 from pathlib import Path
 
-import config as C
+import config
 import logs
 import replay
-import settings as S
+import settings
 import sight
 import skills
 from world import World
@@ -21,7 +21,7 @@ from world import World
 
 @pytest.fixture(autouse=True)
 def storm_on():
-    S.STORM_ON = True
+    settings.STORM_ON = True
 
 
 def played():
@@ -89,8 +89,8 @@ def test_a_resumed_world_is_the_one_that_slept():
     assert (21, 22) in woke.here.objectives, "the placed objective is still there"
     assert (3, 25) in woke.here.interests and not woke.here.interests[(3, 25)].found, "and the planted interest, still hidden"
     assert woke.notes.todos == [], "the list did not survive"
-    assert woke.stranded and woke.pos != C.SPAWN, "it ended the sol out on the plain, so it wakes there, stranded"
-    assert woke.battery == kept["battery"] < S.BATTERY, "on the charge it had left, not a full one"
+    assert woke.stranded and woke.pos != config.SPAWN, "it ended the sol out on the plain, so it wakes there, stranded"
+    assert woke.battery == kept["battery"] < settings.BATTERY, "on the charge it had left, not a full one"
 
     # Twice over: a resumed sol carries again like any other.
     skills.call(woke, "goto", {"x": 2, "y": 2})
@@ -109,14 +109,14 @@ def test_a_night_saved_by_10c_is_refused():
 
 def test_the_wrong_arena_is_refused():
     kept = roundtrip(World())
-    C.use("50")
+    config.use("50")
     try:
         World(carried=kept)
         refused = False
     except ValueError:
         refused = True
     finally:
-        C.use(C.DEFAULT_ARENA)
+        config.use(config.DEFAULT_ARENA)
     assert refused, "a 30 resumed on the 50 is an error, not a scrambled map"
 
 
@@ -128,14 +128,14 @@ def test_a_replay_of_a_resumed_run_starts_where_it_did():
         (run / "game.jsonl").write_text(
             json.dumps({"kind": "settings", "sol": 2, "values": {"BATTERY": 140}}))
         script = replay.Script(run)
-        keep = S.BATTERY
+        keep = settings.BATTERY
         try:
             assert script.start["day"] == 1, "it knows the state it began from"
             assert script.first_sol == 2, "and its first sol"
             script.use_settings(script.first_sol)
-            assert S.BATTERY == 140, "whose settings it takes"
+            assert settings.BATTERY == 140, "whose settings it takes"
         finally:
-            S.BATTERY = keep
+            settings.BATTERY = keep
 
 
 def test_the_night_is_written_down():

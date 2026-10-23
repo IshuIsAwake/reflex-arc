@@ -8,14 +8,14 @@ driving toward it, and prototype 1's version of this test caught two of them.
 
 from collections import Counter, deque
 
-import config as C
-import settings as S
+import config
+import settings
 from world import SOLID, World
 
 
 def flood(start):
     """Every cell reachable from `start` over the true grid."""
-    rows = C.ARENA
+    rows = config.ARENA
     h, w = len(rows), len(rows[0])
 
     def ch(x, y):
@@ -35,13 +35,13 @@ def flood(start):
 
 
 def test_the_map_is_the_shape_it_claims():
-    rows = C.ARENA
+    rows = config.ARENA
     assert len(rows) == 30, f"{len(rows)} rows"
     for y, r in enumerate(rows):
         assert len(r) == 30, f"row {y} is {len(r)} wide"
         assert set(r) <= set("#.H@"), f"row {y} has an undeclared tile: {set(r) - set('#.H@')}"
     assert sum(r.count("@") for r in rows) == 1, "exactly one landing point"
-    assert rows[C.SPAWN[1]][C.SPAWN[0]] == "@", "SPAWN and the @ must agree"
+    assert rows[config.SPAWN[1]][config.SPAWN[0]] == "@", "SPAWN and the @ must agree"
 
 
 def test_the_whole_arena_is_one_region():
@@ -50,10 +50,10 @@ def test_the_whole_arena_is_one_region():
     It also lets the prompt promise that every non-rock cell is reachable, which is
     otherwise a claim nobody is holding to.
     """
-    rows = C.ARENA
+    rows = config.ARENA
     h, w = len(rows), len(rows[0])
     ground = {(x, y) for y in range(h) for x in range(w) if rows[y][x] in ".@"}
-    reached = flood(C.SPAWN)
+    reached = flood(config.SPAWN)
     stranded = ground - reached
     assert not stranded, f"{len(stranded)} cells sealed off, e.g. {sorted(stranded)[:5]}"
     assert len(ground) > 700, f"only {len(ground)} drivable cells -- the arena got dense"
@@ -94,12 +94,12 @@ def test_every_arena_has_one_largest_formation():
     descending list of nine sizes where the truth was twenty ties.
     """
     from world import components
-    was = C.ARENA
+    was = config.ARENA
     try:
         for name, (cell, sizes) in GEOLOGY.items():
-            C.use(name)
-            h, w = len(C.ARENA), len(C.ARENA[0])
-            rock = components(w, h, lambda x, y: C.ARENA[y][x] == "#")
+            config.use(name)
+            h, w = len(config.ARENA), len(config.ARENA[0])
+            rock = components(w, h, lambda x, y: config.ARENA[y][x] == "#")
             got = Counter(len(c) for c in rock)
             assert got == sizes, f"{name}x{name}: sizes are {dict(got)}, not {sizes}"
 
@@ -111,8 +111,8 @@ def test_every_arena_has_one_largest_formation():
             assert len(holding[0]) == biggest, \
                 f"{name}x{name}: the formation at {cell} is {len(holding[0])}, not {biggest}"
     finally:
-        C.ARENA = was
-        C.use(C.DEFAULT_ARENA)
+        config.ARENA = was
+        config.use(config.DEFAULT_ARENA)
 
 
 def test_the_geology_is_exactly_what_was_authored():
@@ -135,8 +135,8 @@ def test_the_geology_is_exactly_what_was_authored():
     right.
     """
     from world import components
-    h, w = len(C.ARENA), len(C.ARENA[0])
-    rock = components(w, h, lambda x, y: C.ARENA[y][x] == "#")
+    h, w = len(config.ARENA), len(config.ARENA[0])
+    rock = components(w, h, lambda x, y: config.ARENA[y][x] == "#")
 
     assert sum(1 for c in rock if len(c) == LARGE) == 1, \
         "there must be exactly one largest formation, or the question has no answer"
@@ -166,11 +166,11 @@ def test_the_geology_is_exactly_what_was_authored():
 
 
 def test_the_pad_is_behind_the_landing_point():
-    rows = C.ARENA
+    rows = config.ARENA
     pad = {(x, y) for y in range(len(rows)) for x in range(len(rows[0]))
            if rows[y][x] == "H"}
     assert pad, "there is no base pad"
-    sx, sy = C.SPAWN
+    sx, sy = config.SPAWN
     assert (sx, sy + 1) in pad, "the pad should sit directly behind where the rover lands"
     assert all(abs(x - sx) <= 2 and 0 < y - sy <= 3 for x, y in pad), \
         f"the pad has drifted away from the landing point: {sorted(pad)}"
@@ -195,7 +195,7 @@ def test_a_move_into_rock_costs_nothing():
     charged rather than by the position not changing."""
     w = World()
     w.pos = (16, 20)                    # just west of the formation at (17,20)
-    assert C.ARENA[20][17] == "#"
+    assert config.ARENA[20][17] == "#"
     before = w.steps
     w.move(1, 0)
     assert w.pos == (16, 20) and w.steps == before, (w.pos, w.steps)
@@ -244,14 +244,14 @@ def test_the_sol_rolls_over():
     w.next_day()
     assert w.day == day + 1 and w.steps == 0 and not w.day_over
     assert w.pos == (10, 10), "away from the pad at nightfall, it wakes where it stopped"
-    assert w.stranded and w.battery == S.BATTERY - 37, "on what it had left: no recharge"
-    assert w.time_left == float(S.DAY_SECONDS), "but the clock is a new sol's"
+    assert w.stranded and w.battery == settings.BATTERY - 37, "on what it had left: no recharge"
+    assert w.time_left == float(settings.DAY_SECONDS), "but the clock is a new sol's"
     assert w.elapsed == 0.0
     assert len(w.here.seen) >= seen, "the survey carries over"
     assert (10, 10) in w.here.marks, "and so do the marks"
     assert not w.log, "yesterday's messages do not"
     assert w.history[-1] == {"day": day, "steps": steps, "seconds": 12.5, "at": [10, 10],
-                             "docked": False, "battery": S.BATTERY - 37}, \
+                             "docked": False, "battery": settings.BATTERY - 37}, \
         "and how the sol ended is the world's record, not anyone's account of it"
 
 
@@ -262,8 +262,8 @@ def test_home_by_nightfall():
     assert w.docked, "any side of the pad is home"
     w.spend(40)
     w.next_day()
-    assert not w.stranded and w.pos == C.SPAWN, "woken at the pad"
-    assert w.battery == S.BATTERY, "recharged"
+    assert not w.stranded and w.pos == config.SPAWN, "woken at the pad"
+    assert w.battery == settings.BATTERY, "recharged"
 
     w.pos = (3, 3)
     w.spend(30)
@@ -271,7 +271,7 @@ def test_home_by_nightfall():
     w.spend(20)
     w.next_day()
     assert w.stranded and w.pos == (3, 3), "stranded twice, still where it stopped"
-    assert w.battery == S.BATTERY - 50, "and nothing came back either night"
+    assert w.battery == settings.BATTERY - 50, "and nothing came back either night"
 
 
 def test_flat_away_from_the_pad_is_lost():
@@ -281,7 +281,7 @@ def test_flat_away_from_the_pad_is_lost():
     assert w.battery == 0 and w.lost, "flat, and out on the plain"
     before = w.pos
     w.move(1, 0)
-    assert w.pos == before and w.steps == S.BATTERY, "a flat rover does not move"
+    assert w.pos == before and w.steps == settings.BATTERY, "a flat rover does not move"
     w.next_day()
     assert w.battery == 0 and w.lost, "and no morning brings it back"
 
@@ -296,21 +296,21 @@ def test_flat_away_from_the_pad_is_lost():
     w.spend(w.battery)
     assert not w.lost, "flat beside the pad is not lost"
     w.next_day()
-    assert w.battery == S.BATTERY, "the pad charges it"
+    assert w.battery == settings.BATTERY, "the pad charges it"
 
 
 def test_the_day_runs_on_the_wall_clock():
     w = World()
-    assert w.phase == "dawn" and w.time_left == float(S.DAY_SECONDS)
+    assert w.phase == "dawn" and w.time_left == float(settings.DAY_SECONDS)
     w.spend(10)
-    assert w.battery == S.BATTERY - 10, "steps drain the battery"
-    assert w.time_left == float(S.DAY_SECONDS), "and take no time of their own"
+    assert w.battery == settings.BATTERY - 10, "steps drain the battery"
+    assert w.time_left == float(settings.DAY_SECONDS), "and take no time of their own"
 
     w.tick(9.0)
     assert w.elapsed == 9.0, "the stopwatch runs"
-    assert w.time_left == float(S.DAY_SECONDS), "and the frame rate is not the day's clock"
+    assert w.time_left == float(settings.DAY_SECONDS), "and the frame rate is not the day's clock"
 
-    w.run_clock(S.DAY_SECONDS - 1)
+    w.run_clock(settings.DAY_SECONDS - 1)
     assert not w.day_over and w.time_left == 1.0
     w.run_clock(2)
     assert w.day_over and w.time_left == 0.0, "the clock ends the day"
@@ -320,7 +320,7 @@ def test_the_day_runs_on_the_wall_clock():
     w.spend(w.battery)
     assert w.battery == 0 and w.day_over, "a flat battery ends the day"
     w = World()
-    w.drain(S.BATTERY)
+    w.drain(settings.BATTERY)
     assert w.day_over and w.steps == 0, "so does one drained by the radio, with no step taken"
 
 

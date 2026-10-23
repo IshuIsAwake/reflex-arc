@@ -13,7 +13,7 @@ import pathlib
 import re
 
 import nav
-import settings as S
+import settings
 import sight
 import world
 from world import World
@@ -120,10 +120,10 @@ def test_the_status_line_survived_the_move():
                                            "at (15,15)", "base pad at"))), "at dawn it says the day has not begun"
     assert "\n" not in line, "one line"
     assert line in sight.view(w), "and the view carries it"
-    assert f"{S.DAY_SECONDS} seconds" in line, "it says seconds, because a day is made of time"
+    assert f"{settings.DAY_SECONDS} seconds" in line, "it says seconds, because a day is made of time"
     w.phase = "day"
     w.run_clock(100)
-    assert f"{S.DAY_SECONDS - 100} seconds of the day left" in sight.status_line(w), "by day it counts down"
+    assert f"{settings.DAY_SECONDS - 100} seconds of the day left" in sight.status_line(w), "by day it counts down"
     w.phase = "dusk"
     assert ("sol 1, dusk  |  the day is over" in
                 sight.status_line(w)), "at dusk the day is over"

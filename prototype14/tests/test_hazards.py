@@ -16,10 +16,10 @@ looks exactly like a sol the model failed.
 
 import pytest
 
-import config as C
+import config
 import hazards
 import nav
-import settings as S
+import settings
 import sight
 import skills
 from world import World
@@ -27,7 +27,7 @@ from world import World
 
 @pytest.fixture(autouse=True)
 def storm_on():
-    S.STORM_ON = True
+    settings.STORM_ON = True
 
 
 def _stormy(day=1):
@@ -56,9 +56,9 @@ def test_the_same_sol_gets_the_same_storm():
     assert len(set(seen)) > 1, "different sols get different weather"
 
     # The two arenas are separate worlds and must not share a forecast.
-    C.use("50")
+    config.use("50")
     fifty = World().here.storm
-    C.use("30")
+    config.use("30")
     thirty = World().here.storm
     if fifty and thirty:
         assert fifty.cells != thirty.cells, "the arenas do not share a storm"
@@ -74,14 +74,14 @@ def test_a_storm_never_walls_the_rover_in():
     check sailed through at 97%. The objectives were not in `keep_clear` at all.
     """
     for name in ("30", "50"):
-        C.use(name)
+        config.use(name)
         w = World()
         for _ in range(30):
             s = w.here.storm
             if s:
-                assert C.SPAWN not in s.cells, f"{name} sol {w.day}: not on the landing site"
-                open_now = hazards._reach(w.here, C.SPAWN, s.cells)
-                open_clear = hazards._reach(w.here, C.SPAWN, frozenset())
+                assert config.SPAWN not in s.cells, f"{name} sol {w.day}: not on the landing site"
+                open_now = hazards._reach(w.here, config.SPAWN, s.cells)
+                open_clear = hazards._reach(w.here, config.SPAWN, frozenset())
                 share = len(open_now) / len(open_clear)
                 # Written here rather than read from settings: the knob this compared
                 # against went with the rejection loop in `hazards.py`, once a radius of
@@ -89,13 +89,13 @@ def test_a_storm_never_walls_the_rover_in():
                 assert share >= 0.75, f"{name} sol {w.day}: most of the arena is still reachable"
                 # ...and the part a share of the arena can never see. An interest is
                 # solid, so what it needs is one open neighbour still reachable.
-                for cell in sorted(C.INTERESTS):
+                for cell in sorted(config.INTERESTS):
                     x, y = cell
                     ring = {(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)}
                     assert bool(ring & open_now), (f"{name} sol {w.day}: interest at {cell} can still be "
                                 f"reached")
             w.next_day()
-    C.use(C.DEFAULT_ARENA)
+    config.use(config.DEFAULT_ARENA)
 
 
 def test_a_route_goes_around_it_rather_than_through():
@@ -105,7 +105,7 @@ def test_a_route_goes_around_it_rather_than_through():
 
     # Somewhere on the far side of it, reachable when the sky is clear.
     target = None
-    for cell in sorted(hazards._reach(w.here, C.SPAWN, frozenset())):
+    for cell in sorted(hazards._reach(w.here, config.SPAWN, frozenset())):
         if 6 < abs(cell[0] - s.centre[0]) + abs(cell[1] - s.centre[1]) < 14:
             target = cell
             break

@@ -8,7 +8,7 @@ The model can't use avoid="auto": she has no way to mark cells. The terminal can
 import re
 
 import nav
-import settings as S
+import settings
 from world import INTEREST, centre_of
 
 NIL = {"<nil>", "nil", "none", "null", "undefined", ""}
@@ -210,7 +210,7 @@ TOOLS = [
             "name": {"type": "string", "description":
                      "a short name for the subject, e.g. 'constraints' or 'the C'"},
             "text": {"type": "string", "description":
-                     f"the whole entry, at most {S.MEMORY_CHARS} characters; bullets are fine"},
+                     f"the whole entry, at most {settings.MEMORY_CHARS} characters; bullets are fine"},
             "why": {"type": "string", "description":
                     "optional: one line on what changed your mind"},
         }, "required": ["name", "text"]}}},
@@ -234,7 +234,7 @@ TOOLS = [
             "closes and the day is yours again. At dawn and night just talk."),
         "parameters": {"type": "object", "properties": {
             "text": {"type": "string", "description":
-                     f"what you say to them, at most {S.RADIO_CHARS} characters"},
+                     f"what you say to them, at most {settings.RADIO_CHARS} characters"},
             "why": {"type": "string", "description":
                     "optional: one line on why it cannot wait for the night"},
         }, "required": ["text"]}}},
@@ -462,14 +462,14 @@ def _runs(cells):
 
 def _count(world, kind):
     """Sizes and middles for everything revealed, in map order, never sorted by size."""
-    a, s = world.here, world.survey
+    area, s = world.here, world.survey
     want = (kind or "").strip().lower() or "both"
     if want not in ("rock", "fog", "both"):
         return (f"BAD_ARGS(kind must be 'rock', 'fog' or omitted, got {kind!r}). "
                 f"Nothing happened.")
     lines = []
     if want in ("rock", "both"):
-        found = s.rock(a)
+        found = s.rock(area)
         found.sort(key=lambda f: (centre_of(f[1])[1], centre_of(f[1])[0]))
         for fid, cells in found:
             mx, my = centre_of(cells)
@@ -478,7 +478,7 @@ def _count(world, kind):
             lines.append(f"  R{fid}: {len(cells)} cells, middle ({mx},{my}){more}")
         lines.insert(0, f"ROCK -- {len(found)} formations you have seen:")
     if want in ("fog", "both"):
-        blobs = s.fog(a)
+        blobs = s.fog(area)
         blobs.sort(key=lambda c: (centre_of(c)[1], centre_of(c)[0]))
         fog = [f"  {len(c)} cells, middle {centre_of(c)}" for c in blobs]
         lines.append(f"FOG -- {len(blobs)} patches still unseen:" if blobs
@@ -493,19 +493,19 @@ def _count(world, kind):
 
 def _count_cells(world, x, y):
     """Every cell of the one feature at (x, y), written as runs."""
-    a, s = world.here, world.survey
-    if not (0 <= x < a.w and 0 <= y < a.h):
+    area, s = world.here, world.survey
+    if not (0 <= x < area.w and 0 <= y < area.h):
         return f"BAD_ARGS(({x},{y}) is off the arena). Nothing happened."
-    if (x, y) not in a.seen:
-        for c in s.fog(a):
+    if (x, y) not in area.seen:
+        for c in s.fog(area):
             if (x, y) in c:
                 return (f"CELLS(fog, {len(c)} cells) -- {_runs(c)}. You have not been "
                         f"here, so what is under it is unknown.")
-    if a.at(x, y) != "#":
+    if area.at(x, y) != "#":
         return (f"NOT_A_FEATURE(({x},{y})) -- that is open ground you have already "
                 f"seen, not rock and not fog. Give a cell that belongs to the thing "
                 f"you mean; the middle coordinate `count` gives you always does.")
-    for fid, cells in s.rock(a):
+    for fid, cells in s.rock(area):
         if (x, y) in cells:
             return f"CELLS(R{fid}, {len(cells)} cells) -- {_runs(cells)}"
     return f"NOT_A_FEATURE(({x},{y})) -- nothing revealed there."
@@ -524,10 +524,10 @@ def _nothing_waiting(world, what):
     holds, so she doesn't take it as "you are finished"."""
     if world.phase != "day" or world.day_over:
         return f"{what}."
-    a = world.here
+    area = world.here
     return (f"{what}, and the day is not over: {world.battery} steps of battery and "
-            f"{world.time_left:.0f} seconds are left, and {a.w * a.h - len(a.seen)} of "
-            f"the {a.w * a.h} cells are still unseen.")
+            f"{world.time_left:.0f} seconds are left, and {area.w * area.h - len(area.seen)} of "
+            f"the {area.w * area.h} cells are still unseen.")
 
 
 def _execute(world):
@@ -577,8 +577,8 @@ def _todo(world, text):
             return (f'ALREADY_ON_IT({i}) -- "{t}" is item {i} on your list'
                     f'{" and already crossed off" if struck else ""}, so nothing was '
                     f'added and nothing was spent.')
-    if len(n.todos) >= S.TODO_MAX:
-        return (f"LIST_FULL -- your list already holds {S.TODO_MAX} items today and "
+    if len(n.todos) >= settings.TODO_MAX:
+        return (f"LIST_FULL -- your list already holds {settings.TODO_MAX} items today and "
                 f"this one was not added. {n.open} of them are still open: do one of "
                 f"those, or say what you are trying to achieve.")
     i = n.add(text)
@@ -609,15 +609,15 @@ def _strike(world, i):
 def _remember(world, name, text):
     """One entry, written or replaced whole. The old length is quoted back, so a big cut shows."""
     n = world.notes
-    if n.entry(name) is None and len(n.memory) >= S.MEMORY_ENTRIES:
-        return (f"MEMORY_FULL -- you already hold {S.MEMORY_ENTRIES} entries, so nothing was "
+    if n.entry(name) is None and len(n.memory) >= settings.MEMORY_ENTRIES:
+        return (f"MEMORY_FULL -- you already hold {settings.MEMORY_ENTRIES} entries, so nothing was "
                 f"written. Forget one that is no longer true, or fold this into an entry "
                 f"that covers it: {', '.join(n.memory)}.")
     had = n.remember(name, text)
     world.record("remember", name=name, chars=len(text), text=text)
     return (f"REMEMBERED({name}, {len(text)} characters) -- "
             + (f"this replaced the {had} characters that were there. " if had is not None
-               else f"a new entry: {len(n.memory)} of {S.MEMORY_ENTRIES}. ")
+               else f"a new entry: {len(n.memory)} of {settings.MEMORY_ENTRIES}. ")
             + "It will still be in your memory tomorrow morning.")
 
 
@@ -628,7 +628,7 @@ def _forget(world, name):
         return (f"NOT_REMEMBERED({name}) -- there is no entry by that name, so nothing "
                 f"changed. Your entries: {held}.")
     world.record("forget", name=name)
-    return f"FORGOT({name}) -- {len(n.memory)} of {S.MEMORY_ENTRIES} entries left."
+    return f"FORGOT({name}) -- {len(n.memory)} of {settings.MEMORY_ENTRIES} entries left."
 
 
 def call(world, name, args, history=()):
@@ -653,8 +653,8 @@ def call(world, name, args, history=()):
             n = _int("n", c.args.get("n"))
         if name in ("todo", "remember", "radio"):
             text = _text("text", c.args.get("text"),
-                         {"todo": S.TODO_CHARS, "remember": S.MEMORY_CHARS}.get(
-                             name, S.RADIO_CHARS))
+                         {"todo": settings.TODO_CHARS, "remember": settings.MEMORY_CHARS}.get(
+                             name, settings.RADIO_CHARS))
         if name in ("remember", "forget"):
             entry = _text("name", c.args.get("name"), 40)
     except BadArgs as e:
@@ -674,9 +674,9 @@ def call(world, name, args, history=()):
                         "spent. At dawn and night just say it; at dusk your last words "
                         "are your report.")
             return c
-        world.drain(S.RADIO_STEPS)
-        world.record(name, text=text, at=list(world.pos), cost=S.RADIO_STEPS)
-        c.result = (f"RADIOED -- mission control has it, and it cost {S.RADIO_STEPS} steps "
+        world.drain(settings.RADIO_STEPS)
+        world.record(name, text=text, at=list(world.pos), cost=settings.RADIO_STEPS)
+        c.result = (f"RADIOED -- mission control has it, and it cost {settings.RADIO_STEPS} steps "
                     f"of battery. Your turn is over: their answer, if they give one, is "
                     f"your next message, and while the line is open every reply you speak "
                     f"costs the same. The day's clock does not stop for it.")
@@ -750,9 +750,9 @@ def budget_note(world, hops=""):
         return out
     # Warn about getting home while there's still time: within a tenth of a charge or of the day of what the trip back costs.
     back = nav.home_steps(world)
-    low_b = world.battery <= (back or 0) + S.BATTERY // 10
+    low_b = world.battery <= (back or 0) + settings.BATTERY // 10
     low_t = (world.phase == "day" and
-             world.time_left <= nav.drive_seconds(back or 0) + S.DAY_SECONDS / 10)
+             world.time_left <= nav.drive_seconds(back or 0) + settings.DAY_SECONDS / 10)
     if back and (low_b or low_t):
         out += (f" {_left_today(world)} The pad is at least {back} steps away. Head "
                 f"back now, or the rover is stranded tonight.")

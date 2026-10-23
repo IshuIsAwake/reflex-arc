@@ -21,15 +21,16 @@ import anim
 import autopilot
 import chat
 import prompts
-import config as C
+import config
 import console
 import logs
 import nav
 import registry
+import dashboard
 import render
 import replay
 import report
-import settings as S
+import settings
 import sight
 from world import World
 
@@ -69,7 +70,7 @@ def read_flags(argv, prefs):
     settings, this launch's flags, and on a replay the kept run's own values, which win.
     Returns (args, script, carried); `carried` is the night a resumed run wakes from."""
     p = argparse.ArgumentParser(prog="game/main.py")
-    p.add_argument("--arena", choices=tuple(C.ARENAS), help="which arena to land on")
+    p.add_argument("--arena", choices=tuple(config.ARENAS), help="which arena to land on")
     p.add_argument("--model", help="any tag `ollama list` shows, or a `-cloud` one")
     p.add_argument("--think", action="store_true",
                    help="reasoning trace on, and the sampler left to the model")
@@ -96,11 +97,11 @@ def read_flags(argv, prefs):
         p.error("--replay and --resume are two different runs; pick one")
 
     prefs.apply_all()
-    for w in prefs.warnings:
-        print("settings:", w)
+    for warning in prefs.warnings:
+        print("settings:", warning)
     if args.preset:
         registry.apply(registry.PRESETS[args.preset])
-    S.OUTAGE_SOLS = tuple(args.outage or ())
+    settings.OUTAGE_SOLS = tuple(args.outage or ())
     # With no window, nobody is at the desk unless the flag says so.
     comms = args.comms == "on" if args.comms else False if headless() else None
     flags = {"APP_ARENA": args.arena, "MODEL": args.model, "ROVER_PAUSE": args.pause,
@@ -109,8 +110,8 @@ def read_flags(argv, prefs):
     if bad:
         p.error(f"out of range: {', '.join(bad)}")
     if args.think:
-        S.MODEL_THINK = True
-        S.MODEL_TEMP = None
+        settings.MODEL_THINK = True
+        settings.MODEL_TEMP = None
 
     # Loaded before the window opens, so a bad run directory is reported at the prompt.
     script = replay.load(pathlib.Path(args.replay)) if args.replay else None
@@ -127,7 +128,7 @@ def read_flags(argv, prefs):
         registry.apply({"APP_ARENA": carried["arena"]})
 
     # Before anything reads config: the window and the world are sized off it.
-    C.use(C.APP_ARENA)
+    config.use(config.APP_ARENA)
     # Last: the prompt is built from the arena and the turn caps.
     prompts.use()
     return args, script, carried
@@ -141,11 +142,11 @@ def main():
     def title():
         """Rewritten at nightfall, when the model may change."""
         pygame.display.set_caption(
-            f"ANGARAKA -- prototype 14  ·  {C.VIEW_W}x{C.VIEW_H}"
+            f"ANGARAKA -- prototype 14  ·  {config.VIEW_W}x{config.VIEW_H}"
             + (f"  ·  replay of {pathlib.Path(args.replay).name}" if args.replay else
-               f"  ·  {S.MODEL}")
-            + ("  ·  thinking" if S.MODEL_THINK else "")
-            + ("  ·  comms on" if S.COMMS else "  ·  comms off"))
+               f"  ·  {settings.MODEL}")
+            + ("  ·  thinking" if settings.MODEL_THINK else "")
+            + ("  ·  comms on" if settings.COMMS else "  ·  comms off"))
 
     title()
     clock = pygame.time.Clock()
@@ -159,7 +160,7 @@ def main():
     # The window fills the desktop, less its border and the taskbar.
     desktop = pygame.display.get_desktop_sizes()[0]
     screen, game, pane = layout_surfaces(pygame.display.set_mode(
-        (max(960, desktop[0] - S.SCREEN_RESERVE_W), max(640, desktop[1] - S.SCREEN_RESERVE_H)),
+        (max(960, desktop[0] - settings.SCREEN_RESERVE_W), max(640, desktop[1] - settings.SCREEN_RESERVE_H)),
         pygame.RESIZABLE))
 
     # The run is recorded from the start; whether it is kept is asked at the end.
@@ -177,10 +178,10 @@ def main():
                    prompt=hashlib.sha256(prompts.SYSTEM.encode()).hexdigest()[:12])
 
     w = World(recorder=run.record, carried=carried)
-    if S.OUTAGE_SOLS:
+    if settings.OUTAGE_SOLS:
         # A staged outage goes on the tape, so it is never mistaken for a real one.
-        run.record("outage", sols=list(S.OUTAGE_SOLS), model=S.MODEL,
-                   fallback=S.MODEL_FALLBACK)
+        run.record("outage", sols=list(settings.OUTAGE_SOLS), model=settings.MODEL,
+                   fallback=settings.MODEL_FALLBACK)
     if args.resume:
         run.save_start(carried, pathlib.Path(args.resume).resolve().name)
     elif script and script.start:
@@ -209,7 +210,7 @@ def main():
     def ready():
         now = time.monotonic()
         if reel.busy:
-            settle[0] = now + S.SETTLE_SECONDS
+            settle[0] = now + settings.SETTLE_SECONDS
             return False
         return now >= settle[0]
 
@@ -217,7 +218,7 @@ def main():
     # The clock and the desk's windows, new every sol. A replay or a headless run never waits.
     pilot = autopilot.Autopilot(live=not script, attended=not headless())
     # Whether anyone was at the desk last frame, so a change from C or the settings screen is noticed.
-    at_desk = [S.COMMS]
+    at_desk = [settings.COMMS]
     mode = "world"
     cursor = w.pos
     held = None
@@ -295,9 +296,9 @@ def main():
             return "/order <text> posts one order; /orders shows the board"
         if verb == "order" and not rest:
             return "/order needs the order -- e.g.  /order survey the north-west first"
-        if verb == "order" and len(rest) > S.ORDERS_CHARS:
+        if verb == "order" and len(rest) > settings.ORDERS_CHARS:
             return (f"order refused -- {len(rest)} characters, and the cap is "
-                    f"{S.ORDERS_CHARS}. Say it shorter.")
+                    f"{settings.ORDERS_CHARS}. Say it shorter.")
         if verb == "orders":
             n.clear_orders()
             w.record("orders_cleared")
@@ -354,7 +355,7 @@ def main():
     def await_rover(world, dirs):
         """Wait until the rover has driven the leg: the SPACE pause. goto runs on this thread, so
         this runs its own loop, drawing and reading keys, and takes only SPACE (or the quit question)."""
-        if S.ROVER_PAUSE != "key":
+        if settings.ROVER_PAUSE != "key":
             return
         world.awaiting_rover = list(dirs)
         asking = False  # ESC asks the same keep-or-discard question as anywhere else
@@ -373,12 +374,12 @@ def main():
                         return
                     elif e.key == pygame.K_ESCAPE:
                         asking = True
-                clock.tick(C.FPS)
+                clock.tick(config.FPS)
                 render.draw_world(game, w, fonts, reel)
                 if asking:
                     render.draw_quit(game, w, fonts, run, mission_over())
                 render.draw_chat(pane, conv, w, fonts, said, typing, scroll,
-                                 S.SHOW_THINKING, reel, None, memory_shown, pilot, caret)
+                                 settings.SHOW_THINKING, reel, None, memory_shown, pilot, caret)
                 pygame.display.flip()
         finally:
             world.awaiting_rover = None
@@ -387,7 +388,7 @@ def main():
 
     def mission_over():
         """The last sol is done, or the rover is lost. A length changed on the settings screen counts already."""
-        sols = prefs.pending.get("MISSION_SOLS", S.MISSION_SOLS)
+        sols = prefs.pending.get("MISSION_SOLS", settings.MISSION_SOLS)
         return w.day_over and (w.lost or bool(sols) and w.day >= sols)
 
     # With a window the end of the mission waits (`sols N` plays on, ESC finishes); headless, it is kept and ends.
@@ -397,21 +398,21 @@ def main():
         """The terminal's `sols N`: N more sols, this run only."""
         if not rest.strip().isdigit() or int(rest) < 1:
             return "sols needs a number of sols to add -- e.g.  sols 3", None
-        if not S.MISSION_SOLS and not prefs.pending.get("MISSION_SOLS"):
+        if not settings.MISSION_SOLS and not prefs.pending.get("MISSION_SOLS"):
             return "this mission has no limit (--sols 0), so there is nothing to add to", None
         n = int(rest)
-        S.MISSION_SOLS = max(prefs.pending.pop("MISSION_SOLS", S.MISSION_SOLS), w.day) + n
+        settings.MISSION_SOLS = max(prefs.pending.pop("MISSION_SOLS", settings.MISSION_SOLS), w.day) + n
         at_end[0] = False
-        run.record("mission_extended", sols=S.MISSION_SOLS, added=n)
+        run.record("mission_extended", sols=settings.MISSION_SOLS, added=n)
         return None, f"{n} more sol{'s' if n > 1 else ''} -- the mission now runs to sol " \
-                     f"{S.MISSION_SOLS}"
+                     f"{settings.MISSION_SOLS}"
 
     def set_comms(rest):
         """The terminal's `comms on|off`, the same switch as C."""
         if rest.strip().lower() not in ("on", "off"):
-            return f"comms are {'on' if S.COMMS else 'off'} -- comms on, or comms off", None
-        S.COMMS = rest.strip().lower() == "on"
-        return None, f"comms {'on: someone is at the desk' if S.COMMS else 'off: nobody is'}"
+            return f"comms are {'on' if settings.COMMS else 'off'} -- comms on, or comms off", None
+        settings.COMMS = rest.strip().lower() == "on"
+        return None, f"comms {'on: someone is at the desk' if settings.COMMS else 'off: nobody is'}"
 
     desk = {"comms": set_comms, "sols": add_sols, "place": place}
 
@@ -451,12 +452,12 @@ def main():
 
     def shift():
         """Someone sat down at the desk, or left it, mid-sol. The prompt is rebuilt and she is told."""
-        at_desk[0] = S.COMMS
+        at_desk[0] = settings.COMMS
         prompts.use()
-        run.record("comms", sol=w.day, on=S.COMMS, steps=w.steps,
+        run.record("comms", sol=w.day, on=settings.COMMS, steps=w.steps,
                    prompt=hashlib.sha256(prompts.SYSTEM.encode()).hexdigest()[:12])
         conv.write("note", "comms on -- someone is at the desk, and she is told so"
-                   if S.COMMS else "comms off -- nobody is at the desk, and she is told so")
+                   if settings.COMMS else "comms off -- nobody is at the desk, and she is told so")
         title()
 
     def settings_key(e):
@@ -507,14 +508,14 @@ def main():
     while True:
         if term:
             leave(True)
-        dt = clock.tick(C.FPS) / 1000.0
+        dt = clock.tick(config.FPS) / 1000.0
         now = pygame.time.get_ticks()
 
         # Held keys repeat while a line is typed; otherwise WASD has its own repeat.
         wants = typing or mode == "console" or editing is not None
         if wants != repeating:
             if wants:
-                pygame.key.set_repeat(S.TYPE_REPEAT_DELAY_MS, S.TYPE_REPEAT_MS)
+                pygame.key.set_repeat(settings.TYPE_REPEAT_DELAY_MS, settings.TYPE_REPEAT_MS)
             else:
                 pygame.key.set_repeat()
             repeating = wants
@@ -525,7 +526,7 @@ def main():
                     (max(960, e.w), max(640, e.h)), pygame.RESIZABLE))
                 continue
             if mode == "world" and not typing:
-                if render.D.pad_event(e, game.get_width()):
+                if dashboard.pad_event(e, game.get_width()):
                     continue
             if e.type == pygame.QUIT:
                 mode, typing, held = "quit", False, None
@@ -535,7 +536,7 @@ def main():
                 scroll = max(0, min(scroll_max, scroll + e.y * 3))
             # A click on a button is the same as pressing its key.
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and mode == "world" and not typing:
-                key = render.D.click(e.pos, game.get_size(), pane.get_size())
+                key = dashboard.click(e.pos, game.get_size(), pane.get_size())
                 if key is not None:
                     e = pygame.event.Event(pygame.KEYDOWN, key=key, unicode="")
             if e.type != pygame.KEYDOWN:
@@ -587,7 +588,7 @@ def main():
                 continue
 
             if e.key in DIRS:
-                held, next_step = e.key, now + S.MOVE_DELAY_MS
+                held, next_step = e.key, now + settings.MOVE_DELAY_MS
                 if mode == "world":
                     # Driving by hand cuts the drawing short.
                     reel.skip()
@@ -610,13 +611,13 @@ def main():
                 elif e.key == pygame.K_TAB:
                     typing, held, caret = True, None, len(said)
                 elif e.key == pygame.K_h:
-                    S.SHOW_THINKING = not S.SHOW_THINKING
+                    settings.SHOW_THINKING = not settings.SHOW_THINKING
                     scroll = 0
                 elif e.key == pygame.K_p:
                     memory_shown = not memory_shown
                 # C: sit down at the desk, or leave it, for this run only.
                 elif e.key == pygame.K_c:
-                    S.COMMS = not S.COMMS
+                    settings.COMMS = not settings.COMMS
                 elif e.key == pygame.K_o:
                     mode, held, notice = "settings", None, ""
                     models = chat.installed_models()
@@ -637,7 +638,7 @@ def main():
         if held and now >= next_step and not typing:
             keys = pygame.key.get_pressed()
             if keys[held]:
-                next_step = now + S.MOVE_REPEAT_MS
+                next_step = now + settings.MOVE_REPEAT_MS
                 if mode == "world":
                     reel.destination = None
                     w.move(*DIRS[held])
@@ -657,7 +658,7 @@ def main():
 
         # Pumped every frame; `conv.ready` above is what holds the next request back.
         conv.pump()
-        if S.COMMS != at_desk[0]:
+        if settings.COMMS != at_desk[0]:
             shift()
         # Held while the desk is deciding whether to quit, though the day's clock runs on. A
         # replay plays every sol its tape holds.
@@ -679,7 +680,7 @@ def main():
                                "the mission is over -- `sols N` in your terminal (T) for "
                                "more, or ESC to finish")
         scroll_max = render.draw_chat(pane, conv, w, fonts, said, typing, scroll,
-                                      S.SHOW_THINKING, reel,
+                                      settings.SHOW_THINKING, reel,
                                       sight.view(w) if mode == "view" else None, memory_shown,
                                       pilot, caret)
         if mode == "map":
