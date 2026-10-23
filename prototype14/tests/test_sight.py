@@ -87,68 +87,6 @@ def test_the_legend_hides_what_has_not_been_found():
     assert "never seen" not in sight.legend(g), "surveyed, fog drops out"
 
 
-# The word may hyphenate -- "high-priority objective". The range in front of it is
-# consumed by the digits group first, so `x13-20 rock` is still a to b and not a word.
-SPAN = re.compile(r"x(\d+)(?:-(\d+))? ([a-z][a-z ()-]*[a-z)])")
-
-
-def rle_rows(w):
-    """`sight.rle` expanded back to one word a cell, so it can be laid on the grid."""
-    out = []
-    for line in sight.rle(w).splitlines():
-        cells = []
-        for a, b, word in SPAN.findall(line.split(": ", 1)[1]):
-            a = int(a)
-            b = int(b) if b else a
-            cells += [word] * (b - a + 1)
-        out.append(cells)
-    return out
-
-
-def test_the_runs_say_what_the_picture_says():
-    keep = S.MAP_FORMAT
-    S.MAP_FORMAT = "rle"
-    try:
-        # The glyph each word has to agree with. Two renderers compared against each
-        # other, not both against `nav.known`, which is the layer they share.
-        #
-        # Named tiles come from `world.label_for`, the one place a name is decided. A
-        # copied table here went stale when objectives took their names from priority.
-        word = {sight.FOG: "unseen", "#": "rock", ".": "open",
-                sight.YOU: "the rover (you)"}
-        for name, w in (("fogged", World()), ("surveyed", surveyed())):
-            spans, pic = rle_rows(w), rows(w)
-            assert len(spans) == 30 and all(len(r) == 30 for r in spans), f"{name}: fifty rows of fifty cells"
-            bad = [(x, y, pic[y][x], spans[y][x]) for y in range(30) for x in range(30)
-                   if (word.get(pic[y][x]) or world.label_for(w, pic[y][x]))
-                   != spans[y][x]]
-            assert not bad, f"{name}: every cell agrees with the grid"
-            # An unmerged run is still correct cell by cell, and costs double.
-            unmerged = []
-            for y, line in enumerate(sight.rle(w).splitlines()):
-                said = [s[2] for s in SPAN.findall(line.split(": ", 1)[1])]
-                unmerged += [(y, a) for a, b in zip(said, said[1:]) if a == b]
-            assert not unmerged, f"{name}: neighbouring runs never share a word"
-
-        assert "unseen" in sight.rle(World()).splitlines()[0], "fog is named, not left out"
-        assert (sight.RLE_HEADING in sight.view(World())
-                    and sight.GRID_HEADING not in sight.view(World())), "the heading tells her how to read a run"
-
-        # Not flat like the grid: filling the map in is what fragments the runs. The cap
-        # is the affordability question, and it is the whole argument against this format.
-        day_one, worst = len(sight.view(World())), len(sight.view(surveyed()))
-        assert worst < 9000, "a surveyed arena still fits the budget"
-
-        S.MAP_FORMAT = "nonsense"
-        try:
-            sight.view(World())
-            assert False, "an unknown MAP_FORMAT is refused"
-        except ValueError:
-            assert True, "an unknown MAP_FORMAT is refused"
-    finally:
-        S.MAP_FORMAT = keep
-
-
 def test_the_grid_has_one_door_onto_the_world():
     src = pathlib.Path(sight.__file__).read_text()
     # Prose cannot read a grid. Strip docstrings and comments, then the check is about

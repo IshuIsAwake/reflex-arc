@@ -101,19 +101,8 @@ def test_a_resumed_world_is_the_one_that_slept():
     assert not diff and again.day == 3, "and a second night the same way"
 
 
-def test_a_night_from_before_stranding_wakes_at_the_pad():
+def test_a_night_saved_by_10c_is_refused():
     kept = roundtrip(played())
-    del kept["pos"], kept["stranded"]
-    woke = World(carried=kept)
-    assert woke.pos == C.SPAWN and not woke.stranded, "no position saved means it woke at the pad, as it always did"
-    # Before 10c's memory and board: one paragraph and one order string.
-    kept["memory"], kept["orders"] = "the C opens east", "finish objective 1"
-    woke = World(carried=kept)
-    assert woke.notes.memory == {"note": "the C opens east"}, "an old note wakes as one entry called note"
-    assert woke.notes.orders == ["finish objective 1"], "and an old order as a board of one"
-    kept["memory"], kept["orders"] = "", ""
-    woke = World(carried=kept)
-    assert woke.notes.memory == {} and woke.notes.orders == [], "empty ones wake empty"
     kept["version"] = 1
     assert _raises(lambda: World(carried=kept)), "a night saved by 10c, whose work was all objectives, is refused"
 

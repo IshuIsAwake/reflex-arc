@@ -130,7 +130,7 @@ def test_every_record_survives_a_real_recorder():
                     break
             skills.call(w, "execute", {"why": "the whole point of the sol"})
         nav.goto(w, *C.SPAWN)
-        nav.distance(w, 5, 5)
+        nav.price(w, 5, 5)
         w.day_over = False
         w.next_day()
     finally:

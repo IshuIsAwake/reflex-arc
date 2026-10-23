@@ -34,10 +34,6 @@ from sight import status_line   # one wording for the morning and the view
 WRITES = ("todo", "strike", "remember", "forget")
 
 
-WHO = ("status", "you", "brief", "urgent", "auto", "gemma", "think", "error", "note",
-       "view", "call", "result")
-
-
 # Control tokens the template leaks into `content`. Every one of eight gemma turns ended
 # `<channel|>`, which then fed back into context as something she had said.
 # Explicit rather than a catch-all `<...>` sweep, which would one day eat real content.

@@ -43,7 +43,6 @@ def layout(width, height):
 class Fonts:
     def __init__(self):
         mono = "dejavusansmono,consolas,monospace"
-        self.tile = pygame.font.SysFont(mono, 12, bold=True)
         self.tiny = pygame.font.SysFont(mono, 12)
         self.hud = pygame.font.SysFont(mono, 14)
         self.big = pygame.font.SysFont(mono, 19, bold=True)
@@ -474,7 +473,6 @@ CHAT_INDENT = 14
 HEADS = {"status": ("SOL OPEN", C.CHAT_GOOD),
          "you": ("OPERATOR", C.CHAT_OPERATOR),
          "urgent": ("OPERATOR · URGENT", C.CHAT_BAD),
-         "brief": ("MISSION CLOCK · BRIEFED", C.CHAT_OPERATOR),
          # Not the operator's colour: nobody coached a sol the clock opened.
          "auto": ("MISSION CLOCK", C.CHAT_GOOD),
          "gemma": ("PLANNER", C.CHAT_PLANNER),

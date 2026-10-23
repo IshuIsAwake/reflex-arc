@@ -28,14 +28,10 @@ import settings as S
 class Storm:
     """A blot of cells nothing can drive through, and what to call it."""
 
-    def __init__(self, cells, centre, day, kind="dust storm"):
+    def __init__(self, cells, centre, kind="dust storm"):
         self.cells = frozenset(cells)
         self.centre = centre
-        self.day = day
         self.kind = kind
-
-    def __contains__(self, cell):
-        return cell in self.cells
 
     def __len__(self):
         return len(self.cells)
@@ -99,7 +95,7 @@ def spawn_for_day(area, day, start, keep_clear=()):
             continue
         if not _all_approachable(area, start, frozenset(cells), keep_clear):
             continue
-        return Storm(cells, (cx, cy), day)
+        return Storm(cells, (cx, cy))
     return None
 
 

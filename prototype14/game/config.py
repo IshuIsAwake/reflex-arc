@@ -34,7 +34,6 @@ GRIT_LIT = (187, 98, 59)   # ...and lighter. Both low-contrast on purpose
 
 BASE = (105, 170, 181)     # the landing pad, pale metal against everything natural
 BASE_DIM = (62, 101, 110)
-ROVER = (228, 242, 247)    # a dot. Pale, because red would vanish into the ground
 ROVER_RING = (16, 22, 26)
 
 INK = (213, 217, 221)      # text on the dark side

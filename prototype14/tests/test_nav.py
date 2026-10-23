@@ -14,7 +14,6 @@ from collections import deque
 import config as C
 import console
 import nav
-import plan_txt
 import settings as S
 from nav import DIRS
 from world import SOLID, THINGS, World
@@ -149,13 +148,13 @@ def test_distance_is_optimistic():
     a detour worth measuring: 14 cells if the spine is assumed drivable, 18 once it is
     known. Every other crossing is a straight line the fog cannot flatter."""
     w = World()
-    guess = nav.distance(w, 2, 14)
+    guess = nav.price(w, 2, 14)
     truth = reference_bfs(C.ARENA, w.pos, (2, 14))
     assert guess is not None and guess < truth, (guess, truth)
     assert w.steps == 0, "distance must not cost a step"
 
     w2 = surveyed()
-    assert nav.distance(w2, 2, 14) == truth, "surveyed, it should be exact"
+    assert nav.price(w2, 2, 14) == truth, "surveyed, it should be exact"
 
 
 def test_the_arena_has_no_rim_wall():
@@ -275,7 +274,7 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     assert any(C.ARENA[y][x] == "#" for cells in plans for x, y in cells), \
         "some plan ran through rock nobody had seen -- that is what fog costs"
 
-    nav.distance(w, 15, 0)
+    nav.price(w, 15, 0)
     assert w.last_walk[1] == [], "pricing a trip drives nothing and should show nothing"
 
 
@@ -378,7 +377,7 @@ def test_pricing_a_trip_says_what_it_costs_and_nothing_else():
     assert nav.price(surveyed_w, 33, 30) is None
 
     # `distance` still hands back the bare integer four other call sites rely on.
-    d = nav.distance(World(), 15, 27)
+    d = nav.price(World(), 15, 27)
     assert isinstance(d, int) and d > 0, d
 
 
@@ -484,66 +483,6 @@ def test_a_direction_is_the_step_and_nothing_else():
     # Same two cells, same answer, however the rover got there. There is no heading
     # to pass in any more -- an extra argument would not even be accepted.
     assert set(nav.route_actions([(5, 5), (5, 4)])) <= set(nav.MOVES)
-
-
-def test_writing_a_plan_drives_nothing():
-    """`plan_txt` exists to produce a file and no motion. A regression here is
-    silent: the file still gets written, and the rover has spent the day."""
-    out = os.path.join(tempfile.gettempdir(), "reflex_plan_check.txt")
-    w = World()
-    before = (w.pos, w.steps, len(w.here.seen))
-    try:
-        assert plan_txt.main(["--to", "25", "5", "--out", out]) == 0
-        lines = open(out, encoding="utf-8").read().splitlines()
-    finally:
-        if os.path.exists(out):
-            os.remove(out)
-    assert lines and set(lines) <= set(nav.MOVES), lines
-    # Nothing to skip. No header, no comments, no coordinates -- a reader that drives
-    # every line it finds is a correct reader, and that is the whole format.
-    assert not [l for l in lines if l.startswith("#")], lines
-    # plan_txt builds its own throwaway World; this one must be untouched.
-    assert (w.pos, w.steps, len(w.here.seen)) == before
-
-
-def test_planning_offline_never_writes_the_file_the_rover_drives():
-    """`plan_txt` writes a route nobody has driven, and the live file is defined as
-    ground the simulation has already been over. Same format, opposite guarantee, so
-    the default must not be the live file -- it used to be."""
-    keep = S.PLAN_FILE
-    S.PLAN_FILE = os.path.join(tempfile.gettempdir(), "reflex_live_must_not_move.txt")
-    try:
-        if os.path.exists(S.PLAN_FILE):
-            os.remove(S.PLAN_FILE)
-        out = os.path.join(tempfile.gettempdir(), "reflex_preview.txt")
-        assert plan_txt.main(["--to", "25", "5", "--out", out]) == 0
-        assert not os.path.exists(S.PLAN_FILE), "offline planning wrote the live file"
-    finally:
-        S.PLAN_FILE = keep
-        for f in (out, ):
-            if os.path.exists(f):
-                os.remove(f)
-
-
-def test_an_unreachable_target_empties_the_file_rather_than_leaving_it():
-    """The dangerous failure is not a missing file, it is the last good route still
-    sitting there after the planner has given up -- somebody drives it."""
-    out = os.path.join(tempfile.gettempdir(), "reflex_nope.txt")
-    rock = [(x, y) for y in range(len(C.ARENA))
-            for x in range(len(C.ARENA[0])) if C.ARENA[y][x] == "#"]
-    assert rock, "the arena has no wall to aim at"
-    try:
-        assert plan_txt.main(["--to", "5", "5", "--survey", "--out", out]) == 0
-        assert open(out, encoding="utf-8").read().split(), "no route written"
-        assert plan_txt.main(["--to", str(rock[0][0]), str(rock[0][1]),
-                              "--survey", "--out", out]) == 1
-        left = open(out, encoding="utf-8").read()
-    finally:
-        if os.path.exists(out):
-            os.remove(out)
-    # Empty, and empty means empty: not a blank line, which splits into one move.
-    assert left == "", repr(left)
-    assert [l for l in left.splitlines() if l.strip()] == []
 
 
 def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
@@ -668,37 +607,6 @@ def test_a_replan_hands_over_the_leg_before_planning_the_next_one():
         C.use(C.DEFAULT_ARENA)
         if os.path.exists(out):
             os.remove(out)
-
-
-def test_planning_only_moves_nothing_and_writes_nothing():
-    """`executor="plan"` has exactly one job and one way to fail badly.
-
-    It used to write its route out, which the seam no longer permits: this file says
-    what the rover *did*, and a plan call drives nothing at all. Writing here would
-    put the one thing the robot must never receive -- an untested hypothesis -- into
-    the one file it reads. The other failure is silent, a plan call that charges a
-    step or lifts a cell of fog, and nothing on screen would say so.
-    """
-    out = os.path.join(tempfile.gettempdir(), "reflex_plan_only.txt")
-    keep = S.PLAN_FILE
-    S.PLAN_FILE = out
-    try:
-        if os.path.exists(out):
-            os.remove(out)
-        w = _roomy()
-        before = (w.pos, w.steps, len(w.here.seen), len(w.here.visited))
-        r = nav.goto(w, 12, 4, executor="plan")
-        after = (w.pos, w.steps, len(w.here.seen), len(w.here.visited))
-        wrote = os.path.exists(out)
-    finally:
-        S.PLAN_FILE = keep
-        C.use(C.DEFAULT_ARENA)
-        if os.path.exists(out):
-            os.remove(out)
-
-    assert after == before, (before, after)
-    assert r.code == "PLANNED" and r.steps == 0, str(r)
-    assert not wrote, "a plan nobody drove reached the file the robot reads"
 
 
 def test_a_call_that_did_not_arrive_leaves_nothing_for_the_next_one():

@@ -42,23 +42,6 @@ AUTO_RETRY_SECONDS = 30.0
 VISION_RADIUS = 2
 BASE_REVEAL = 6         # the landing site, opened once on arrival -- the only free map
 
-# How the map is written into the view. "grid" is the picture, one character a cell.
-# "rle" is one line a row of coordinate-labelled runs, so no cell has to be counted off
-# a row -- gemma scores 0% on every counting question off the picture.
-#
-# What rle costs, in gemma4:e4b's own tokens, measured 2026-09-04 off `prompt_eval_count`
-# for the whole view block:
-#
-#            fresh sol        surveyed
-#   30x30    845 -> 1070      772 -> 1414   (1.27x, 1.83x)
-#   50x50   1280 -> 1285     1155 -> 3168   (1.00x, 2.74x)
-#
-# Runs fragment as the map fills in, so rle is most expensive exactly when the sol is
-# going well, and the bigger arena separates the two formats far more. Measure in tokens,
-# not chars: the grid's repeated characters pack much better than words, so the char
-# ratio understates this badly -- 1.37x where the token ratio is 2.74x.
-MAP_FORMAT = "grid"
-
 # --- the model -------------------------------------------------------------
 # The planner for a multi-sol run. `gemma4:31b-cloud` is rate-limited per-model on
 # Ollama cloud, so a long day can stall part-way through -- `--model` swaps it without
@@ -118,47 +101,11 @@ FREE_HOPS = 10
 # Reaching either cap ends the turn by itself, and by day the clock opens the next one
 # with both allowances back. She never has to call `end` for a cap: `end` is the day.
 
-# One tool call per request, always. The 31B emits four to six at a time, and they are
-# *chosen* before any of their outcomes are known -- the second target in a batch is
-# aimed at a map several drives out of date, which is where its BLOCKED results came
-# from. Extra calls in one reply are refused, not queued: queueing runs exactly the
-# stale decisions this exists to stop.
-ONE_CALL_AT_A_TIME = True
 
 MOVE_DELAY_MS = 220     # hold a direction this long before it repeats
 MOVE_REPEAT_MS = 70     # then one step every this long
 TYPE_REPEAT_DELAY_MS = 400  # hold a key this long while typing before it repeats
 TYPE_REPEAT_MS = 35     # then once every this long
-
-# --- the second model, for the probe only ----------------------------------
-# Nothing in the game reads any of this. It lets `probe_map.py --backend gemini` put the
-# same prompt, view and questions in front of a hosted model.
-# GEMINI_MODEL: names move, so run `--list-models` and paste one back.
-GEMINI_HOST = "https://generativelanguage.googleapis.com/v1beta/interactions"
-GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-GEMINI_MODEL = "gemini-3.7-flash"
-
-GEMINI_KEY_ENV = "GEMINI_API_KEY"   # the NAME of the variable. The key never lives here.
-
-# AI Studio now issues `AQ.` keys, which this endpoint rejects with 401 unless sent as
-# "bearer". "key" is correct for the older `AIza` keys.
-GEMINI_AUTH = "key"
-
-# Free-tier pacing. The probe sleeps rather than retrying into a quota.
-# Known wrong: the observed per-minute limit is 5, not 15, and the daily cap is 20 requests
-# per model with failed requests counting against it.
-GEMINI_RPM = 15
-GEMINI_TPM = 16000      # one call is ~5.5k tokens, so this binds before RPM does
-
-GEMINI_RETRIES = 3      # 429 and 5xx only, at 2s/4s/8s. Auth faults are never retried.
-
-# Past this, a 429 is a spent quota rather than congestion, so the probe stops and names
-# the metric. Free allowances differ wildly: 20 requests on one model, 210 on another.
-GEMINI_MAX_BACKOFF = 30
-
-# The comparison is only fair at the lowest setting each model offers, and the allowed
-# values differ: `low` for gemini-3.x, `minimal|high` for gemma-4, empty to send nothing.
-GEMINI_THINKING = "low"
 
 # --- watching it drive -----------------------------------------------------
 # `nav.goto` finishes in one go -- the model must get the outcome in the same breath as
@@ -255,11 +202,3 @@ PLAN_FILE = "runs/plan.txt"
 # it, where the pause is the thing being demonstrated: without it `plan.txt` is written
 # and wiped with nothing on the other end.
 ROVER_PAUSE = "none"
-
-# What a `goto` from the model actually does. `main.py --executor` sets it.
-#   teleport  step cell to cell, writing the route as it goes (the default)
-#   plan      plan, write the route file, and move nothing
-# `plan` is for watching the planner alone: the rover stays put, so no fog lifts and
-# every plan is made over the same map. The model is told this in the result rather
-# than being left to work out why its situation never changes.
-EXECUTOR = "teleport"

@@ -1,4 +1,4 @@
-"""Run me:  .venv/bin/python game/main.py [--arena 30|50] [--map grid|rle] [--sols N]
+"""Run me:  .venv/bin/python game/main.py [--arena 30|50] [--sols N]
                                         [--model TAG] [--think] [--replay runs/<stamp>]
                                         [--comms on|off] [--objectives manual|auto]
                                         [--preset design] [--outage N]
@@ -108,14 +108,8 @@ def read_flags(argv, prefs):
     starts repeating at temperature 0 has no noise to climb out with.
     """
     p = argparse.ArgumentParser(prog="game/main.py")
-    p.add_argument("--map", choices=("grid", "rle"),
-                   help="how the map is written into the view")
     p.add_argument("--arena", choices=tuple(C.ARENAS), help="which arena to land on")
-    p.add_argument("--prompt", choices=tuple(prompts.PROMPTS), default=prompts.DEFAULT,
-                   help=f"which system prompt to run (default: {prompts.DEFAULT})")
     p.add_argument("--model", help="any tag `ollama list` shows, or a `-cloud` one")
-    p.add_argument("--executor", choices=("teleport", "plan"),
-                   help="what a goto does; 'plan' writes the route and moves nothing")
     p.add_argument("--think", action="store_true",
                    help="reasoning trace on, and the sampler left to the model")
     p.add_argument("--pause", choices=("key", "none"),
@@ -148,8 +142,7 @@ def read_flags(argv, prefs):
     S.OUTAGE_SOLS = tuple(args.outage or ())
     # With no window, nobody is at the desk unless the flag says so.
     comms = args.comms == "on" if args.comms else False if headless() else None
-    flags = {"MAP_FORMAT": args.map, "APP_ARENA": args.arena, "MODEL": args.model,
-             "EXECUTOR": args.executor, "ROVER_PAUSE": args.pause,
+    flags = {"APP_ARENA": args.arena, "MODEL": args.model, "ROVER_PAUSE": args.pause,
              "MISSION_SOLS": args.sols, "COMMS": comms, "OBJECTIVES": args.objectives}
     bad = registry.apply({k: v for k, v in flags.items() if v is not None})
     if bad:
@@ -175,8 +168,8 @@ def read_flags(argv, prefs):
 
     # Before anything reads `config` -- the window is sized off it and so is the world.
     C.use(C.APP_ARENA)
-    # Last: the prompt is built from the arena, the map format and the turn caps.
-    prompts.use(args.prompt)
+    # Last: the prompt is built from the arena and the turn caps.
+    prompts.use()
     return args, script, carried
 
 
@@ -186,10 +179,9 @@ def main():
     pygame.init()
 
     def title():
-        """The map format is here because nothing else on screen tells the two arms
-        apart. Rewritten at nightfall, when the model or the format may change."""
+        """Rewritten at nightfall, when the model may change."""
         pygame.display.set_caption(
-            f"ANGARAKA -- prototype 13  ·  {C.VIEW_W}x{C.VIEW_H}  ·  {S.MAP_FORMAT} map"
+            f"ANGARAKA -- prototype 14  ·  {C.VIEW_W}x{C.VIEW_H}"
             + (f"  ·  replay of {pathlib.Path(args.replay).name}" if args.replay else
                f"  ·  {S.MODEL}")
             + ("  ·  thinking" if S.MODEL_THINK else "")
@@ -535,7 +527,7 @@ def main():
         else:
             changed = prefs.nightfall()
             notes = [f"{k} {registry.show(v)}" for k, v in changed.items()]
-        prompts.use(args.prompt)
+        prompts.use()
         run.save_night(w)     # a crash tomorrow still resumes from tonight
         run.save_report(report.build(w))
         w.next_day()
@@ -554,7 +546,7 @@ def main():
         and swapped in at her next turn (`Conversation._on_shift`). An open line closes
         on the clock's next tick if nobody is left on it."""
         at_desk[0] = S.COMMS
-        prompts.use(args.prompt)
+        prompts.use()
         run.record("comms", sol=w.day, on=S.COMMS, steps=w.steps,
                    prompt=hashlib.sha256(prompts.SYSTEM.encode()).hexdigest()[:12])
         conv.write("note", "comms on -- someone is at the desk, and she is told so"

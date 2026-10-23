@@ -36,8 +36,7 @@ from dataclasses import dataclass
 HEADING_NAMES = ("N", "E", "S", "W")
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))   # indexed by heading, same as 10d's nav.DIRS
 RELATIVE = ("F", "B", "L", "R")
-ABSOLUTE = HEADING_NAMES
-COMMANDS = RELATIVE + ABSOLUTE
+COMMANDS = RELATIVE + HEADING_NAMES
 
 
 @dataclass(frozen=True)
@@ -101,53 +100,3 @@ def apply(pose, cmd):
     return Pose(x, y, h)
 
 
-def manhattan(a, b):
-    return abs(a.x - b.x) + abs(a.y - b.y)
-
-
-def chebyshev(a, b):
-    return max(abs(a.x - b.x), abs(a.y - b.y))
-
-
-@dataclass(frozen=True)
-class Check:
-    expected: Pose
-    measured: Pose
-    manhattan: int
-    chebyshev: int
-    heading_off: int      # signed quarter-turns from measured to expected, +1 = turn right
-    result: str           # DONE, OFF, LOST
-    kind: str             # what the shape of the miss says, in words
-
-    @property
-    def ok(self):
-        return self.result == "DONE"
-
-    def __str__(self):
-        s = (f"{self.result:4}  expected {self.expected}  measured {self.measured}  "
-             f"manhattan {self.manhattan}  chebyshev {self.chebyshev}")
-        if self.heading_off:
-            s += f"  heading off by {abs(self.heading_off) * 90} deg"
-        return s + (f"  -- {self.kind}" if self.kind else "")
-
-
-def check(expected, measured, lost_at=2):
-    """Compare where the rover should be with where it is.
-
-    DONE -- same cell, same heading.
-    OFF  -- a miss, within `lost_at` cells (Chebyshev). Report it and carry on from
-            `measured`; fix the heading if that is what is wrong.
-    LOST -- `lost_at` cells or more out on some axis. Something bigger than slip
-            happened; stop and let a person say where it is.
-    """
-    m, c = manhattan(expected, measured), chebyshev(expected, measured)
-    h = turns_to_face(measured.heading, expected.heading)
-    if m == 0 and h == 0:
-        return Check(expected, measured, 0, 0, 0, "DONE", "")
-    if m == 0:
-        kind = "right cell, wrong heading: turn to fix before the next move"
-    elif m == c:
-        kind = "off along one axis: stopped short, overshot or slid sideways"
-    else:
-        kind = "off on both axes: the heading probably went wrong first"
-    return Check(expected, measured, m, c, h, "LOST" if c >= lost_at else "OFF", kind)

@@ -105,7 +105,7 @@ def test_each_tier_lands_when_it_says():
 def test_bad_values_are_refused():
     with Sandbox() as sb:
         p = sb.prefs()
-        for name, v in (("BATTERY", 5), ("BATTERY", "lots"), ("MAP_FORMAT", "png"),
+        for name, v in (("BATTERY", 5), ("BATTERY", "lots"),
                         ("STORM_ON", 1), ("MODEL", "  ")):
             try:
                 p.set(name, v)
@@ -125,11 +125,11 @@ def test_bad_values_are_refused():
 def test_the_prompt_states_the_settings():
     with Sandbox():
         S.MOVE_HOPS, S.FREE_HOPS = 7, 3
-        text = prompts.use(prompts.DEFAULT)
+        text = prompts.use()
         assert "7 drives a turn" in text, "drives"
         assert "3 looks" in text, "looks"
         assert "Ten drives" not in text, "no number written in by hand"
-    prompts.use(prompts.DEFAULT)
+    prompts.use()
 
 
 def test_replay_uses_the_logs_settings():
@@ -149,10 +149,6 @@ def test_replay_uses_the_logs_settings():
         script.use_settings(2)
         assert S.BATTERY == 300, "sol 2's own"
         assert not sb.path.exists(), "nothing was saved as the viewer's"
-        legacy = registry.from_log([{"kind": "run", "day_steps": 150, "vision": 2,
-                                     "arena": "50x50", "model": "x"}])
-        assert (legacy == {1: {"BATTERY": 150, "VISION_RADIUS": 2,
-                                   "APP_ARENA": "50"}}), "tapes from before the registry are read too"
 
 
 def test_the_screens_draw():

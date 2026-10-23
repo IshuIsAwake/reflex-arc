@@ -229,7 +229,7 @@ class Result:
     took.
     """
 
-    GOOD = {"DONE", "PLANNED"}
+    GOOD = {"DONE"}
 
     def __init__(self, code, steps=0, at=None, stopped=None, beside=None, walls=(),
                  new=None, planned=None, closed=False):
@@ -303,9 +303,6 @@ class Result:
             return (f"the dust storm is across the only way there. It is not rock and "
                     f"it is not your doing: it blows out at the end of the sol and the "
                     f"ground under it is fine. Go somewhere else today, or wait it out.")
-        if self.code == "PLANNED":
-            return ("the route is in the plan file and the rover has not moved, so "
-                    "nothing has changed and planning this again gives the same answer.")
         if self.code == "DONE" and not self.steps:
             return "you were already standing there. Nothing moved, nothing spent."
         if self.steps and self.new == 0:
@@ -440,7 +437,7 @@ def _log(world, area_name, start, goal, planned, result):
     return result
 
 
-def goto(world, x, y, avoid=None, executor=None):
+def goto(world, x, y, avoid=None):
     """Drive to (x, y) over the map the rover has. Returns a Result.
 
     `avoid=None`      dodge only the rock it already knows about
@@ -454,17 +451,11 @@ def goto(world, x, y, avoid=None, executor=None):
     simulation has already been over, and a plan that turns out to run into an outcrop
     costs a replan rather than a collision.
 
-    `executor="teleport"` (the default) steps cell to cell via `world.move`.
-    `executor="plan"` plans and moves nothing, which is for watching the planner alone:
-    no fog lifts, so every plan is made over the same map. Nothing is driven, so nothing
-    is written -- the file is a record of a drive, and there was no drive.
-
     The drive stops the moment a step is refused -- face to face with the outcrop,
     which is where the most map has been revealed -- records it, and replans up to
     NAV_REPLANS times. `NAV_REPLANS = 5` therefore bounds this at six hardware
     round-trips per call, however far the rover has to go.
     """
-    executor = S.EXECUTOR if executor is None else executor
     area, area_name, goal, start = world.here, world.area, (x, y), world.pos
 
     # Every cell actually driven over, as against the cells that were planned for.
@@ -507,13 +498,6 @@ def goto(world, x, y, avoid=None, executor=None):
     planned = len(path) - 1
     world.last_path = (area_name, list(path))
     reel.append(("plan", list(path)))
-
-    if executor == "plan":
-        # Plan and stop. Nothing was driven, so nothing is written: this file says what
-        # the rover *did*, and a hypothesis in it is the one thing it must never hold.
-        world.play(reel)
-        return _log(world, area_name, start, goal, planned,
-                    Result("PLANNED", at=start, planned=planned, new=0))
 
     walls, steps, replans = [], 0, S.NAV_REPLANS
     # What the drive bought. `world.revealed` holds one move's worth and is replaced on
@@ -681,7 +665,3 @@ def home_steps(world, storm=True):
     return None
 
 
-def distance(world, x, y, avoid=None):
-    """Planned length in steps, or None. An alias for `price`, kept because it is what
-    four tests and the map view ask for."""
-    return price(world, x, y, avoid)

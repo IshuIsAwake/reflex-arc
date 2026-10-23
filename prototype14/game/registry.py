@@ -168,10 +168,6 @@ SETTINGS = [
     Setting("STORM_RADIUS", "int", "sol", "how big the storm is", 1, 5),
     Setting("NAV_REPLANS", "int", "sol", "replans in one goto before it returns BLOCKED",
             0, 10),
-    Setting("MAP_FORMAT", "choice", "sol", "grid: one character a cell. rle: each row "
-            "as labelled runs", choices=("grid", "rle")),
-    Setting("EXECUTOR", "choice", "sol", "teleport: goto drives. plan: it writes the "
-            "route and moves nothing", choices=("teleport", "plan")),
     Setting("TODO_MAX", "int", "sol", "items on the model's list in a sol", 1, 40),
     Setting("TODO_CHARS", "int", "sol", "characters in one list item", 40, 1000, 20),
     Setting("MEMORY_ENTRIES", "int", "sol", "entries her memory holds; at the cap she "
@@ -273,8 +269,6 @@ class Prefs:
                 self.pending[name] = v
         return v
 
-    def reset(self, name):
-        return self.set(name, BY_NAME[name].default)
 
     def preset(self, label):
         for name, v in PRESETS[label].items():
@@ -292,24 +286,9 @@ class Prefs:
 
 
 def from_log(game_rows):
-    """The settings a kept run was played under, by sol.
-
-    Older tapes have no `settings` rows, only a `run` row with a handful of fields, so
-    those are read instead and everything else stays as it is now.
-    """
+    """The settings a kept run was played under, by sol."""
     out = {}
     for r in game_rows:
         if r.get("kind") == "settings":
             out[r.get("sol", 1)] = r.get("values", {})
-    if out:
-        return out
-    legacy = {"map_format": "MAP_FORMAT", "vision": "VISION_RADIUS",
-              "replans": "NAV_REPLANS", "day_steps": "BATTERY", "todo_max": "TODO_MAX",
-              "memory_chars": "MEMORY_CHARS"}
-    for r in game_rows:
-        if r.get("kind") == "run":
-            v = {legacy[k]: r[k] for k in legacy if k in r}
-            if "arena" in r:
-                v["APP_ARENA"] = str(r["arena"]).split("x")[0]
-            return {1: v}
-    return {}
+    return out

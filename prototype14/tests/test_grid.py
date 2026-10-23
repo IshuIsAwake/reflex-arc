@@ -49,32 +49,6 @@ def test_parse_refuses_what_it_does_not_know():
     raise AssertionError("an unknown command was skipped instead of refused")
 
 
-def test_arrived_is_done():
-    c = grid.check(Pose(2, 0, E), Pose(2, 0, E))
-    assert c.ok and c.manhattan == 0 and c.chebyshev == 0
-
-
-def test_the_two_distances_disagree_usefully():
-    want = Pose(0, -2, N)
-    short = grid.check(want, Pose(0, -1, N))        # stopped a cell short
-    assert (short.manhattan, short.chebyshev, short.result) == (1, 1, "OFF")
-    assert "one axis" in short.kind
-    drift = grid.check(want, Pose(1, -1, N))        # short and slid right
-    assert (drift.manhattan, drift.chebyshev) == (2, 1)
-    assert "both axes" in drift.kind
-    far = grid.check(want, Pose(0, 0, N))           # never moved
-    assert (far.manhattan, far.chebyshev, far.result) == (2, 2, "LOST")
-
-
-def test_wrong_heading_is_flagged_for_a_fix():
-    c = grid.check(Pose(0, 0, E), Pose(0, 0, N))    # meant to turn right, did not
-    assert c.result == "OFF" and c.heading_off == 1
-    c = grid.check(Pose(0, 0, W), Pose(0, 0, N))
-    assert c.heading_off == -1
-    c = grid.check(Pose(0, 0, S), Pose(0, 0, N))
-    assert abs(c.heading_off) == 2
-
-
 def test_frame_matches_10d():
     # 10d's nav.DIRS; if this drifts, a 10d plan.txt drives somewhere else
     assert grid.DIRS == ((0, -1), (1, 0), (0, 1), (-1, 0))

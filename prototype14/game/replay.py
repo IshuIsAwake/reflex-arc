@@ -38,10 +38,6 @@ import registry
 import skills
 
 
-class Divergence(Exception):
-    """The replay stopped agreeing with the tape. Carries both sides."""
-
-
 def _rows(path):
     """One JSONL file as a list of dicts. A half-written line is skipped: a crashed run
     leaves one at the end, and it is the one record nobody promised was complete."""

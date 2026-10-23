@@ -602,12 +602,10 @@ class World:
         sv.merges = [tuple(m) for m in c["survey"]["merges"]]
         sv._next = c["survey"]["next"]
         self.notes.load(c["memory"], c["orders"], c.get("todos", ()))
-        # Older nights have neither: those rovers all woke at the pad.
-        self.pos = tuple(c.get("pos") or C.SPAWN)
-        self.stranded = bool(c.get("stranded", False))
-        # Older nights have no battery: those rovers woke on a full sol, charged or not.
-        self.battery = int(c.get("battery", S.BATTERY))
-        self.finished = list(c.get("finished", []))
+        self.pos = tuple(c["pos"])
+        self.stranded = c["stranded"]
+        self.battery = c["battery"]
+        self.finished = list(c["finished"])
         self.history = list(c["history"])
         self.day = c["day"] + 1
 

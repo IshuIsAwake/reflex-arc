@@ -20,32 +20,6 @@ import config as C
 import settings as S
 
 
-# The map paragraph is the one part that has to know how the map is written, because
-# `grid` and `rle` are different objects and a prompt describing the wrong one is how
-# 2026-09-04's first two runs were lost. Both open on the same sentence so that
-# `probe_map.systems()` can still find and swap the paragraph out.
-LIVE_PARA_HEAD = "**The map in your view is a real map and you can read it.**"
-
-_GRID_PARA = f"""\
-{LIVE_PARA_HEAD} It is drawn to scale, one
-character to a cell, and it is the accumulated record of everything the rover has seen.
-Row numbers run down the left edge and a ruler across the top marks every fifth column."""
-
-_RLE_PARA = f"""\
-{LIVE_PARA_HEAD} It is written one line to a
-row, and each line lists that row's runs with their own coordinates -- `y12: x0-6 open,
-x7-9 rock, x10-20 unseen` means row 12 is open from x0 to x6, rock from x7 to x9, and
-unseen from x10 on. Nothing has to be counted off it: every boundary carries its number."""
-
-
-def _map_para():
-    if S.MAP_FORMAT == "grid":
-        return _GRID_PARA
-    if S.MAP_FORMAT == "rle":
-        return _RLE_PARA
-    raise ValueError(f"settings.MAP_FORMAT is {S.MAP_FORMAT!r}, not 'grid' or 'rle'")
-
-
 def _operator_line():
     return ("Mission control leaves you orders, and you carry out what they asked by "
             "yourself.")
@@ -241,21 +215,15 @@ you have already decided, since `goto` reports its own cost when it finishes.
 """
 
 
-PROMPTS = {"sighted": sighted}
-DEFAULT = "sighted"
-
 SYSTEM = None       # set by `use()`, below, at import and again from `main.read_flags`
 
 
-def use(name):
-    """Build a prompt and make it the live one.
-
-    Called after `MAP_FORMAT` and the arena are settled, because the text depends on
-    both. Rebuilt rather than cached so that a flag set after import still lands.
-    """
+def use():
+    """Build the prompt and make it the live one. Rebuilt, not cached, because it is
+    written from the arena and the settings, which can change after import."""
     global SYSTEM
-    SYSTEM = PROMPTS[name]()
+    SYSTEM = sighted()
     return SYSTEM
 
 
-use(DEFAULT)
+use()

@@ -45,32 +45,20 @@ AXES = ("x grows to the east (right), y grows to the south (down). "
 
 # The heading used to say *do not count cells off it*. Withdrawn: we told her not to read
 # the grid in three places she reads every turn, then measured that she would not read it.
-# It now says how to index it instead. `blocked_GRID_HEADING` is the control.
+# It now says how to index it instead.
 GRID_HEADING = ("THE MAP OF THIS PLACE -- read it. The number down the left is the row "
                 "(y) and the ruler across the top marks every fifth column (x). Cell "
                 "(x,y) is the xth character of row y. Exact answers to the questions "
                 "asked most often are also written out underneath.")
 
-blocked_GRID_HEADING = ("THE SHAPE OF THIS PLACE (a picture, not a table -- do not count "
-                        "cells off it; every exact fact is listed underneath)")
-
-# The heading for `rle`. It says how to read a run rather than what the encoding is,
-# for the same reason `GRID_HEADING` says how to index rather than what not to do.
-RLE_HEADING = ("THE MAP OF THIS PLACE -- one line per row, each row written as runs. "
-               "`x13-20 rock` means every cell from x=13 to x=20 of that row is rock, "
-               "both ends included; `x13 rock` is the single cell x=13. Every run "
-               "carries its own coordinates, so nothing has to be counted off the line. "
-               "Exact answers to the questions asked most often are also written out "
-               "underneath.")
 
 # Meant as a rule about what lifts fog. Gemma read it as a rule about what she was
 # permitted to know, and refused to describe a region already revealed in front of her.
-# The two halves are now said separately. `blocked_REVEAL_RULE` is the control.
+# The two halves are now said separately.
 REVEAL_RULE = ("Driving is the only thing that lifts fog -- there is no orbital "
                "imagery and nothing else to ask. But every cell already on the map "
                "below is yours to read at any time, for free, without going anywhere.")
 
-blocked_REVEAL_RULE = "Nothing else reveals ground."
 
 # Lines that only appear in a view *we* wrote, so one of them in gemma's reply means she
 # is writing the environment's half. She once invented four thousand characters of view
@@ -169,59 +157,8 @@ def grid(w):
     return "\n".join(rows)
 
 
-def _word(w, x, y):
-    """What one cell is called in `rle`. The grid's glyph, said out loud."""
-    if (x, y) == w.pos:
-        return "the rover (you)"
-    if (x, y) in w.here.storm_cells:
-        return STORM_WORD
-    ch = nav.known(w.here, x, y)
-    if ch is None:
-        return "unseen"
-    if ch == "#":
-        return "rock"
-    if ch == ".":
-        return "open"
-    return label_for(w, ch) or ch
-
-
-def _runs(w, y):
-    """One row as [x0, x1, word], merged so no two neighbouring runs share a word."""
-    out = []
-    for x in range(w.here.w):
-        word = _word(w, x, y)
-        if out and out[-1][2] == word:
-            out[-1][1] = x
-        else:
-            out.append([x, x, word])
-    return out
-
-
-def rle(w):
-    """The same map as `grid`, as runs -- every boundary carries its own coordinate.
-
-    Costs 1.9x the grid in tokens on a fresh sol and 3.8x on a filled-in one: a run is
-    ~7 tokens against ~3 for the whole stretch of repeated characters it replaces, and
-    exploring the map is what breaks the long runs up.
-    """
-    rows = []
-    for y in range(w.here.h):
-        body = ", ".join(f"x{a} {word}" if a == b else f"x{a}-{b} {word}"
-                         for a, b, word in _runs(w, y))
-        rows.append(f"y{y}: {body}")
-    return "\n".join(rows)
-
-
 def map_block(w):
-    """The map and its heading, in whichever encoding `settings.MAP_FORMAT` names.
-
-    `rle` carries no legend: its runs are already words.
-    """
-    if S.MAP_FORMAT == "grid":
-        return [GRID_HEADING, grid(w), legend(w)]
-    if S.MAP_FORMAT == "rle":
-        return [RLE_HEADING, rle(w)]
-    raise ValueError(f"settings.MAP_FORMAT is {S.MAP_FORMAT!r}, not 'grid' or 'rle'")
+    return [GRID_HEADING, grid(w), legend(w)]
 
 
 def things(w):

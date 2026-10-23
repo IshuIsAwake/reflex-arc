@@ -100,16 +100,8 @@ class Notes:
         return next((k for k in self.memory if k.lower() == name.strip().lower()), None)
 
     def load(self, memory, orders, todos=()):
-        """A saved night's notes. Nights kept before entries and the board existed held
-        one paragraph and one order string, and wake as an entry called "note" and a
-        board of one. Nights kept before the list crossed the night have none."""
-        if isinstance(memory, str):
-            memory = [["note", memory]] if memory.strip() else []
-        if isinstance(memory, dict):
-            memory = list(memory.items())
+        """A saved night's notes. Nights kept before the list crossed the night have none."""
         self.memory = {name: text for name, text in memory}
-        if isinstance(orders, str):
-            orders = [orders] if orders.strip() else []
         self.orders = list(orders)
         self.todos = [[text, bool(struck)] for text, struck in todos]
 

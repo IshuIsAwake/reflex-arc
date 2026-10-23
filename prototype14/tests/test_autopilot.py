@@ -99,11 +99,11 @@ class Desk:
     def __enter__(self):
         self.keep = S.COMMS, S.MISSION_SOLS
         S.COMMS, S.MISSION_SOLS = self.on, self.sols
-        prompts.use(prompts.DEFAULT)
+        prompts.use()
 
     def __exit__(self, *exc):
         S.COMMS, S.MISSION_SOLS = self.keep
-        prompts.use(prompts.DEFAULT)
+        prompts.use()
 
 
 def sol(w, model, rover=None, attended=True):

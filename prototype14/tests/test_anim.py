@@ -83,7 +83,7 @@ def _a_drive_is_recorded():
 def test_pricing_a_trip_is_blue_and_moves_nothing():
     w = World()
     before = w.pos, w.steps
-    nav.distance(w, 15, 0)
+    nav.price(w, 15, 0)
     assert len(w.reel) == 1, "one reel queued"
     ks = kinds(w.reel[0])
     assert ks == ["start", "probe"], "a probe, not a drive"
@@ -94,7 +94,7 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
     w2 = World()
     w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
     w2.pos = (16, 20)
-    nav.distance(w2, 17, 20)         # straight into a known outcrop
+    nav.price(w2, 17, 20)         # straight into a known outcrop
     assert not w2.reel, "an unreachable price draws nothing"
 
 
@@ -200,7 +200,7 @@ def test_turning_it_off_records_nothing():
     try:
         w = World()
         nav.goto(w, 15, 0)
-        nav.distance(w, 5, 5)
+        nav.price(w, 5, 5)
         assert not w.reel, "no reels are kept"
         assert w.pos == (15, 0), "but the drive still happened"
         assert not anim.Reel(w).busy, "and a reel over an empty queue is never busy"
@@ -233,5 +233,5 @@ def test_the_queue_cannot_grow_forever():
     w = World()
     for i in range(S.REEL_MAX * 3):
         w.pos = C.SPAWN
-        nav.distance(w, 15, 0)
+        nav.price(w, 15, 0)
     assert len(w.reel) == S.REEL_MAX, "capped"

@@ -118,47 +118,19 @@ UNBUILT = ("look(", "interact(", "play(", "buy(", "mark(",
            "sandstorm", "quake", "sample", "before dark", "nightfall the rover")
 
 
-def test_every_prompt_promises_exactly_what_exists():
-    """Run over all of `prompts.PROMPTS`, not just the live one.
-
-    A prompt kept around to be re-measured against is still a prompt someone can select
-    with a flag, so it has to stay honest. Checking only the default would let a shelved
-    one rot into promising a skill that has since been deleted.
-    """
-    for name in prompts.PROMPTS:
-        p = prompts.PROMPTS[name]()
-        # Read off `skills.NAMES` rather than listed here, so a skill added later cannot
-        # be wired up and left out of the prompt -- which is a skill she never calls.
-        for skill in skills.NAMES:
-            assert f"{skill}(" in p, f"{name}: names {skill}"
-        for absent in UNBUILT:
-            assert absent.lower() not in p.lower(), f"{name}: says nothing about {absent}"
+def test_the_prompt_promises_exactly_what_exists():
+    p = prompts.sighted()
+    # Read off `skills.NAMES` rather than listed here, so a skill added later cannot
+    # be wired up and left out of the prompt -- which is a skill she never calls.
+    for skill in skills.NAMES:
+        assert f"{skill}(" in p, f"names {skill}"
+    for absent in UNBUILT:
+        assert absent.lower() not in p.lower(), f"says nothing about {absent}"
         # `avoid="auto"` is parsed and refused, so promising it would be promising a
         # refusal. Checked as a bare word because that is how the prompt would say it.
         assert "auto" not in p, f"{name}: does not offer avoid=auto"
         for fact, wordings in PROMISED.items():
             assert any(x in p for x in wordings), f"{name}: {fact}"
-
-
-@pytest.mark.xfail(reason="never ran in 13: the prompt no longer carries a map paragraph")
-def test_the_live_prompt_matches_the_map_it_ships_with():
-    """The 2026-09-04 loss: two runs read under a prompt describing the grid's ruler
-    while `--map rle` was running. The map paragraph is built from `MAP_FORMAT`, so the
-    two cannot disagree -- this is what proves the wiring, in both directions."""
-    import settings as S
-    keep = S.MAP_FORMAT
-    try:
-        S.MAP_FORMAT = "grid"
-        p = prompts.use(prompts.DEFAULT)
-        assert "ruler across the top" in p, "grid: describes the ruler"
-        assert "x7-9 rock" not in p, "grid: says nothing about runs"
-        S.MAP_FORMAT = "rle"
-        p = prompts.use(prompts.DEFAULT)
-        assert "x7-9 rock" in p, "rle: describes the runs"
-        assert "ruler across the top" not in p, "rle: says nothing about the ruler"
-    finally:
-        S.MAP_FORMAT = keep
-        prompts.use(prompts.DEFAULT)
 
 
 def test_the_view_is_replaced_not_appended():

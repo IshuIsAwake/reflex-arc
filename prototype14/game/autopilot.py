@@ -36,8 +36,6 @@ import time
 import settings as S
 import skills
 
-PHASES = ("dawn", "day", "dusk", "night")
-
 
 def _desk_line(text):
     return f"\n\nMission control: {text}" if text else ""
