@@ -54,7 +54,6 @@ class Rover:
         self.pose = grid.Pose(0, 0, 0)
         self.lock = threading.Lock()  # one drive at a time
         self.abort = threading.Event()  # set by a stop: the drive in progress ends
-        self.finished = {}  # drive id -> its "done" message, for a laptop that asks again
         self.manual_at = 0.0  # time of the last manual command; 0 = not driving by hand
         self.owner = None  # the window whose drive or hand is on the wheels
         threading.Thread(target=self.watchdog, daemon=True).start()
@@ -83,9 +82,6 @@ class Rover:
     def drive(self, msg, send, who):
         """One drive message: every command in it, a step message after each, then done."""
         did = msg.get("id")
-        if did in self.finished:
-            send(self.finished[did])
-            return
         if not self.lock.acquire(blocking=False):
             send({"event": "done", "id": did, "result": "BUSY", "pose": grid.to_json(self.pose)})
             return
@@ -94,9 +90,7 @@ class Rover:
             self.owner = who
             cmds = grid.parse(" ".join(msg.get("cmds", [])))
             result = self.run(did, cmds, send)
-            done = {"event": "done", "id": did, "result": result, "pose": grid.to_json(self.pose)}
-            self.finished[did] = done
-            send(done)
+            send({"event": "done", "id": did, "result": result, "pose": grid.to_json(self.pose)})
         except ValueError as e:
             send({"event": "done", "id": did, "result": "REFUSED", "note": str(e),
                   "pose": grid.to_json(self.pose)})
