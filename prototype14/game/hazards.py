@@ -28,11 +28,14 @@ class Storm:
         return f"Storm({self.kind}, {len(self.cells)} cells, centre {self.centre})"
 
 
-def _disc(cx, cy, r, w, h):
-    return {(x, y)
-            for y in range(max(0, cy - r), min(h, cy + r + 1))
-            for x in range(max(0, cx - r), min(w, cx + r + 1))
-            if (x - cx) ** 2 + (y - cy) ** 2 <= r * r}
+def disc(cx, cy, r, w, h):
+    """Every cell within `r` of (cx, cy), inside a w by h arena."""
+    cells = set()
+    for y in range(max(0, cy - r), min(h, cy + r + 1)):
+        for x in range(max(0, cx - r), min(w, cx + r + 1)):
+            if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                cells.add((x, y))
+    return cells
 
 
 def spawn_for_day(area, day, start, keep_clear=()):
@@ -49,7 +52,7 @@ def spawn_for_day(area, day, start, keep_clear=()):
 
     for _ in range(20):
         cx, cy = rng.randrange(area.w), rng.randrange(area.h)
-        cells = _disc(cx, cy, settings.STORM_RADIUS, area.w, area.h)
+        cells = disc(cx, cy, settings.STORM_RADIUS, area.w, area.h)
         if not cells or cells & keep:
             continue
         if not _all_approachable(area, start, frozenset(cells), keep_clear):

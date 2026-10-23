@@ -11,9 +11,8 @@ import tempfile
 import time
 
 import settings
-from world import SOLID, THINGS
+from world import SOLID, THINGS, neighbours
 
-NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
 # Clockwise from north, matching HEADING_NAMES. 0=N 1=E 2=S 3=W.
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 HEADING_NAMES = ("N", "E", "S", "W")
@@ -43,10 +42,6 @@ def drive_seconds(steps):
     return steps * (settings.ANIM_STEP + settings.ANIM_PLAN) / settings.ANIM_SPEED + settings.SETTLE_SECONDS
 
 
-def _around(cell):
-    return [(cell[0] + dx, cell[1] + dy) for dx, dy in NEIGHBOURS]
-
-
 def _targets(area, goal, avoid):
     """Where a plan may end. A solid thing (the pad) means "get next to it". Rock already
     seen is refused; a fogged cell is a guess, and driving at it is how the map fills in."""
@@ -55,7 +50,7 @@ def _targets(area, goal, avoid):
         return {goal}
 
     out = set()
-    for n in _around(goal):
+    for n in neighbours(goal):
         if n in avoid:
             continue
         c = known(area, *n)
@@ -105,7 +100,7 @@ def plan(area, start, goal, avoid=frozenset()):
             return _trace(came, cur)
 
         g = best[cur] + 1
-        for n in _around(cur):
+        for n in neighbours(cur):
             if n in closed or not _passable(area, n, avoid):
                 continue
             if g < best.get(n, FAR):
@@ -451,10 +446,10 @@ def home_steps(world, storm=True):
         steps += 1
         nxt = []
         for cell in frontier:
-            for n in _around(cell):
+            for n in neighbours(cell):
                 if n in seen or not _passable(area, n, avoid):
                     continue
-                if set(_around(n)) & pad:
+                if set(neighbours(n)) & pad:
                     return steps
                 seen.add(n)
                 nxt.append(n)

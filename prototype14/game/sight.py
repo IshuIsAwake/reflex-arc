@@ -280,7 +280,7 @@ def _c(cell):
 def legend(world):
     """Only the characters actually on the grid."""
     area = world.here
-    on = {nav.known(area, x, y) for y in range(area.h) for x in range(area.w)}
+    on = {nav.known(area, x, y) for x, y in area.cells()}
     pairs = [(YOU, "the rover, you"), ("#", "rock"), (".", "open regolith")]
     if None in on:
         pairs.append((FOG, "never seen"))
@@ -294,7 +294,7 @@ def legend(world):
 def view(world):
     """The whole block, as the model reads it. Rebuilt every request."""
     area = world.here
-    seen = sum(1 for y in range(area.h) for x in range(area.w) if nav.known(area, x, y) is not None)
+    seen = sum(1 for x, y in area.cells() if nav.known(area, x, y) is not None)
     known = things(world)
     return "\n".join([
         "--- WHAT YOU CAN SEE RIGHT NOW ---",

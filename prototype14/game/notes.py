@@ -46,7 +46,10 @@ class Notes:
 
     def entry(self, name):
         """The stored name `name` refers to, ignoring case, or None."""
-        return next((k for k in self.memory if k.lower() == name.strip().lower()), None)
+        for k in self.memory:
+            if k.lower() == name.strip().lower():
+                return k
+        return None
 
     def load(self, memory, orders, todos=()):
         self.memory = {name: text for name, text in memory}

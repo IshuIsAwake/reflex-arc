@@ -13,6 +13,16 @@ import settings
 from world import SOLID, World
 
 
+
+def arena_rock():
+    """Every rock cell of the loaded arena, seen or not."""
+    rock = set()
+    for y, row in enumerate(config.ARENA):
+        for x, ch in enumerate(row):
+            if ch == "#":
+                rock.add((x, y))
+    return rock
+
 def flood(start):
     """Every cell reachable from `start` over the true grid."""
     rows = config.ARENA
@@ -99,7 +109,7 @@ def test_every_arena_has_one_largest_formation():
         for name, (cell, sizes) in GEOLOGY.items():
             config.use(name)
             h, w = len(config.ARENA), len(config.ARENA[0])
-            rock = components(w, h, lambda x, y: config.ARENA[y][x] == "#")
+            rock = components(w, h, arena_rock())
             got = Counter(len(c) for c in rock)
             assert got == sizes, f"{name}x{name}: sizes are {dict(got)}, not {sizes}"
 
@@ -136,7 +146,7 @@ def test_the_geology_is_exactly_what_was_authored():
     """
     from world import components
     h, w = len(config.ARENA), len(config.ARENA[0])
-    rock = components(w, h, lambda x, y: config.ARENA[y][x] == "#")
+    rock = components(w, h, arena_rock())
 
     assert sum(1 for c in rock if len(c) == LARGE) == 1, \
         "there must be exactly one largest formation, or the question has no answer"

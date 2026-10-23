@@ -13,12 +13,15 @@ def _c(cell):
 
 def _formations(world):
     """Seen rock as (name, cells), named by the ids `count` has already handed out."""
-    area, owner = world.here, world.survey.owner
+    area = world.here
+    owner = world.survey.owner
     out = []
-    for cells in components(area.w, area.h,
-                            lambda x, y: (x, y) in area.seen and area.at(x, y) == "#"):
+    for cells in components(area.w, area.h, area.seen_rock()):
         ids = sorted({owner[c] for c in cells if c in owner})
-        out.append((f"R{ids[0]}" if ids else None, cells))
+        if ids:
+            out.append((f"R{ids[0]}", cells))
+        else:
+            out.append((None, cells))
     return out
 
 
@@ -35,7 +38,7 @@ def _ending(world):
 
 def build(world):
     area = world.here
-    seen = sum(1 for y in range(area.h) for x in range(area.w) if (x, y) in area.seen)
+    seen = sum(1 for cell in area.cells() if cell in area.seen)
     lines = ["# Mission report", "", _ending(world), ""]
 
     lines += ["## Work finished", ""]

@@ -35,7 +35,10 @@ def frames(timeline):
 
 def destination(timeline):
     """Where a drive is headed: the end of its first plan. A `distance` has none."""
-    return next((d[-1] for k, d in timeline if k == "plan" and d), None)
+    for kind, data in timeline:
+        if kind == "plan" and data:
+            return data[-1]
+    return None
 
 
 class Reel:
@@ -92,7 +95,11 @@ class Reel:
         self.frames = frames(timeline)
         self.destination = destination(timeline)
         # What this drive revealed stays fogged until the drawn rover reaches it.
-        self.hidden = {c for kind, d in timeline if kind == "step" for c in d[1]}
+        self.hidden = set()
+        for kind, data in timeline:
+            if kind == "step":
+                cell, revealed = data
+                self.hidden.update(revealed)
 
     def _apply(self, kind, data):
         if kind == "at":

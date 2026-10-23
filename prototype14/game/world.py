@@ -59,22 +59,42 @@ class Interest:
                 f"{', found' if self.found else ''}{', done' if self.done else ''})")
 
 
-def components(w, h, member):
-    """The four-connected groups of cells `member(x, y)` accepts, biggest first. Used for
-    both rock and fog."""
-    seen, out = set(), []
+def neighbours(cell):
+    """The four cells next to `cell`: north, south, west, east."""
+    x, y = cell
+    return [(x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)]
+
+
+def near(a, b, r):
+    """Whether cells `a` and `b` are within `r` of each other on both axes."""
+    return abs(a[0] - b[0]) <= r and abs(a[1] - b[1]) <= r
+
+
+def cell_list(cells):
+    """A set of cells as a sorted list of [x, y], for saving as JSON."""
+    out = []
+    for x, y in cells:
+        out.append([x, y])
+    return sorted(out)
+
+
+def components(w, h, members):
+    """The four-connected groups of the cells in `members`, biggest first. Searched row by
+    row, so the groups always come out in the same order. Used for both rock and fog."""
+    seen = set()
+    out = []
     for sy in range(h):
         for sx in range(w):
-            if (sx, sy) in seen or not member(sx, sy):
+            if (sx, sy) in seen or (sx, sy) not in members:
                 continue
-            group, stack = set(), [(sx, sy)]
+            group = set()
+            stack = [(sx, sy)]
             seen.add((sx, sy))
             while stack:
-                x, y = stack.pop()
-                group.add((x, y))
-                for n in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
-                    if (0 <= n[0] < w and 0 <= n[1] < h and n not in seen
-                            and member(*n)):
+                cell = stack.pop()
+                group.add(cell)
+                for n in neighbours(cell):
+                    if n in members and n not in seen:
                         seen.add(n)
                         stack.append(n)
             out.append(group)
@@ -83,10 +103,18 @@ def components(w, h, member):
 
 
 def centre_of(cells):
-    """The cell of `cells` nearest their middle, so the middle of a C-shape is still one of its cells."""
+    """The cell of `cells` nearest their middle, so the middle of a C-shape is still one of
+    its cells. Ties go north, then west."""
     cx = sum(x for x, _ in cells) / len(cells)
     cy = sum(y for _, y in cells) / len(cells)
-    return min(cells, key=lambda c: ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c[1], c[0]))
+    best = None
+    best_key = None
+    for c in cells:
+        key = ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c[1], c[0])
+        if best_key is None or key < best_key:
+            best = c
+            best_key = key
+    return best
 
 
 class Survey:
@@ -102,8 +130,7 @@ class Survey:
 
     def rock(self, area):
         """Seen rock as (id, cells), with ids assigned and merges recorded."""
-        groups = components(area.w, area.h,
-                            lambda x, y: (x, y) in area.seen and area.at(x, y) == "#")
+        groups = components(area.w, area.h, area.seen_rock())
         out = []
         for cells in groups:
             known = sorted({self.owner[c] for c in cells if c in self.owner})
@@ -114,7 +141,8 @@ class Survey:
                     self.merges.append((gone, fid))
                     self.size.pop(gone, None)
             else:
-                fid, self._next = self._next, self._next + 1
+                fid = self._next
+                self._next += 1
             for c in cells:
                 self.owner[c] = fid
             out.append((fid, cells))
@@ -122,7 +150,11 @@ class Survey:
 
     def fog(self, area):
         """Unseen regions. No ids."""
-        return components(area.w, area.h, lambda x, y: (x, y) not in area.seen)
+        unseen = set()
+        for cell in area.cells():
+            if cell not in area.seen:
+                unseen.add(cell)
+        return components(area.w, area.h, unseen)
 
     def since_last(self, fid, now):
         """Cells revealed since she last asked about formation `fid`; asking updates the count."""
@@ -138,8 +170,10 @@ class Survey:
 def label_for(world, ch):
     """What to call a tile, on screen and in the view. An objective is named by its priority."""
     if ch in GLYPHS:
-        o = next((o for o in world.here.objectives.values() if o.glyph == ch), None)
-        return f"{o.priority}-priority objective" if o else None
+        for o in world.here.objectives.values():
+            if o.glyph == ch:
+                return f"{o.priority}-priority objective"
+        return None
     return LABELS.get(ch)
 
 
@@ -168,6 +202,22 @@ class Area:
             return self.rows[y][x]
         return "#"
 
+    def cells(self):
+        """Every cell of the arena, row by row."""
+        out = []
+        for y in range(self.h):
+            for x in range(self.w):
+                out.append((x, y))
+        return out
+
+    def seen_rock(self):
+        """The rock cells the rover has seen."""
+        rock = set()
+        for cell in self.seen:
+            if self.at(*cell) == "#":
+                rock.add(cell)
+        return rock
+
     def work(self):
         """Every unfinished piece of work, objectives first."""
         return list(self.objectives.values()) + list(self.interests.values())
@@ -190,10 +240,10 @@ class Area:
         """Every cell the rover could drive to from `start` on the true grid, ignoring the storm.
         Used to refuse work the rover could never reach."""
         start = start or config.SPAWN
-        seen, edge = {start}, [start]
+        seen = {start}
+        edge = [start]
         while edge:
-            x, y = edge.pop()
-            for cell in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+            for cell in neighbours(edge.pop()):
                 cx, cy = cell
                 if (cell in seen or not (0 <= cx < self.w and 0 <= cy < self.h)
                         or self.at(cx, cy) in SOLID):
@@ -204,16 +254,13 @@ class Area:
 
     def disc(self, px, py, r=None):
         """Every in-bounds cell the rover would see standing at (px, py)."""
-        r = settings.VISION_RADIUS if r is None else r
-        return {(x, y)
-                for y in range(max(0, py - r), min(self.h, py + r + 1))
-                for x in range(max(0, px - r), min(self.w, px + r + 1))
-                if (x - px) ** 2 + (y - py) ** 2 <= r * r}
-
+        if r is None:
+            r = settings.VISION_RADIUS
+        return hazards.disc(px, py, r, self.w, self.h)
 
     def reveal_all(self):
         """Lift the whole fog. The game never does this; the tests use it."""
-        self.seen |= {(x, y) for y in range(self.h) for x in range(self.w)}
+        self.seen |= set(self.cells())
 
     def reveal_cells(self, cells):
         """Open the fog over `cells`. Returns the ones that were new. The only write into `seen`."""
@@ -282,21 +329,25 @@ class World:
     @property
     def pad(self):
         """Every pad cell."""
-        area = self.here
-        return {(x, y) for y in range(area.h) for x in range(area.w) if area.at(x, y) == "H"}
+        pad = set()
+        for cell in self.here.cells():
+            if self.here.at(*cell) == "H":
+                pad.add(cell)
+        return pad
 
     @property
     def docked(self):
         """Beside any side of any pad cell, which is where it recharges overnight."""
-        x, y = self.pos
-        return bool({(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)} & self.pad)
+        pad = self.pad
+        for cell in neighbours(self.pos):
+            if cell in pad:
+                return True
+        return False
 
     @property
     def base(self):
         """Where the pad is, read off the map."""
-        area = self.here
-        cells = [(x, y) for y in range(area.h) for x in range(area.w) if area.at(x, y) == "H"]
-        return min(cells) if cells else config.SPAWN
+        return min(self.pad)
 
     def record(self, kind, **fields):
         """One line of the game log, if anything is listening."""
@@ -411,10 +462,11 @@ class World:
     def carry(self):
         """What the night keeps, as JSON, so a new session can wake on the next sol. Quitting
         mid-sol counts the sol as played."""
-        area, sv = self.here, self.survey
-        cells = lambda cs: sorted([x, y] for x, y in cs)
+        area = self.here
+        sv = self.survey
         return {"version": 2, "arena": str(area.w), "day": self.day,
-                "seen": cells(area.seen), "visited": cells(area.visited), "marks": cells(area.marks),
+                "seen": cell_list(area.seen), "visited": cell_list(area.visited),
+                "marks": cell_list(area.marks),
                 "objectives": [[*o.cell, o.glyph, o.priority, o.cost, o.auto]
                                for o in area.objectives.values()],
                 "interests": [[*i.cell, i.text, i.cost, i.found]
@@ -497,7 +549,7 @@ class World:
         if cell in area.storm_cells:
             return f"({x},{y}) is under today's dust storm."
         reach = area.reachable()
-        if not any(c in reach for c in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y))):
+        if not any(c in reach for c in neighbours(cell)):
             return (f"({x},{y}) has no approach the rover can reach -- every cell beside "
                     f"it is rock, off the arena, or walled off.")
         return None
@@ -537,11 +589,15 @@ class World:
             return []
         area = self.here
         rng = random.Random(f"{area.name}:{area.w}x{area.h}:objectives:sol{self.day}")
-        near = lambda c, d, r: abs(c[0] - d[0]) <= r and abs(c[1] - d[1]) <= r
         taken = set(area.objectives) | set(area.interests)
-        cells = [c for c in sorted(area.seen) if area.at(*c) == "."
-                 and not any(near(c, p, 2) for p in self.pad) and not near(c, self.pos, 2)
-                 and not any(near(c, t, 1) for t in taken)]
+        pad = self.pad
+        cells = []
+        for c in sorted(area.seen):
+            if area.at(*c) != "." or near(c, self.pos, 2):
+                continue
+            if any(near(c, p, 2) for p in pad) or any(near(c, t, 1) for t in taken):
+                continue
+            cells.append(c)
         rng.shuffle(cells)
         placed = []
         for priority in ("high", "medium", "low"):
@@ -559,8 +615,7 @@ class World:
 
     def adjacent_work(self):
         """The unfinished work the rover is beside (N/E/S/W), if any: an objective, or a found interest."""
-        x, y = self.pos
-        for cell in ((x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y)):
+        for cell in neighbours(self.pos):
             o = self.here.objectives.get(cell)
             if o and not o.done:
                 return o
@@ -578,9 +633,12 @@ class World:
         if spent < o.cost:
             return spent  # ran out of battery; the work isn't finished
         o.done = True
-        area = self.here
-        del (area.objectives if o.kind == "objective" else area.interests)[o.cell]
-        what = ({"priority": o.priority} if o.kind == "objective" else {"text": o.text})
+        if o.kind == "objective":
+            del self.here.objectives[o.cell]
+            what = {"priority": o.priority}
+        else:
+            del self.here.interests[o.cell]
+            what = {"text": o.text}
         self.finished.append({"sol": self.day, "at": list(o.cell), "kind": o.kind,
                               "cost": o.cost, **what})
         # No `day=` here: record() adds it.
