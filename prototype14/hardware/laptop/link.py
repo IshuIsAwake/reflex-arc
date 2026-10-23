@@ -107,10 +107,15 @@ class RoverLink:
         """Wheel power, -1..1 each side. Send it again within 0.4 s or the rover stops."""
         self.send({"op": "manual", "left": round(left, 3), "right": round(right, 3)})
 
-    def stop(self):
+    def stop(self, wait=True):
+        """Stop the rover. With `wait`, read its answer too, or the next ask() would read
+        this one instead. Level 3 doesn't wait: its worker thread may be reading a drive."""
         try:
-            self.send({"op": "stop"})
-        except OSError:
+            if wait:
+                self.ask({"op": "stop"})
+            else:
+                self.send({"op": "stop"})
+        except (OSError, ValueError):
             pass
 
     def drive(self, cmds, on_step=None):

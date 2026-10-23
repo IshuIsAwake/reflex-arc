@@ -198,7 +198,7 @@ def main():
     try:
         game.main()
     finally:
-        rover.stop()
+        rover.stop(wait=False)
         rover.close()
 
 
