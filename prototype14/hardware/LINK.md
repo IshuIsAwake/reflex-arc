@@ -89,5 +89,4 @@ move.
 
 ## Not decided
 
-- Whether the link stays plain TCP. Krish's gRPC proposal (`krish/link-bot`) is the
-  alternative, and the team hasn't agreed.
+- Whether the link stays plain TCP over wifi, or moves to Bluetooth for the ESP32.

@@ -3,6 +3,7 @@
 ```
 hardware/
   LINK.md             every message between the laptop and the rover
+  ESP32.md            how a leg reaches the wheels, in plain words, for the ESP32 build
   rover_address.txt   how the laptop finds the Pi (rpi5.local)
   laptop/
     level1_pad.py     Level 1: drive it by hand, keys or a gamepad          double-click
