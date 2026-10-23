@@ -20,14 +20,23 @@ class Setting:
 
     def __init__(self, name, kind, tier, desc, lo=None, hi=None, step=1, choices=None,
                  mod=settings, replayed=True):
-        self.name, self.kind, self.tier, self.desc = name, kind, tier, desc
-        self.lo, self.hi, self.step, self.choices = lo, hi, step, choices
-        self.mod, self.replayed = mod, replayed
+        self.name = name
+        self.kind = kind  # "bool", "int", "float", "choice" or "str"
+        self.tier = tier  # "now", "sol" or "relaunch"
+        self.desc = desc
+        self.lo = lo
+        self.hi = hi
+        self.step = step
+        self.choices = choices
+        self.mod = mod  # the module the value lives in: settings or config
+        self.replayed = replayed
         self.default = getattr(mod, name)
 
-    @property
-    def value(self):
+    def get(self):
         return getattr(self.mod, self.name)
+
+    def set(self, v):
+        setattr(self.mod, self.name, v)
 
     def coerce(self, v):
         """`v` as this setting's type, or ValueError saying why not. Takes typed text too."""
@@ -186,7 +195,7 @@ PRESETS = {
 
 def snapshot():
     """Every setting's value now, for the run log."""
-    return {s.name: s.value for s in SETTINGS}
+    return {s.name: s.get() for s in SETTINGS}
 
 
 def apply(values, only=None):
@@ -198,7 +207,7 @@ def apply(values, only=None):
         if not s or (only and not only(s)):
             continue
         try:
-            setattr(s.mod, name, s.coerce(v))
+            s.set(s.coerce(v))
         except ValueError:
             bad.append(name)
     return bad
@@ -208,7 +217,8 @@ class Prefs:
     """One person's settings: what they saved, and what waits for nightfall."""
 
     def __init__(self, path=None):
-        self.path = path = path or USER_FILE
+        path = path or USER_FILE
+        self.path = path
         self.user = {}
         self.pending = {}
         self.warnings = []
@@ -235,7 +245,7 @@ class Prefs:
             return self.pending[s.name]
         if s.tier == "relaunch":
             return self.user.get(s.name, s.default)
-        return s.value
+        return s.get()
 
     def set(self, name, v):
         """Check, save, and apply as the tier allows. Raises ValueError."""
@@ -247,14 +257,14 @@ class Prefs:
             self.user[name] = v
         self.save()
         if s.tier == "now":
-            setattr(s.mod, name, v)
+            s.set(v)
         elif s.tier == "sol":
-            if v == s.value and type(v) is type(s.value):
+            now = s.get()
+            if v == now and type(v) is type(now):
                 self.pending.pop(name, None)
             else:
                 self.pending[name] = v
         return v
-
 
     def preset(self, label):
         for name, v in PRESETS[label].items():

@@ -54,8 +54,11 @@ def begin(world, words=""):
 def carry_on(world, after_line=False, words=""):
     """A day's turn ended without the day ending. `after_line` is True when a radio line
     just closed, or "unanswered"."""
-    back = {True: "The line to mission control is closed. ",
-            "unanswered": "Nobody answered the radio. "}.get(after_line, "")
+    back = ""
+    if after_line == "unanswered":
+        back = "Nobody answered the radio. "
+    elif after_line:
+        back = "The line to mission control is closed. "
     return (f"{back}The day goes on with a new turn and both allowances back: "
             f"{world.time_left:.0f} seconds and {world.battery} steps of battery are "
             f"left. Carry on until the battery is down to the trip home or the clock is "
@@ -154,7 +157,13 @@ class Autopilot:
         if conv.holds_sol:
             self._open(conv, carry_on(world))
             return None
-        return getattr(self, "_" + self.phase)(conv, world, now)
+        if self.phase == "dawn":
+            return self._dawn(conv, world, now)
+        if self.phase == "day":
+            return self._day(conv, world, now)
+        if self.phase == "dusk":
+            return self._dusk(conv, world, now)
+        return self._night(conv, world, now)
 
     def run_clock(self, world, now=None):
         """Run the day's wall clock down. Safe to call twice a frame; main.py also calls it during the quit question."""
@@ -191,7 +200,8 @@ class Autopilot:
             self._enter(world, "dusk")
             return self._dusk(conv, world, now)
         if self.urgent is not None:
-            text, self.urgent = self.urgent, None
+            text = self.urgent
+            self.urgent = None
             self.mark = len(conv.calls)
             conv.send(f"URGENT from mission control: {text}", who="urgent")
             return None
@@ -239,8 +249,11 @@ class Autopilot:
     def _over(self, conv, world):
         """Why the day is over, or None if it is not."""
         if world.day_over:
-            return ("the battery is flat" if world.battery <= 0 else
-                    "the clock ran out" if world.time_left <= 0 else "the desk ended it")
+            if world.battery <= 0:
+                return "the battery is flat"
+            if world.time_left <= 0:
+                return "the clock ran out"
+            return "the desk ended it"
         if (len(conv.calls) > self.mark and conv.calls[-1].name == "end"
                 and conv.ended):
             return "she called end"
@@ -292,7 +305,10 @@ class Autopilot:
         if why == "night":
             self.over = True
             return "night"
-        self._enter(world, {"dawn": "day", "dusk": "night"}[why])
+        if why == "dawn":
+            self._enter(world, "day")
+        else:
+            self._enter(world, "night")
         return None
 
     def why_not(self):

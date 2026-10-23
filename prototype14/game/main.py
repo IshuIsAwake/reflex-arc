@@ -25,6 +25,7 @@ import config
 import console
 import logs
 import nav
+import ollama
 import registry
 import dashboard
 import render
@@ -190,7 +191,7 @@ def main():
     nav.clear_plan(w)  # the route file starts empty, never with yesterday's leg
     tape = chat.Tape(run.chat_path)
     # Which model answers. One for the run: an outage does not end at nightfall.
-    link = chat.Link()
+    link = ollama.Link()
 
     def talker():
         """The other end of the chat: Ollama, or a kept run."""
@@ -620,7 +621,7 @@ def main():
                     settings.COMMS = not settings.COMMS
                 elif e.key == pygame.K_o:
                     mode, held, notice = "settings", None, ""
-                    models = chat.installed_models()
+                    models = ollama.installed_models()
                     registry.BY_NAME["MODEL"].choices = models
                 # V shows the exact view she was last sent; V again hides it.
                 elif e.key == pygame.K_v:

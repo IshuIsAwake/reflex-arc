@@ -39,14 +39,14 @@ class Sandbox:
 
     def __exit__(self, *exc):
         for name, v in self.keep.items():
-            setattr(registry.BY_NAME[name].mod, name, v)
+            registry.BY_NAME[name].set(v)
         self.dir.cleanup()
 
 
 def test_defaults_are_the_code():
     # STORM_ON is the one this file turns off itself, after the registry has read it.
     off = [s.name for s in registry.SETTINGS
-           if s.default != getattr(s.mod, s.name) and s.name != "STORM_ON"]
+           if s.default != s.get() and s.name != "STORM_ON"]
     assert not off, "every default is the module's own value"
     bad = []
     for s in registry.SETTINGS:

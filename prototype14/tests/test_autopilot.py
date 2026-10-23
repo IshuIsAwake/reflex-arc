@@ -17,6 +17,7 @@ from pathlib import Path
 
 import autopilot
 import chat
+import ollama
 import prompts
 import replay
 import settings
@@ -494,10 +495,10 @@ def test_the_cloud_drops_for_a_sol_and_comes_back():
     class Cloud(Model):
         def talk(self, conv):
             def stream(messages, allowed=None):
-                if conv._sent_host == settings.OUTAGE_HOST:
+                if conv.sent_host == settings.OUTAGE_HOST:
                     conv.q.put(("error", "URLError: [Errno 111] Connection refused"))
                     return
-                answered.append((conv.day, conv._sent_model))
+                answered.append((conv.day, conv.sent_model))
                 text, calls = self.replies.pop(0) if self.replies else END
                 if text:
                     conv.q.put(("say", text))
@@ -516,7 +517,7 @@ def test_the_cloud_drops_for_a_sol_and_comes_back():
         for n in (1, 2, 3):
             replies += [READY, ("", [call("count", kind="rock")]), END, REPORT]
         convs, rows, nights = fly(World(), Cloud(replies), frames=80,
-                                  link=chat.Link(probe))
+                                  link=ollama.Link(probe))
     finally:
         settings.OUTAGE_SOLS, settings.PROBE_SECONDS, settings.MISSION_SOLS = keep
     by_sol = {d: {m for dd, m in answered if dd == d} for d in (1, 2, 3)}

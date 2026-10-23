@@ -44,8 +44,11 @@ class Script:
                 said.append(r.get("text", ""))
             elif who == "call" and r.get("ran"):
                 # The call's result is the next `result` row.
-                expect = next((n.get("text") for n in chat_rows[i + 1:i + 3]
-                               if n.get("who") == "result"), None)
+                expect = None
+                for n in chat_rows[i + 1:i + 3]:
+                    if n.get("who") == "result":
+                        expect = n.get("text")
+                        break
                 self.turns.append({"day": r.get("day"), "name": r.get("name"),
                                    "args": r.get("args") or {}, "clock": r.get("clock"),
                                    "over": r.get("over"), "turn": r.get("turn"),
@@ -60,9 +63,12 @@ class Script:
         for r in game_rows:
             if r.get("kind") not in OPS:
                 continue
-            after = next((t for t in self.turns if t["day"] == r.get("day")
-                          and t["t"] is not None and r.get("t") is not None
-                          and t["t"] > r["t"]), None)
+            after = None
+            for t in self.turns:
+                if (t["day"] == r.get("day") and t["t"] is not None
+                        and r.get("t") is not None and t["t"] > r["t"]):
+                    after = t
+                    break
             if after is not None:
                 after["ops"].append(r)
             else:
@@ -158,11 +164,15 @@ class Replay(chat.Conversation):
         super().__init__(world, tape)
         self.script = script
         self.diverged = None
-        self._tape_turn = None  # the live turn this replay turn is playing
+        self.tape_turn = None  # the live turn this replay turn is playing
+        self.playing = None  # the tape's row for the call about to run
 
     def send(self, text, who="you"):
-        self._tape_turn = None
+        self.tape_turn = None
         return super().send(text, who)
+
+    def _today(self, t):
+        return t["day"] is None or t["day"] <= self.day
 
     def _allowed(self):
         """Every skill: every call on the tape already ran live in its phase."""
@@ -172,63 +182,63 @@ class Replay(chat.Conversation):
     def holds_sol(self):
         """True while the tape has more calls for today, so today is not over."""
         t = self.script.peek()
-        return (not self.diverged and t is not None
-                and (t["day"] is None or t["day"] <= self.day))
+        return not self.diverged and t is not None and self._today(t)
 
     def _stream(self, messages, allowed=None):
         """The model's turn, read off the tape, inline. A spent or diverged tape, or a sol with no
         more calls, gives `end` by day and a reply with no call otherwise, so the turn closes.
         A live turn that ended without `end` (a cap, an urgent message) ends here at the same call."""
-        t = None if self.diverged else self.script.peek()
-        if (t is not None and (t["day"] is None or t["day"] <= self.day)
-                and self._tape_turn is not None and t["turn"] is not None
-                and t["turn"] != self._tape_turn):
+        t = None
+        if not self.diverged:
+            t = self.script.peek()
+        if (t is not None and self._today(t) and self.tape_turn is not None
+                and t["turn"] is not None and t["turn"] != self.tape_turn):
             self.q.put(("done", ({"done": True}, [])))
             return
-        turn = None if self.diverged else self.script.next_turn(self.day)
+        turn = None
+        if not self.diverged:
+            turn = self.script.next_turn(self.day)
         if turn is None:
-            self.q.put(("say", "The replay stopped here." if self.diverged else
-                               "The tape ends here." if self.script.spent else
-                               f"The tape has nothing more for sol {self.day}."))
-            day = self.world.phase == "day" and not self.world.day_over
-            self.q.put(("done", ({"done": True},
-                                 [{"name": "end", "arguments": {}}] if day else [])))
+            if self.diverged:
+                self.q.put(("say", "The replay stopped here."))
+            elif self.script.spent:
+                self.q.put(("say", "The tape ends here."))
+            else:
+                self.q.put(("say", f"The tape has nothing more for sol {self.day}."))
+            calls = []
+            if self.world.phase == "day" and not self.world.day_over:
+                calls = [{"name": "end", "arguments": {}}]
+            self.q.put(("done", ({"done": True}, calls)))
             return
         if turn["said"]:
             self.q.put(("say", turn["said"]))
         # The phase the live call ran in, set before `_run` checks what the phase allows.
         if turn["phase"]:
             self.world.phase = turn["phase"]
-        self._expect = turn["expect"]
-        self._ops = turn["ops"]
-        self._drain = turn["drain"]
-        self._clock = turn["clock"]
-        self._over = turn["over"]
-        self._tape_turn = turn["turn"]
+        self.playing = turn
+        self.tape_turn = turn["turn"]
         self.q.put(("done", ({"done": True},
                              [{"name": turn["name"], "arguments": turn["args"]}])))
 
     def _answer(self, fn, move, counts=True):
         """Run the call, then check its result string against the tape's."""
-        for done in apply(self.world, getattr(self, "_ops", None) or ()):
-            self.write("status", f"operator -- {done}")
-        self._ops = None
-        if getattr(self, "_drain", 0):
-            self.world.drain(self._drain)
-            self._drain = 0
-        # The day's clock as it stood when the live call ran. Replay runs no clock of its own.
-        clock = getattr(self, "_clock", None)
-        self._clock = None
-        if clock is not None:
-            self.world.set_clock(clock)
-        # A sol she closed with time left: the tape closes it.
-        if getattr(self, "_over", None):
-            self.world.day_over = True
-        self._over = None
+        turn = self.playing
+        self.playing = None
+        want = None
+        if turn is not None:
+            for done in apply(self.world, turn["ops"]):
+                self.write("status", f"operator -- {done}")
+            if turn["drain"]:
+                self.world.drain(turn["drain"])
+            # The day's clock as it stood when the live call ran. Replay runs no clock of its own.
+            if turn["clock"] is not None:
+                self.world.set_clock(turn["clock"])
+            # A sol she closed with time left: the tape closes it.
+            if turn["over"]:
+                self.world.day_over = True
+            want = turn["expect"]
         super()._answer(fn, move, counts)
         got = self.calls[-1].result
-        want = getattr(self, "_expect", None)
-        self._expect = None
         if want is not None and got != want:
             self.diverged = (want, got)
             self.write("error", "REPLAY DIVERGED -- the world no longer matches the "

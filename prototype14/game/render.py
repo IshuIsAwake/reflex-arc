@@ -587,9 +587,9 @@ def draw_settings(surf, f, items, picked, prefs, editing, notice, models, replay
         shown = prefs.shown(it)
         text = f"{it.name:<16} {registry.show(shown)}"
         if it.tier == "sol" and it.name in prefs.pending:
-            text += f"    (now {registry.show(it.value)})"
-        elif it.tier == "relaunch" and shown != it.value:
-            text += f"    (now {registry.show(it.value)})"
+            text += f"    (now {registry.show(it.get())})"
+        elif it.tier == "relaunch" and shown != it.get():
+            text += f"    (now {registry.show(it.get())})"
         if shown != it.default:
             text += f"    default {registry.show(it.default)}"
         locked = replaying and it.tier != "now"
