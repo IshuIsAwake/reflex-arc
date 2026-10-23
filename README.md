@@ -104,8 +104,8 @@ goals the planner drives to.
   the local one.
 - Gemini keys in the settings, and a test run on Windows.
 
-Krish's `link-bot` and Abhishek's `rover-bridge` and `rover-link` branches are off the plan. The
-branches are kept.
+Krish's `link-bot` branch is off the plan, and kept. Abhishek's `rover-bridge` and `rover-link`
+were off it too, and he has deleted them.
 
 ---
 
