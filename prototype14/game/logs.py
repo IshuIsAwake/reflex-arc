@@ -15,6 +15,22 @@ import time
 from datetime import datetime
 
 
+def read_rows(path):
+    """A JSONL log as a list of dicts, or [] if there is none. A half-written last line,
+    from a run that crashed, is skipped."""
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    return rows
+
+
 def load_night(run_dir):
     """The run's night.json, or ValueError saying why there is none."""
     path = run_dir / "night.json"

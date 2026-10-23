@@ -7,23 +7,9 @@ Usage: .venv/bin/python game/main.py --replay runs/<stamp>"""
 import json
 
 import chat
+import logs
 import registry
 import skills
-
-
-def _rows(path):
-    """One JSONL file as a list of dicts, skipping a half-written last line."""
-    if not path.exists():
-        return []
-    out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            out.append(json.loads(line))
-        except ValueError:
-            continue
-    return out
 
 
 class Script:
@@ -31,8 +17,8 @@ class Script:
 
     def __init__(self, run_dir):
         self.dir = run_dir
-        chat_rows = _rows(run_dir / "chat.jsonl")
-        game_rows = _rows(run_dir / "game.jsonl")
+        chat_rows = logs.read_rows(run_dir / "chat.jsonl")
+        game_rows = logs.read_rows(run_dir / "game.jsonl")
 
         # A turn is what she said and the one call that ran. Refused calls (ran=False) are not replayed.
         self.turns = []
