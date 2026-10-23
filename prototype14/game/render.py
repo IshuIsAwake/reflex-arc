@@ -254,8 +254,27 @@ def _rim(surf, a, ox, oy):
 
 def _x_mark(surf, rect):
     r = rect.inflate(-4, -4)
-    pygame.draw.line(surf, config.MARK, r.topleft, r.bottomright, 2)
-    pygame.draw.line(surf, config.MARK, r.topright, r.bottomleft, 2)
+    pygame.draw.line(surf, config.CYAN, r.topleft, r.bottomright, 2)
+    pygame.draw.line(surf, config.CYAN, r.topright, r.bottomleft, 2)
+
+
+def _map_cell(surf, area, x, y, r, rock_lit, walked):
+    """One seen cell of the M map."""
+    ch = area.at(x, y)
+    if ch == "#":
+        _rock(surf, r, x, y, rock_lit, True)
+    elif ch == "H":
+        _pad(surf, r, True)
+    elif ch in GLYPHS:
+        pygame.draw.rect(surf, config.REGOLITH, r)
+        _objective(surf, r, area.objectives[(x, y)].priority, True)
+    elif ch == INTEREST:
+        pygame.draw.rect(surf, config.REGOLITH, r)
+        _interest(surf, r, area.interests[(x, y)].found, True)
+    else:
+        _ground(surf, r, x, y, True)
+        if walked:
+            pygame.draw.circle(surf, config.WALKED, r.center, max(1, r.width // 8))
 
 
 def draw_map(surf, world, f, cursor, reel=None):
@@ -265,15 +284,15 @@ def draw_map(surf, world, f, cursor, reel=None):
     overlay.fill((*config.VOID, 253))
     surf.blit(overlay, (0, 0))
 
-    cell =max(2, min((surf.get_width() - 80) // area.w, (surf.get_height() - 140) // area.h))
+    cell = max(2, min((surf.get_width() - 80) // area.w, (surf.get_height() - 140) // area.h))
     ox = (surf.get_width() - area.w * cell) // 2
     oy = 72
 
-    seen = sum(1 for y in range(area.h) for x in range(area.w) if area.visible(x, y))
+    seen = sum(1 for x, y in area.cells() if area.visible(x, y))
     dashboard.text(surf, f.big, config.ARENA_NAME.upper(), (24, 18), config.INK,
-           surf.get_width() - 210)
+                   surf.get_width() - 210)
     dashboard.text(surf, f.tiny, f'{seen} / {area.w * area.h} CELLS SURVEYED',
-           (24, 44), config.MUTED, surf.get_width() - 210)
+                   (24, 44), config.MUTED, surf.get_width() - 210)
 
     for x in range(0, area.w, 5):
         s = f.tiny.render(str(x), True, config.MUTED)
@@ -285,31 +304,21 @@ def draw_map(surf, world, f, cursor, reel=None):
     # The drive is shaded into the ground; the plan is dots on top. Where they differ is where the fog lied.
     rock_lit, _ = terrain_art.rocks(area.w, area.h, cell, _seen_rocks(area, reel))
     walk_area, walked = world.last_walk
-    walked = set(reel.trail) if reel and reel.busy else (set(walked) if walk_area == area.name else set())
+    if reel and reel.busy:
+        walked = set(reel.trail)
+    elif walk_area == area.name:
+        walked = set(walked)
+    else:
+        walked = set()
 
-    for y in range(area.h):
-        for x in range(area.w):
-            r = pygame.Rect(ox + x * cell, oy + y * cell, cell, cell)
-            if not area.visible(x, y) or (reel and reel.veiled((x, y))):
-                pygame.draw.rect(surf, config.FOG, r)
-                continue
-            ch = area.at(x, y)
-            if ch == "#":
-                _rock(surf, r, x, y, rock_lit, True)
-            elif ch == "H":
-                _pad(surf, r, True)
-            elif ch in GLYPHS:
-                pygame.draw.rect(surf, config.REGOLITH, r)
-                _objective(surf, r, area.objectives[(x, y)].priority, True)
-            elif ch == INTEREST:
-                pygame.draw.rect(surf, config.REGOLITH, r)
-                _interest(surf, r, area.interests[(x, y)].found, True)
-            else:
-                _ground(surf, r, x, y, True)
-                if (x, y) in walked:
-                    pygame.draw.circle(surf, config.WALKED, r.center, max(1, cell//8))
-            if (x, y) in area.marks:
-                _x_mark(surf, r)
+    for x, y in area.cells():
+        r = pygame.Rect(ox + x * cell, oy + y * cell, cell, cell)
+        if not area.visible(x, y) or (reel and reel.veiled((x, y))):
+            pygame.draw.rect(surf, config.FOG, r)
+            continue
+        _map_cell(surf, area, x, y, r, rock_lit, (x, y) in walked)
+        if (x, y) in area.marks:
+            _x_mark(surf, r)
 
     terrain_art.storm(surf, area.storm_cells, ox, oy, cell)
 
@@ -328,10 +337,10 @@ def draw_map(surf, world, f, cursor, reel=None):
     dashboard.rover(surf, *pr.center, size=cell)
 
     cr = pygame.Rect(ox + cursor[0] * cell, oy + cursor[1] * cell, cell, cell)
-    pygame.draw.rect(surf, config.MARK, cr.inflate(2, 2), 2)
+    pygame.draw.rect(surf, config.CYAN, cr.inflate(2, 2), 2)
     if settings.MAP_LABELS:
-        dashboard.map_telemetry(surf, world, f, pygame.Rect(ox, oy, area.w*cell, area.h*cell),
-                        ox, oy, cell, reel)
+        view = pygame.Rect(ox, oy, area.w * cell, area.h * cell)
+        dashboard.map_telemetry(surf, world, f, view, ox, oy, cell, reel)
 
     foot = [f"cursor ({cursor[0]}, {cursor[1]})    blue = the plan    "
             "dots = the drive    teal = the pad",
@@ -415,18 +424,18 @@ CHAT_PAD = 20
 CHAT_LINE_H = 17
 CHAT_INDENT = 14
 # Each speaker gets a heading, so a wrapped paragraph keeps its indent.
-HEADS = {"status": ("SOL OPEN", config.CHAT_GOOD),
+HEADS = {"status": ("SOL OPEN", config.GOOD),
          "you": ("OPERATOR", config.CHAT_OPERATOR),
-         "urgent": ("OPERATOR · URGENT", config.CHAT_BAD),
-         "auto": ("MISSION CLOCK", config.CHAT_GOOD),
-         "gemma": ("PLANNER", config.CHAT_PLANNER),
+         "urgent": ("OPERATOR · URGENT", config.BAD),
+         "auto": ("MISSION CLOCK", config.GOOD),
+         "gemma": ("PLANNER", config.INK),
          "think": ("PLANNER · reasoning", config.CHAT_THINK),
-         "error": ("!!", config.CHAT_BAD),
+         "error": ("!!", config.BAD),
          "note": ("", config.CHAT_THINK),
          # The view is one line here; the tape keeps it in full.
          "view": ("", config.CHAT_THINK),
-         "call": ("SKILL", config.CHAT_SKILL),
-         "result": ("", config.CHAT_RESULT)}
+         "call": ("SKILL", config.AMBER),
+         "result": ("", config.CYAN)}
 
 
 def _blocks(conv, cols, show_thinking=True):
@@ -437,7 +446,7 @@ def _blocks(conv, cols, show_thinking=True):
     for who, text in list(conv.lines) + live:
         if who == "think" and not show_thinking:
             continue
-        head, colour = HEADS.get(who, ("", config.CHAT_TEXT))
+        head, colour = HEADS.get(who, ("", config.INK))
         if head:
             out.append((head, colour, False))
         for para in text.splitlines() or [""]:
@@ -449,7 +458,7 @@ def _blocks(conv, cols, show_thinking=True):
 
 def _overlay_lines(text, cols):
     """The view block (V), wrapped only where it must be. Leading spaces are kept, or the grid's rows would shift."""
-    return [(piece, config.CHAT_MUTED, False)
+    return [(piece, config.MUTED, False)
             for para in text.splitlines()
             for piece in (textwrap.wrap(para, cols, drop_whitespace=False) or [""])]
 
@@ -459,68 +468,34 @@ def _draw_transcript(surf, conv, world, f, line, focused, scroll, show_thinking=
     """The chat, or `overlay` (the view) instead of it. Returns how far back it can scroll."""
     surf.fill(config.CHAT_BG)
     pygame.draw.line(surf, config.CHAT_RULE, (0, 0), (0, surf.get_height()), 1)
-    W, H = surf.get_size()
-    x, inner = CHAT_PAD, W - CHAT_PAD * 2
+    width, height = surf.get_size()
+    x = CHAT_PAD
+    inner = width - CHAT_PAD * 2
     cols = max(24, (inner - CHAT_INDENT) // f.chat.size("M")[0])
-    head_h, foot_h = 88, 66
+    head_h = 88
+    foot_h = 66
 
-    surf.blit(f.big.render("AI PLANNER / LIVE FEED", True, config.CHAT_TEXT), (x, 14))
+    surf.blit(f.big.render("AI PLANNER / LIVE FEED", True, config.INK), (x, 14))
     link = conv.link
     # The sol and comms are in the bar above, so only the model is shown here.
     sub = f"{link.model}{'  (fallback)' if link.down else ''}"
     if not show_thinking:
         sub += "   ·   reasoning hidden"
-    dashboard.text(surf, f.tiny, sub, (x, 40), config.CHAT_MUTED, inner)
+    dashboard.text(surf, f.tiny, sub, (x, 40), config.MUTED, inner)
 
-    # The status line under the model's name: what she and the rover are doing.
-    if world.awaiting_rover is not None:
-        leg = " ".join(world.awaiting_rover)[:40]
-        state, tone = f"ROVER DRIVING {leg}  ·  {dashboard.ROVER_HINT}", config.CHAT_GOOD
-    elif conv.waiting and conv.link.hold:
-        state, tone = f"checking whether {settings.MODEL} is back...", config.CHAT_SKILL
-    elif reel and reel.work:
-        (x_, y_), done, total = reel.work
-        state, tone = f"working at ({x_},{y_})  ·  {done}/{total} steps", config.CHAT_SKILL
-    elif conv.waiting or (reel and reel.busy and conv.busy):
-        state, tone = "waiting for the rover...", config.CHAT_SKILL
-    elif reel and reel.busy:
-        state, tone = "the rover is driving...", config.CHAT_SKILL
-    elif conv.busy:
-        state, tone = ("thinking..." if not conv.say_buf else "answering..."), config.CHAT_GOOD
-    elif pilot and pilot.wait:
-        left = pilot.wait_left()
-        last = bool(settings.MISSION_SOLS) and world.day >= settings.MISSION_SOLS
-        state = {"dawn": f"DAWN OF SOL {world.day}  ·  talk, post orders, or /next",
-                 "radio": "ON THE RADIO  ·  answer, or /next  ·  the clock runs",
-                 "dusk": f"DUSK OF SOL {world.day}  ·  her report  ·  /next",
-                 "night": ("MISSION OVER" if last else f"NIGHT OF SOL {world.day}")
-                          + "  ·  talk, or /next"}[pilot.wait]
-        state += (f"  ·  {left:.0f}s" if left is not None else "  ·  holding")
-        tone = config.CHAT_BAD if pilot.wait == "radio" else config.CHAT_GOOD
-    elif world.day_over and world.lost:
-        state, tone = (f"ROVER LOST on sol {world.day}  ·  cannot reach the pad  ·  "
-                       f"ESC to finish", config.CHAT_BAD)
-    elif world.day_over and settings.MISSION_SOLS and world.day >= settings.MISSION_SOLS:
-        # A replay plays what its tape holds; only a live run can be played on.
-        more = "" if getattr(conv, "script", None) else "T, then  sols N  for more  ·  "
-        state, tone = f"MISSION OVER after {world.day} sols  ·  {more}ESC to finish", config.CHAT_BAD
-    elif world.day_over and world.phase == "day":
-        state, tone = f"SOL {world.day}: THE DAY IS OVER", config.CHAT_BAD
-    elif conv.last:
-        secs, pin, pout = conv.last
-        state, tone = f"{secs}s   {pin} tok in, {pout} out", config.CHAT_MUTED
-    else:
-        state, tone = "ready", config.CHAT_MUTED
-    t = f.tiny.render(state, True, tone)
-    surf.blit(t, t.get_rect(topleft=(x, 60)))
+    state, tone = chat_status(conv, world, reel, pilot)
+    rendered = f.tiny.render(state, True, tone)
+    surf.blit(rendered, rendered.get_rect(topleft=(x, 60)))
 
     pygame.draw.line(surf, config.CHAT_RULE, (x, head_h - 8), (x + inner, head_h - 8))
-    pygame.draw.line(surf, config.CHAT_RULE, (x, H - foot_h), (x + inner, H - foot_h))
+    pygame.draw.line(surf, config.CHAT_RULE, (x, height - foot_h), (x + inner, height - foot_h))
 
-    body_h = H - head_h - foot_h
+    body_h = height - head_h - foot_h
     rows = body_h // CHAT_LINE_H
-    lines = (_blocks(conv, cols, show_thinking) if overlay is None else
-             _overlay_lines(overlay, max(24, inner // f.chat.size("M")[0])))
+    if overlay is None:
+        lines = _blocks(conv, cols, show_thinking)
+    else:
+        lines = _overlay_lines(overlay, max(24, inner // f.chat.size("M")[0]))
     max_scroll = max(0, len(lines) - rows)
     top = max(0, len(lines) - rows - min(scroll, max_scroll))
     for i, (text, colour, indent) in enumerate(lines[top:top + rows]):
@@ -528,22 +503,86 @@ def _draw_transcript(surf, conv, world, f, line, focused, scroll, show_thinking=
         surf.blit(font.render(text, True, colour),
                   (x + (CHAT_INDENT if indent else 0), head_h + i * CHAT_LINE_H))
 
-    y = H - foot_h + 12
+    y = height - foot_h + 12
     if focused:
-        _typed(surf, f.chat, "> ", line, len(line) if caret is None else caret, (x, y),
-               cols - 2, config.CHAT_TEXT)
+        if caret is None:
+            caret = len(line)
+        _typed(surf, f.chat, "> ", line, caret, (x, y), cols - 2, config.INK)
     else:
-        surf.blit(f.chat.render("TAB to type", True, config.CHAT_MUTED), (x, y))
-    hint = ("V or ESC back to the conversation    wheel scrolls" if overlay is not None
-            else "ENTER send    ESC stop typing    /help lists the commands" if focused
-            else "TAB her chat   T terminal   V what she sees   H thinking   P memory   "
-                 "O settings")
+        surf.blit(f.chat.render("TAB to type", True, config.MUTED), (x, y))
+    if overlay is not None:
+        hint = "V or ESC back to the conversation    wheel scrolls"
+    elif focused:
+        hint = "ENTER send    ESC stop typing    /help lists the commands"
+    else:
+        hint = "TAB her chat   T terminal   V what she sees   H thinking   P memory   O settings"
     for i, part in enumerate(dashboard.key_lines(f.tiny, hint, inner)[:2]):
-        surf.blit(f.tiny.render(part, True, config.CHAT_MUTED), (x, H - 34 + i * 16))
+        surf.blit(f.tiny.render(part, True, config.MUTED), (x, height - 34 + i * 16))
     if scroll:
-        s = f.tiny.render(f"scrolled back {scroll}", True, config.CHAT_BAD)
-        surf.blit(s, s.get_rect(topright=(x + inner, H - 22)))
+        rendered = f.tiny.render(f"scrolled back {scroll}", True, config.BAD)
+        surf.blit(rendered, rendered.get_rect(topright=(x + inner, height - 22)))
     return max_scroll
+
+
+def chat_status(conv, world, reel, pilot):
+    """The status line under the model's name, as (text, colour): what she and the rover
+    are doing."""
+    if world.awaiting_rover is not None:
+        leg = " ".join(world.awaiting_rover)[:40]
+        return f"ROVER DRIVING {leg}  ·  {dashboard.ROVER_HINT}", config.GOOD
+    if conv.waiting and conv.link.hold:
+        return f"checking whether {settings.MODEL} is back...", config.AMBER
+    if reel and reel.work:
+        (wx, wy), done, total = reel.work
+        return f"working at ({wx},{wy})  ·  {done}/{total} steps", config.AMBER
+    if conv.waiting or (reel and reel.busy and conv.busy):
+        return "waiting for the rover...", config.AMBER
+    if reel and reel.busy:
+        return "the rover is driving...", config.AMBER
+    if conv.busy and conv.say_buf:
+        return "answering...", config.GOOD
+    if conv.busy:
+        return "thinking...", config.GOOD
+    if pilot and pilot.wait:
+        return window_status(world, pilot)
+    last_sol = bool(settings.MISSION_SOLS) and world.day >= settings.MISSION_SOLS
+    if world.day_over and world.lost:
+        return (f"ROVER LOST on sol {world.day}  ·  cannot reach the pad  ·  ESC to finish",
+                config.BAD)
+    if world.day_over and last_sol:
+        # A replay plays what its tape holds; only a live run can be played on.
+        more = "T, then  sols N  for more  ·  "
+        if pilot and not pilot.live:
+            more = ""
+        return f"MISSION OVER after {world.day} sols  ·  {more}ESC to finish", config.BAD
+    if world.day_over and world.phase == "day":
+        return f"SOL {world.day}: THE DAY IS OVER", config.BAD
+    if conv.last:
+        secs, tokens_in, tokens_out = conv.last
+        return f"{secs}s   {tokens_in} tok in, {tokens_out} out", config.MUTED
+    return "ready", config.MUTED
+
+
+def window_status(world, pilot):
+    """The status line while a window waits for the desk."""
+    if pilot.wait == "dawn":
+        state = f"DAWN OF SOL {world.day}  ·  talk, post orders, or /next"
+    elif pilot.wait == "radio":
+        state = "ON THE RADIO  ·  answer, or /next  ·  the clock runs"
+    elif pilot.wait == "dusk":
+        state = f"DUSK OF SOL {world.day}  ·  her report  ·  /next"
+    elif settings.MISSION_SOLS and world.day >= settings.MISSION_SOLS:
+        state = "MISSION OVER  ·  talk, or /next"
+    else:
+        state = f"NIGHT OF SOL {world.day}  ·  talk, or /next"
+    left = pilot.wait_left()
+    if left is None:
+        state += "  ·  holding"
+    else:
+        state += f"  ·  {left:.0f}s"
+    if pilot.wait == "radio":
+        return state, config.BAD
+    return state, config.GOOD
 
 
 def draw_chat(surf, conv, world, f, line, focused, scroll, show_thinking=True, reel=None,
@@ -567,71 +606,96 @@ def draw_settings(surf, f, items, picked, prefs, editing, notice, models, replay
                   caret=None):
     """Every registry setting over the whole window, grouped by when a change lands."""
     surf.fill(config.CHAT_BG)
-    W_, H_ = surf.get_size()
+    width, height = surf.get_size()
     x = 40
     surf.blit(f.big.render("SETTINGS", True, config.INK), (x, 20))
-    sub = (f"yours are saved in {registry.USER_FILE.name}, which git ignores"
-           if not replaying else "replay: the kept run's settings are in force")
+    if replaying:
+        sub = "replay: the kept run's settings are in force"
+    else:
+        sub = f"yours are saved in {registry.USER_FILE.name}, which git ignores"
     surf.blit(f.hud.render(sub, True, config.MUTED), (x, 48))
 
-    lines = []  # (text, colour, item index or None)
-    tier = None
-    for i, (kind, it) in enumerate(items):
-        if kind == "preset":
-            lines.append((f"load preset: {it}", config.CHAT_SKILL, i))
-            continue
-        if it.tier != tier:
-            tier = it.tier
-            lines.append(("", config.MUTED, None))
-            lines.append((registry.TIER_NAMES[tier].upper(), config.MUTED, None))
-        shown = prefs.shown(it)
-        text = f"{it.name:<16} {registry.show(shown)}"
-        if it.tier == "sol" and it.name in prefs.pending:
-            text += f"    (now {registry.show(it.get())})"
-        elif it.tier == "relaunch" and shown != it.get():
-            text += f"    (now {registry.show(it.get())})"
-        if shown != it.default:
-            text += f"    default {registry.show(it.default)}"
-        locked = replaying and it.tier != "now"
-        lines.append((text, config.MUTED if locked else config.INK, i))
-
+    lines = _settings_lines(items, prefs, replaying)
     line_h = 20
-    top, foot = 80, 110
-    rows = (H_ - top - foot) // line_h
-    at = next(n for n, (_, _, i) in enumerate(lines) if i == picked)
+    top = 80
+    foot = 110
+    rows = (height - top - foot) // line_h
+    # Scroll so the chosen row sits in the middle.
+    at = 0
+    for n, (text, colour, i) in enumerate(lines):
+        if i == picked:
+            at = n
+            break
     first = max(0, min(at - rows // 2, len(lines) - rows))
     for n, (text, colour, i) in enumerate(lines[first:first + rows]):
         y = top + n * line_h
         if i == picked:
-            pygame.draw.rect(surf, config.FAINT, (x - 8, y - 2, W_ - 2 * x + 16, line_h))
+            pygame.draw.rect(surf, config.FAINT, (x - 8, y - 2, width - 2 * x + 16, line_h))
             if editing is not None:
                 prompt = f"{text.split()[0]:<16} > "
-                cols = (W_ - 2 * x) // f.hud.size("M")[0] - len(prompt) - 1
-                _typed(surf, f.hud, prompt, editing,
-                       len(editing) if caret is None else caret, (x, y), cols, colour)
+                cols = (width - 2 * x) // f.hud.size("M")[0] - len(prompt) - 1
+                if caret is None:
+                    caret = len(editing)
+                _typed(surf, f.hud, prompt, editing, caret, (x, y), cols, colour)
                 continue
         surf.blit(f.hud.render(text, True, colour), (x, y))
 
-    kind, it = items[picked]
-    if kind == "preset":
-        about = ", ".join(f"{k} {registry.show(v)}"
-                          for k, v in registry.PRESETS[it].items())
-    else:
-        about = f"{it.desc}.  {registry.TIER_NAMES[it.tier]}."
-        if it.kind in ("int", "float"):
-            about += f"  {registry.show(it.lo)} to {registry.show(it.hi)}."
-        elif it.choices:
-            about += "  " + " / ".join(registry.show(c) for c in it.choices) + "."
-    if kind == "setting" and it.name == "MODEL" and models is None:
-        about += "  Ollama did not answer, so no list; ENTER types a tag."
-    y = H_ - foot + 10
-    pygame.draw.line(surf, config.FAINT, (x, y - 8), (W_ - x, y - 8))
-    for piece in textwrap.wrap(about, max(40, (W_ - 2 * x) // f.hud.size("M")[0]))[:2]:
+    about = _setting_about(items[picked], models)
+    y = height - foot + 10
+    pygame.draw.line(surf, config.FAINT, (x, y - 8), (width - x, y - 8))
+    for piece in textwrap.wrap(about, max(40, (width - 2 * x) // f.hud.size("M")[0]))[:2]:
         surf.blit(f.hud.render(piece, True, config.INK), (x, y))
         y += 20
     if notice:
-        surf.blit(f.hud.render(notice, True, config.CHAT_SKILL), (x, y))
-    keys = ("ENTER save    ESC cancel" if editing is not None else
-            "UP/DOWN choose    LEFT/RIGHT change    ENTER type a value or load a preset"
-            "    R default    O or ESC close")
-    surf.blit(f.tiny.render(keys, True, config.MUTED), (x, H_ - 24))
+        surf.blit(f.hud.render(notice, True, config.AMBER), (x, y))
+    if editing is not None:
+        keys = "ENTER save    ESC cancel"
+    else:
+        keys = ("UP/DOWN choose    LEFT/RIGHT change    ENTER type a value or load a preset"
+                "    R default    O or ESC close")
+    surf.blit(f.tiny.render(keys, True, config.MUTED), (x, height - 24))
+
+
+def _settings_lines(items, prefs, replaying):
+    """The settings screen's lines, as (text, colour, item index or None for a heading)."""
+    lines = []
+    tier = None
+    for i, (kind, item) in enumerate(items):
+        if kind == "preset":
+            lines.append((f"load preset: {item}", config.AMBER, i))
+            continue
+        if item.tier != tier:
+            tier = item.tier
+            lines.append(("", config.MUTED, None))
+            lines.append((registry.TIER_NAMES[tier].upper(), config.MUTED, None))
+        shown = prefs.shown(item)
+        text = f"{item.name:<16} {registry.show(shown)}"
+        if item.tier == "sol" and item.name in prefs.pending:
+            text += f"    (now {registry.show(item.get())})"
+        elif item.tier == "relaunch" and shown != item.get():
+            text += f"    (now {registry.show(item.get())})"
+        if shown != item.default:
+            text += f"    default {registry.show(item.default)}"
+        if replaying and item.tier != "now":
+            lines.append((text, config.MUTED, i))  # locked on a replay
+        else:
+            lines.append((text, config.INK, i))
+    return lines
+
+
+def _setting_about(row, models):
+    """The line under the settings list, about the chosen row."""
+    kind, item = row
+    if kind == "preset":
+        parts = []
+        for name, value in registry.PRESETS[item].items():
+            parts.append(f"{name} {registry.show(value)}")
+        return ", ".join(parts)
+    about = f"{item.desc}.  {registry.TIER_NAMES[item.tier]}."
+    if item.kind in ("int", "float"):
+        about += f"  {registry.show(item.lo)} to {registry.show(item.hi)}."
+    elif item.choices:
+        about += "  " + " / ".join(registry.show(c) for c in item.choices) + "."
+    if item.name == "MODEL" and models is None:
+        about += "  Ollama did not answer, so no list; ENTER types a tag."
+    return about

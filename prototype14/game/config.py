@@ -28,7 +28,6 @@ ROVER_RING = (16, 22, 26)
 INK = (213, 217, 221)  # text
 MUTED = (157, 165, 172)
 FAINT = (48, 54, 60)  # cell edges, panel rules
-MARK = (111, 190, 183)  # your X marks
 PATH = (112, 153, 184)  # a route priced by `distance`
 PLAN = (92, 152, 224)  # a route driven by `goto`
 GOTO_ROUTE = (226, 182, 72)  # yellow dots for the route driven by `goto`
@@ -37,6 +36,10 @@ INTEREST = (186, 140, 236)  # an interest
 WALKED = (167, 100, 69)  # the ground a drive actually covered
 GOOD = (115, 196, 151)
 BAD = (210, 126, 119)
+AMBER = (190, 177, 148)  # headings, and a call going out
+CYAN = (111, 190, 183)  # your X marks, the bars, and what a call brought back
+PANEL = (30, 34, 39)  # the cards
+BORDER = (53, 60, 67)
 
 # The night sky, washed over the arena: none by day, NIGHT at night, fading at dawn and dusk.
 NIGHT = (16, 18, 34)
@@ -44,16 +47,9 @@ NIGHT_ALPHA = 170  # how heavy the wash is at its darkest, of 255
 
 # The chat pane
 CHAT_BG = (23, 26, 30)
-CHAT_TEXT = (213, 217, 221)
-CHAT_MUTED = (157, 165, 172)
 CHAT_RULE = (49, 55, 62)
 CHAT_OPERATOR = (132, 174, 201)  # the operator
-CHAT_PLANNER = (213, 217, 221)  # what the model says
 CHAT_THINK = (151, 153, 173)  # ...and what it only thought
-CHAT_SKILL = (190, 177, 148)  # a call going out
-CHAT_RESULT = (111, 190, 183)  # ...and what came back
-CHAT_GOOD = (115, 196, 151)
-CHAT_BAD = (210, 126, 119)
 
 ARENA_NAME = "Jezero flats"
 
