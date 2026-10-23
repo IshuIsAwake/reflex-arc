@@ -1,0 +1,10 @@
+# As in prototype10d: model runs and each person's settings. game/ writes both here.
+runs/
+user_settings.json
+__pycache__/
+
+# Measured on one chassis, one set of tyres, one battery. Not anybody else's numbers.
+calib.json
+
+# The room as the LiDAR saw it on setup day. One arena, one day.
+reference.npz
