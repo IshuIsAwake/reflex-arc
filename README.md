@@ -35,9 +35,10 @@ a new prototype takes the next free number.
 
 The rover carries a 360° camera, which mimics the simulation's sight, and a LiDAR. The LiDAR
 knows where fixed things are, which in testing means the room's four walls, and tracks the
-rover's position from them. That is how wheel slip gets caught: the LiDAR reports where the
-rover actually is, and the model replans from there. Errors are still reported, not corrected.
-The overhead camera in [`ARCHITECTURE.md`](ARCHITECTURE.md) is superseded.
+rover's position from them. That is how wheel slip will get caught: the LiDAR reports where
+the rover actually is, and the model replans from there. Errors are still reported, not
+corrected. The overhead camera in [`ARCHITECTURE.md`](ARCHITECTURE.md) is superseded. The LiDAR
+waits until after prototype 14.
 
 **Done:**
 - Prototypes 1–9 are archived in [`archive/`](archive/) and at the git tag `prototypes-1-9`,
@@ -50,25 +51,22 @@ The overhead camera in [`ARCHITECTURE.md`](ARCHITECTURE.md) is superseded.
   with the text-input bug fixed. The look is not final: Abhishek moves the view to Unity
   later, as a 3D view of everything.
 - [`prototype12/`](prototype12/) is Koushik's, merged on 24 Oct and independent of 11. 10d's
-  `game/`, copied untouched, drives the real rover through `hardware/`, and the LiDAR checks
-  every leg. Against the checks the plan set for it:
-  - levels 1–3 are built, and 3 has driven 14 legs on the rover with its wheels in the air.
-    Level 4, the LiDAR in the loop, has run end to end only on a pretend rover. Level 5,
-    tuning the error budget on the LiDAR's numbers, is not started;
-  - movement error comes only from the pretend rover. The simulation then moves its rover to
-    the cell the LiDAR measured, and the model replans from there;
-  - the LiDAR's pose is fitted to a scan of the room and rounded to a cell and a quarter-turn
-    heading for control. A heading more than 5° off is turned back. The metres and degrees
-    come back beside the cell and are printed, but the run's log keeps only the cells;
-  - the rover drives forward, back and quarter turns either way, so it reaches all four of
-    the grid's directions.
+  `game/`, copied untouched, drives the real rover through `hardware/`, up to Level 3: the
+  rover replays each leg the simulation drove, and nothing measures where it ends up. Level 3
+  has driven 14 legs on the rover with its wheels in the air. A stop from the pad ends the leg
+  and hands the rover to a person, and one cell is 10 cm. His LiDAR and Level 4 are on the
+  branch `old_level4`.
 - The rover's chassis is built and laser-cut.
 
 **Next:**
 1. **Prototype 13: 11 and 12 merged.** A small step.
 2. **Prototype 14: the simplification.** The code is brought to
-   [`repo_rules.md`](repo_rules.md) §7, so any teammate can explain it line by line.
+   [`repo_rules.md`](repo_rules.md) §7, so any teammate can explain it line by line. The rover
+   goes up to Level 3. Names review found unclear change here: the `run_` files, and DONE, OFF
+   and LOST if they survive.
 3. **The repo goes back to the team for the final hardware:**
+   - Level 4 and the LiDAR, redone by Koushik and Abhishek with Nithin, starting from the
+     branch `old_level4`;
    - the bots and their circuits simulated in software, in a simulator such as Wokwi;
    - later, sensors: a thermometer, and temperature and humidity sensors. Their readings could
      become objectives in the simulation.
@@ -122,7 +120,7 @@ were off it too, and he has deleted them.
 | [`rover_ideas.md`](rover_ideas.md) | the rover in full — the reasoning, and what was already cut |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the three layers fit together |
 | [`work_division.md`](work_division.md) | who owns what |
-| [`prototype12/`](prototype12/) | 10d's game driving the real rover, with the LiDAR checking every leg |
+| [`prototype12/`](prototype12/) | 10d's game driving the real rover, up to Level 3 |
 | [`prototype11/`](prototype11/) | 10d with the mission-control screen, the newest simulation |
 | [`prototype10d/`](prototype10d/) | the sol in four phases, interests and objectives |
 | [`prototype10c/`](prototype10c/) | the rover working sols by itself, with comms modelled on a real mission |
