@@ -1,6 +1,5 @@
 """Everything about the conversation that does not need Ollama up.
 
-    .venv/bin/python game/test_chat.py
 
 The model call is a thread and a socket, so both are replaced here: `_stream` becomes a
 list of canned turns, and threads run inline. That is not a trick -- `pump()` is the
@@ -14,8 +13,8 @@ drops the morning without a word, and the model reads as forgetful rather than s
 Nothing about that looks wrong from the outside.
 """
 
+import pytest
 import json
-import sys
 import types
 
 import chat
@@ -24,6 +23,8 @@ import settings as S
 import sight
 import skills
 import world
+
+pytestmark = pytest.mark.usefixtures("inline_threads")
 
 
 class World(world.World):
@@ -34,31 +35,8 @@ class World(world.World):
         super().__init__(*a, **k)
         self.phase = "day"
 
-# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
-# but it is a scenario, not terrain -- letting one drift across an arena would make
-# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
-S.STORM_ON = False
-
 
 PAD = {"x": 15, "y": 16, "why": "back to the pad"}
-
-
-def check(name, cond, detail=""):
-    print(f"  {'ok  ' if cond else 'FAIL'}  {name}{'   ' + detail if detail else ''}")
-    return bool(cond)
-
-
-class Inline:
-    """A 'thread' that runs where it stands, so one send() drives a whole exchange."""
-
-    def __init__(self, target, args=(), daemon=False):
-        self._target, self._args = target, args
-
-    def start(self):
-        self._target(*self._args)
-
-
-chat.threading = types.SimpleNamespace(Thread=Inline)
 
 
 def rig(w, replies=(), defiant=False):
@@ -89,20 +67,15 @@ def rig(w, replies=(), defiant=False):
 
 
 def test_sol_opens_with_the_numbers():
-    print("the morning")
     w = World()
     c = chat.Conversation(w)
     c.open_day(w)
-    ok = check("system prompt first", c.messages[0]["role"] == "system")
-    ok &= check("then one user message",
-                len(c.messages) == 2 and c.messages[1]["role"] == "user")
-    ok &= check("which is the status line",
-                c.messages[1]["content"] == sight.status_line(w))
+    assert c.messages[0]["role"] == "system", "system prompt first"
+    assert len(c.messages) == 2 and c.messages[1]["role"] == "user", "then one user message"
+    assert c.messages[1]["content"] == sight.status_line(w), "which is the status line"
     # The map is not in the morning message. It arrives with the request, the same way
     # it will with every request after it, so there is one path and not two.
-    ok &= check("the map is not in it",
-                sight.GRID_HEADING not in c.messages[1]["content"])
-    return ok
+    assert sight.GRID_HEADING not in c.messages[1]["content"], "the map is not in it"
 
 
 # Facts every prompt has to state, and the wordings that count as stating one. Three
@@ -152,75 +125,62 @@ def test_every_prompt_promises_exactly_what_exists():
     with a flag, so it has to stay honest. Checking only the default would let a shelved
     one rot into promising a skill that has since been deleted.
     """
-    print("honest prompts")
-    ok = True
     for name in prompts.PROMPTS:
         p = prompts.PROMPTS[name]()
         # Read off `skills.NAMES` rather than listed here, so a skill added later cannot
         # be wired up and left out of the prompt -- which is a skill she never calls.
         for skill in skills.NAMES:
-            ok &= check(f"{name}: names {skill}", f"{skill}(" in p)
+            assert f"{skill}(" in p, f"{name}: names {skill}"
         for absent in UNBUILT:
-            ok &= check(f"{name}: says nothing about {absent}", absent.lower() not in p.lower())
+            assert absent.lower() not in p.lower(), f"{name}: says nothing about {absent}"
         # `avoid="auto"` is parsed and refused, so promising it would be promising a
         # refusal. Checked as a bare word because that is how the prompt would say it.
-        ok &= check(f"{name}: does not offer avoid=auto", "auto" not in p)
+        assert "auto" not in p, f"{name}: does not offer avoid=auto"
         for fact, wordings in PROMISED.items():
-            ok &= check(f"{name}: {fact}", any(x in p for x in wordings))
-    return ok
+            assert any(x in p for x in wordings), f"{name}: {fact}"
 
 
+@pytest.mark.xfail(reason="never ran in 13: the prompt no longer carries a map paragraph")
 def test_the_live_prompt_matches_the_map_it_ships_with():
     """The 2026-09-04 loss: two runs read under a prompt describing the grid's ruler
     while `--map rle` was running. The map paragraph is built from `MAP_FORMAT`, so the
     two cannot disagree -- this is what proves the wiring, in both directions."""
-    print("the prompt describes the map actually being sent")
     import settings as S
     keep = S.MAP_FORMAT
-    ok = True
     try:
         S.MAP_FORMAT = "grid"
         p = prompts.use(prompts.DEFAULT)
-        ok &= check("grid: describes the ruler", "ruler across the top" in p)
-        ok &= check("grid: says nothing about runs", "x7-9 rock" not in p)
+        assert "ruler across the top" in p, "grid: describes the ruler"
+        assert "x7-9 rock" not in p, "grid: says nothing about runs"
         S.MAP_FORMAT = "rle"
         p = prompts.use(prompts.DEFAULT)
-        ok &= check("rle: describes the runs", "x7-9 rock" in p)
-        ok &= check("rle: says nothing about the ruler", "ruler across the top" not in p)
+        assert "x7-9 rock" in p, "rle: describes the runs"
+        assert "ruler across the top" not in p, "rle: says nothing about the ruler"
     finally:
         S.MAP_FORMAT = keep
         prompts.use(prompts.DEFAULT)
-    return ok
 
 
 def test_the_view_is_replaced_not_appended():
-    print("live means replaced")
     w = World()
     c, sent = rig(w, [("hello", [])])
     c.open_day(w)
     c.send("what is around you?")
     c.pump()
 
-    ok = check("the request carried a view",
-               sight.GRID_HEADING in sent[0][-1]["content"])
-    ok &= check("and it was last", sent[0][-1]["role"] == "user")
-    ok &= check("but it is not in the history",
-                not any(sight.GRID_HEADING in m.get("content", "") for m in c.messages))
+    assert sight.GRID_HEADING in sent[0][-1]["content"], "the request carried a view"
+    assert sent[0][-1]["role"] == "user", "and it was last"
+    assert not any(sight.GRID_HEADING in m.get("content", "") for m in c.messages), "but it is not in the history"
 
     before = len(c.messages)
     c.send("and now?")
     c.pump()
-    ok &= check("a second turn sends a fresh view",
-                sight.GRID_HEADING in sent[1][-1]["content"])
-    ok &= check("exactly one view per request",
-                sum(sight.GRID_HEADING in m.get("content", "") for m in sent[1]) == 1)
-    ok &= check("history grew by the turn only, not the view",
-                len(c.messages) == before + 2, f"{before} -> {len(c.messages)}")
-    return ok
+    assert sight.GRID_HEADING in sent[1][-1]["content"], "a second turn sends a fresh view"
+    assert sum(sight.GRID_HEADING in m.get("content", "") for m in sent[1]) == 1, "exactly one view per request"
+    assert len(c.messages) == before + 2, "history grew by the turn only, not the view"
 
 
 def test_a_tool_call_round_trips():
-    print("goto, end to end")
     w = World()
     w.pos = (15, 12)
     call = {"name": "goto", "arguments": dict(PAD)}
@@ -229,28 +189,20 @@ def test_a_tool_call_round_trips():
     c.send("go back to base")
     c.pump()
 
-    ok = check("the rover moved", w.pos != (15, 12), str(w.pos))
-    ok &= check("the call is on the record",
-                len(c.calls) == 1 and c.calls[0].name == "goto")
-    ok &= check("the assistant turn kept its tool_calls",
-                any(m.get("tool_calls") for m in c.messages))
+    assert w.pos != (15, 12), "the rover moved"
+    assert len(c.calls) == 1 and c.calls[0].name == "goto", "the call is on the record"
+    assert any(m.get("tool_calls") for m in c.messages), "the assistant turn kept its tool_calls"
     tool = [m for m in c.messages if m["role"] == "tool"]
-    ok &= check("a tool result went back",
-                len(tool) == 1 and "DONE" in tool[0]["content"])
-    ok &= check("gemma got a second turn to speak",
-                c.messages[-1] == {"role": "assistant", "content": "I am beside the pad."})
+    assert len(tool) == 1 and "DONE" in tool[0]["content"], "a tool result went back"
+    assert c.messages[-1] == {"role": "assistant", "content": "I am beside the pad."}, "gemma got a second turn to speak"
     # The whole reason the view is rebuilt per request rather than per human turn: by
     # the second call the rover has moved, and the old position is a lie.
-    ok &= check("the second request re-sent the view from the new position",
-                f"at ({w.pos[0]},{w.pos[1]})" in sent[1][-1]["content"])
-    ok &= check("the pane shows the call and the result",
-                any(who == "call" for who, _ in c.lines)
-                and any(who == "result" for who, _ in c.lines))
-    return ok
+    assert f"at ({w.pos[0]},{w.pos[1]})" in sent[1][-1]["content"], "the second request re-sent the view from the new position"
+    assert (any(who == "call" for who, _ in c.lines)
+                and any(who == "result" for who, _ in c.lines)), "the pane shows the call and the result"
 
 
 def test_a_bad_call_is_counted_and_costs_nothing():
-    print("BAD_ARGS")
     w = World()
     before = w.steps
     # This was `{"x": 25, "y": 26}` -- a missing `why` -- until 2026-09-01, when that
@@ -261,9 +213,9 @@ def test_a_bad_call_is_counted_and_costs_nothing():
     c.open_day(w)
     c.send("go back to base")
     c.pump()
-    ok = check("refused", "BAD_ARGS" in c.calls[0].result, c.calls[0].result[:50])
-    ok &= check("spent nothing", w.steps == before)
-    ok &= check("and it is counted", c.bad_args == 1)
+    assert "BAD_ARGS" in c.calls[0].result, "refused"
+    assert w.steps == before, "spent nothing"
+    assert c.bad_args == 1, "and it is counted"
 
     # The case this counter was built for is now the case it must *not* fire on.
     # (15,10), not the pad: the rover lands beside the pad, so arriving there costs
@@ -274,10 +226,8 @@ def test_a_bad_call_is_counted_and_costs_nothing():
     c2.open_day(w2)
     c2.send("head north")
     c2.pump()
-    ok &= check("a why-less call is not bad args", c2.bad_args == 0,
-                c2.calls[0].result[:60])
-    ok &= check("...and it drove", w2.steps > 0, f"{w2.steps} steps")
-    return ok
+    assert c2.bad_args == 0, "a why-less call is not bad args"
+    assert w2.steps > 0, "...and it drove"
 
 
 def _ran(conv):
@@ -287,7 +237,6 @@ def _ran(conv):
 
 
 def test_only_one_call_of_a_batch_ever_runs():
-    print("one call at a time")
     # Watched 2026-09-04: the 31B asked for six drives in one reply. They ran back to
     # back against a live world, but every target after the first had been chosen off a
     # map several drives out of date -- one view per batch, not one per drive.
@@ -297,17 +246,15 @@ def test_only_one_call_of_a_batch_ever_runs():
     c.open_day(w)
     c.send("explore")
     c.pump()
-    ok = check("exactly one of the six ran", len(_ran(c)) == 1, f"{len(_ran(c))} ran")
-    ok &= check("and the other five were refused",
-                sum(1 for m in c.messages
-                    if m["role"] == "tool" and "one call at a time" in m["content"]) == 5)
+    assert len(_ran(c)) == 1, "exactly one of the six ran"
+    assert (sum(1 for m in c.messages
+                    if m["role"] == "tool" and "one call at a time" in m["content"]) == 5), "and the other five were refused"
     # `_settle` has already appended the assistant turn carrying all six tool_calls, so
     # a call with no answer dangles off a message nothing responded to.
     asked = sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
     answered = sum(1 for m in c.messages if m["role"] == "tool")
-    ok &= check("every call asked for still has an answer", asked == answered,
-                f"{asked} asked, {answered} answered")
-    ok &= check("and the turn carried on afterwards", len(sent) == 2, f"{len(sent)} sent")
+    assert asked == answered, "every call asked for still has an answer"
+    assert len(sent) == 2, "and the turn carried on afterwards"
 
     # Writes are the exception: four todos at dawn lost the fourth, twice, on 14 Oct.
     w = World()
@@ -318,27 +265,22 @@ def test_only_one_call_of_a_batch_ever_runs():
     c.send("plan, then go")
     c.pump()
     ran = [x.name for x in c.calls]
-    ok &= check("a run of writes goes through, with the one call after it",
-                ran == ["todo"] * 4 + ["goto"], str(ran))
-    ok &= check("in order", [t for t, _ in w.notes.todos] == [f"item {i}" for i in range(4)])
-    ok &= check("and the call after that is still refused", sum(
+    assert ran == ["todo"] * 4 + ["goto"], "a run of writes goes through, with the one call after it"
+    assert [t for t, _ in w.notes.todos] == [f"item {i}" for i in range(4)], "in order"
+    assert (sum(
         1 for m in c.messages if m["role"] == "tool" and "one call at a time" in m["content"])
-        == 1)
-    ok &= check("every call still has an answer",
-                sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
-                == sum(1 for m in c.messages if m["role"] == "tool"))
+        == 1), "and the call after that is still refused"
+    assert (sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
+                == sum(1 for m in c.messages if m["role"] == "tool")), "every call still has an answer"
     w = World()
     c, _ = rig(w, [("", [drive[0], todo[0]]), ("Done.", [])])
     c.open_day(w)
     c.send("go, then plan")
     c.pump()
-    ok &= check("a write chosen after a drive waits for the drive's outcome",
-                [x.name for x in c.calls] == ["goto"] and not w.notes.todos)
-    return ok
+    assert [x.name for x in c.calls] == ["goto"] and not w.notes.todos, "a write chosen after a drive waits for the drive's outcome"
 
 
 def test_a_turn_runs_until_she_ends_it():
-    print("end, or a reply with no call")
     w = World()
     drive = {"name": "goto", "arguments": {"x": 15, "y": 12}}
     # Words with a call in them do not end the turn; `end` does.
@@ -347,25 +289,19 @@ def test_a_turn_runs_until_she_ends_it():
     c.open_day(w)
     c.send("explore")
     c.pump()
-    ok = check("she drove three times, then ended", len(_ran(c)) == 4,
-               f"{len(_ran(c))} calls ran")
-    ok &= check("and the turn is over once she said so", c.ended)
-    ok &= check("...which the pane says",
-                any(who == "error" and "she called end" in t for who, t in c.lines))
-    ok &= check("nothing was asked for after it", len(sent) == 4, f"{len(sent)} sent")
+    assert len(_ran(c)) == 4, "she drove three times, then ended"
+    assert c.ended, "and the turn is over once she said so"
+    assert any(who == "error" and "she called end" in t for who, t in c.lines), "...which the pane says"
+    assert len(sent) == 4, "nothing was asked for after it"
 
     d, sent = rig(World(), [("", [drive]), ("I will look east next.", [])])
     d.open_day(w)
     d.send("explore")
     d.pump()
-    ok &= check("a reply with no call in it ends the turn too",
-                len(_ran(d)) == 1 and d.ended is False and not d.busy and len(sent) == 2,
-                f"{len(_ran(d))} ran, {len(sent)} sent")
-    return ok
+    assert len(_ran(d)) == 1 and d.ended is False and not d.busy and len(sent) == 2, "a reply with no call in it ends the turn too"
 
 
 def test_looking_is_paid_for_with_driving():
-    print("the two allowances")
     w = World()
     # `distance` and `count` cost no steps, so the battery is no backstop: a model
     # looping on one loops forever. The allowance resets on every drive, and reaching it
@@ -375,12 +311,10 @@ def test_looking_is_paid_for_with_driving():
     c.open_day(w)
     c.send("how far is (2,2)?")
     c.pump()
-    ok = check("looking stopped at the allowance", len(_ran(c)) == S.FREE_HOPS,
-               f"{len(_ran(c))} ran")
-    ok &= check("and the turn ended by itself, with nothing refused", c.ended and not any(
-        m["content"].startswith("REFUSED") for m in c.messages if m["role"] == "tool"))
-    ok &= check("...and says why",
-                any(who == "error" and "looks without a drive" in t for who, t in c.lines))
+    assert len(_ran(c)) == S.FREE_HOPS, "looking stopped at the allowance"
+    assert (c.ended and not any(
+        m["content"].startswith("REFUSED") for m in c.messages if m["role"] == "tool")), "and the turn ended by itself, with nothing refused"
+    assert any(who == "error" and "looks without a drive" in t for who, t in c.lines), "...and says why"
 
     # A drive buys the looking back.
     w2 = World()
@@ -392,53 +326,43 @@ def test_looking_is_paid_for_with_driving():
     d.open_day(w2)
     d.send("look around")
     d.pump()
-    ok &= check("driving gives the looking allowance back",
-                len(_ran(d)) == (S.FREE_HOPS - 1) * 2 + 2, f"{len(_ran(d))} ran")
-    return ok
+    assert len(_ran(d)) == (S.FREE_HOPS - 1) * 2 + 2, "driving gives the looking allowance back"
 
 
 def test_driving_is_capped_and_the_turn_ends_itself():
-    print("the drive cap")
     w = World()
     far = [{"name": "goto", "arguments": {"x": 15, "y": 10 + (i % 5)}} for i in range(40)]
     c, _ = rig(w, [("", [f]) for f in far], defiant=True)
     c.open_day(w)
     c.send("explore")
     c.pump()
-    ok = check("driving stopped at the cap", len(_ran(c)) == S.MOVE_HOPS,
-               f"{len(_ran(c))} ran")
-    ok &= check("and the turn ended itself, with nothing refused", c.ended and not any(
-        m["content"].startswith("REFUSED") for m in c.messages if m["role"] == "tool"))
-    ok &= check("every call asked for has an answer",
-                sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
-                == sum(1 for m in c.messages if m["role"] == "tool"))
+    assert len(_ran(c)) == S.MOVE_HOPS, "driving stopped at the cap"
+    assert (c.ended and not any(
+        m["content"].startswith("REFUSED") for m in c.messages if m["role"] == "tool")), "and the turn ended itself, with nothing refused"
+    assert (sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
+                == sum(1 for m in c.messages if m["role"] == "tool")), "every call asked for has an answer"
     c.send("carry on")
-    ok &= check("the next turn has both back", c.moves == 0 and c.frees == 0
-                and "20 drives left" in c._left().replace(str(S.MOVE_HOPS), "20"))
-    return ok
+    assert (c.moves == 0 and c.frees == 0
+                and "20 drives left" in c._left().replace(str(S.MOVE_HOPS), "20")), "the next turn has both back"
 
 
 def test_what_each_phase_allows():
-    print("dawn, day, dusk and night")
     free = {"distance", "count", "count_cells", "todo", "strike", "remember", "forget"}
     w = World()
     c, _ = rig(w, [])
-    ok = check("by day, everything", set(c._allowed()) == free | {"goto", "execute",
-                                                                  "end", "radio"},
-               str(c._allowed()))
+    assert (set(c._allowed()) == free | {"goto", "execute",
+                                                                  "end", "radio"}), "by day, everything"
     keep = S.COMMS
     S.COMMS = False
     try:
-        ok &= check("...but no radio with nobody at the desk", "radio" not in c._allowed())
+        assert "radio" not in c._allowed(), "...but no radio with nobody at the desk"
     finally:
         S.COMMS = keep
     for phase in ("dawn", "dusk", "night"):
         w.phase = phase
-        ok &= check(f"at {phase}, looking and writing only", set(c._allowed()) == free,
-                    str(c._allowed()))
+        assert set(c._allowed()) == free, f"at {phase}, looking and writing only"
     w.phase, w.day_over = "day", True
-    ok &= check("a day already over drives nothing and ends nothing",
-                not {"goto", "end"} & set(c._allowed()))
+    assert not {"goto", "end"} & set(c._allowed()), "a day already over drives nothing and ends nothing"
 
     # A model that asks anyway is refused, nothing moves, and it counts as a look.
     w = World()
@@ -450,46 +374,37 @@ def test_what_each_phase_allows():
     d.send("dawn")
     d.pump()
     refused = [m["content"] for m in d.messages if m["role"] == "tool"]
-    ok &= check("a drive at dawn is refused, and nothing moved",
-                w.pos == (15, 15) and refused and "only does that by day" in refused[0],
-                str(refused[:1]))
-    ok &= check("...and end at dawn too, since end is the day",
-                len(refused) > 1 and "end closes the day" in refused[1])
-    ok &= check("both counted as looks", d.frees == 2, str(d.frees))
-    return ok
+    assert w.pos == (15, 15) and refused and "only does that by day" in refused[0], "a drive at dawn is refused, and nothing moved"
+    assert len(refused) > 1 and "end closes the day" in refused[1], "...and end at dawn too, since end is the day"
+    assert d.frees == 2, "both counted as looks"
 
 
 def test_words_on_an_open_line_cost_battery():
-    print("the radio")
     w = World()
     radio = {"name": "radio", "arguments": {"text": "found a vein; want it sampled?"}}
     c, _ = rig(w, [("", [radio])])
     c.open_day(w)
     c.send("work")
     c.pump()
-    ok = check("a radio call ends her turn", c.ended)
-    ok &= check("...and costs its battery, from anywhere",
-                w.battery == S.BATTERY - S.RADIO_STEPS and w.steps == 0, str(w.battery))
+    assert c.ended, "a radio call ends her turn"
+    assert w.battery == S.BATTERY - S.RADIO_STEPS and w.steps == 0, "...and costs its battery, from anywhere"
     d, _ = rig(w, [("Yes, sampling it now.", [{"name": "count", "arguments": {}}]),
                    ("", [{"name": "count", "arguments": {}}]), ("Done.", [])])
     d.on_line = True
     d.open_day(w)
     d.send("go ahead")
     d.pump()
-    ok &= check("every reply she speaks on the line costs the same, and silent calls do not",
-                w.battery == S.BATTERY - 3 * S.RADIO_STEPS, str(w.battery))
+    assert w.battery == S.BATTERY - 3 * S.RADIO_STEPS, "every reply she speaks on the line costs the same, and silent calls do not"
     w.phase = "night"
     e, _ = rig(w, [("Good night.", [])])
     e.on_line = True
     e.open_day(w)
     e.send("night")
     e.pump()
-    ok &= check("at night words are free", w.battery == S.BATTERY - 3 * S.RADIO_STEPS)
-    return ok
+    assert w.battery == S.BATTERY - 3 * S.RADIO_STEPS, "at night words are free"
 
 
 def test_a_call_written_as_text_is_read_and_run():
-    print("typed out, not made")
     # Measured 2026-08-29 across five prompts at two temperatures: about 7 turns in 10
     # emit a real tool call and the rest type it out, and neither the prompt nor the
     # sampler moves that. Refusing costs a round trip and often gets the same reply
@@ -501,41 +416,33 @@ def test_a_call_written_as_text_is_read_and_run():
     c.send("explore the region")
     c.pump()
 
-    ok = check("it is recovered", c.recovered == 1, f"recovered={c.recovered}")
-    ok &= check("and said out loud, not slipped through",
-                any(who == "error" and "typed out" in t for who, t in c.lines))
-    ok &= check("the call actually ran", len(c.calls) == 1 and c.calls[0].name == "goto")
-    ok &= check("so the rover moved", w.pos == (15, 10), str(w.pos))
+    assert c.recovered == 1, "it is recovered"
+    assert any(who == "error" and "typed out" in t for who, t in c.lines), "and said out loud, not slipped through"
+    assert len(c.calls) == 1 and c.calls[0].name == "goto", "the call actually ran"
+    assert w.pos == (15, 10), "so the rover moved"
     # The assistant turn has to carry the call, or the tool result that follows answers
     # a question no message ever asked -- the dangling history `_refuse` guards against.
-    ok &= check("the assistant turn carries the recovered call",
-                any(m.get("tool_calls") for m in c.messages))
+    assert any(m.get("tool_calls") for m in c.messages), "the assistant turn carries the recovered call"
     asked = sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
     answered = sum(1 for m in c.messages if m["role"] == "tool")
-    ok &= check("and every call has an answer", asked == answered == 1,
-                f"{asked} asked, {answered} answered")
+    assert asked == answered == 1, "and every call has an answer"
 
     # Both shapes the model actually uses.
     import skills
     for text in ('goto(35, 25, "east")', 'goto(x=35, y=25, why="east")',
                  "distance(35, 25, 'is it worth it')"):
         got = skills.written_call(text)
-        ok &= check(f"read {text[:34]!r}",
-                    bool(got) and got[1]["x"] in (35, "35") and got[1]["why"], str(got))
+        assert bool(got) and got[1]["x"] in (35, "35") and got[1]["why"], f"read {text[:34]!r}"
     # And the shape that only became complete when `why` did. A written call must not
     # be held to a stricter schema than a real one -- see `skills.written_call`.
     for text in ("goto(35, 25)", "distance(x=35, y=25)"):
         got = skills.written_call(text)
-        ok &= check(f"read {text!r} without a why",
-                    bool(got) and got[1]["x"] in (35, "35") and "why" not in got[1],
-                    str(got))
-    return ok
+        assert bool(got) and got[1]["x"] in (35, "35") and "why" not in got[1], f"read {text!r} without a why"
 
 
 def test_a_run_of_typed_writes_all_runs():
     """Writes made together all run, and typed ones are no different. The 14 Oct team
     run typed four `todo`s into her first reply of the mission and none of them ran."""
-    print("typed writes, every one")
     w = World()
     typed = ("Here is my plan.\n"
              'todo("Explore north of the pad", "Initial mapping")\n'
@@ -545,49 +452,40 @@ def test_a_run_of_typed_writes_all_runs():
     c.open_day(w)
     c.send("plan your day")
     c.pump()
-    ok = check("all three ran", [x.name for x in c.calls] == ["todo", "todo", "remember"],
-               str([x.name for x in c.calls]))
-    ok &= check("onto the list, in order",
-                w.notes.todos == [["Explore north of the pad", False],
-                                  ["Explore east of the pad", False]], str(w.notes.todos))
-    ok &= check("and into her memory", w.notes.memory.get("plan") == "north, then east")
-    ok &= check("each one counted", c.recovered == 3, f"recovered={c.recovered}")
-    ok &= check("and said out loud",
-                any(who == "error" and "3 calls were typed out" in t for who, t in c.lines))
+    assert [x.name for x in c.calls] == ["todo", "todo", "remember"], "all three ran"
+    assert (w.notes.todos == [["Explore north of the pad", False],
+                                  ["Explore east of the pad", False]]), "onto the list, in order"
+    assert w.notes.memory.get("plan") == "north, then east", "and into her memory"
+    assert c.recovered == 3, "each one counted"
+    assert any(who == "error" and "3 calls were typed out" in t for who, t in c.lines), "and said out loud"
     asked = sum(len(m["tool_calls"]) for m in c.messages if m.get("tool_calls"))
     answered = sum(1 for m in c.messages if m["role"] == "tool")
-    ok &= check("every call has its answer", asked == answered == 3,
-                f"{asked} asked, {answered} answered")
-    return ok
+    assert asked == answered == 3, "every call has its answer"
 
 
 def test_an_incomplete_call_is_refused_rather_than_guessed_at():
-    print("...but only a complete one")
     import skills
     # A missing coordinate is the incompleteness that still counts. `why` used to be
     # on this list and came off on 2026-09-01 with the requirement itself; a destination
     # with no y is the case where reading it would mean inventing where it meant to go.
-    ok = check("no y, no recovery", skills.written_call("goto(25)") is None)
-    ok &= check("but it is still call-shaped",
-                skills.looks_like_a_call("goto(25)"))
+    assert skills.written_call("goto(25)") is None, "no y, no recovery"
+    assert skills.looks_like_a_call("goto(25)"), "but it is still call-shaped"
 
     w = World()
     c, _ = rig(w, [("goto(25)", [])] * 6)
     c.open_day(w)
     c.send("explore the region")
     c.pump()
-    ok &= check("so it gets a nudge instead", c.narrated == 1, f"{c.narrated}")
-    ok &= check("nothing ran", not c.calls and w.pos == (15, 15))
+    assert c.narrated == 1, "so it gets a nudge instead"
+    assert not c.calls and w.pos == (15, 15), "nothing ran"
     # A backstop that re-asks forever is the cap-that-asks-nicely mistake again.
-    ok &= check("one nudge, not six", c.narrated == 1)
+    assert c.narrated == 1, "one nudge, not six"
     c.send("try again")
     c.pump()
-    ok &= check("a fresh turn gets its own", c.narrated == 2, f"{c.narrated}")
-    return ok
+    assert c.narrated == 2, "a fresh turn gets its own"
 
 
 def test_ordinary_prose_is_left_alone():
-    print("not everything with 'goto' in it")
     w = World()
     for text in ("I stopped beside the pad and there is rock to the east.",
                  "goto is the right tool here, but I want to know the plan first.",
@@ -596,18 +494,13 @@ def test_ordinary_prose_is_left_alone():
         c.open_day(w)
         c.send("what now?")
         c.pump()
-        ok = check(f"left alone: {text[:44]!r}",
-                   c.narrated == 0 and c.recovered == 0 and not c.calls)
-        if not ok:
-            return False
+        assert c.narrated == 0 and c.recovered == 0 and not c.calls, f"left alone: {text[:44]!r}"
     import skills
-    ok = check("a bare mention is not a call", not skills.looks_like_a_call("use goto next"))
-    ok &= check("...nor is it recoverable", skills.written_call("use goto next") is None)
-    return ok
+    assert not skills.looks_like_a_call("use goto next"), "a bare mention is not a call"
+    assert skills.written_call("use goto next") is None, "...nor is it recoverable"
 
 
 def test_a_fabricated_view_never_reaches_the_context():
-    print("it wrote our half of the conversation")
     # `runs/20260829-134215/`: one sentence, a typed-out call, then four thousand
     # characters of invented view -- a grid, `399 steps left`, a position it had never
     # occupied. All of it became an assistant message, so from the next turn on the
@@ -622,27 +515,21 @@ def test_a_fabricated_view_never_reaches_the_context():
     c.send("explore")
     c.pump()
 
-    ok = check("it is counted", c.faked == 1, f"faked={c.faked}")
-    ok &= check("and said out loud",
-                any(who == "error" and "wrote for itself" in t for who, t in c.lines))
+    assert c.faked == 1, "it is counted"
+    assert any(who == "error" and "wrote for itself" in t for who, t in c.lines), "and said out loud"
     said = [t for who, t in c.lines if who == "gemma"]
-    ok &= check("the pane shows only the real part",
-                bool(said) and "399 steps" not in said[0], str(said[:1])[:70])
-    ok &= check("and the context holds none of it",
-                not any("399 steps" in m.get("content", "") for m in c.messages))
+    assert bool(said) and "399 steps" not in said[0], "the pane shows only the real part"
+    assert not any("399 steps" in m.get("content", "") for m in c.messages), "and the context holds none of it"
     # The real call in front of the fabrication still counts.
-    ok &= check("the call before it was still recovered and run",
-                c.recovered == 1 and w.pos == (25, 15), str(w.pos))
+    assert c.recovered == 1 and w.pos == (25, 15), "the call before it was still recovered and run"
 
     # A reply that merely mentions the heading mid-sentence keeps all of itself.
     kept, dropped = chat.cut_fabrication(
         "the WHAT YOU CAN SEE RIGHT NOW block says there is rock east")
-    ok &= check("a mention mid-line is not a fabrication", dropped == 0, kept)
-    return ok
+    assert dropped == 0, "a mention mid-line is not a fabrication"
 
 
 def test_the_request_pins_the_temperature():
-    print("the sampler is not left to chance")
     # Measured 2026-08-29: unset, 9 of 12 turns emitted a real call; at 0, 12 of 12.
     # The prompt was never the problem. This test builds the actual payload rather than
     # trusting the setting, because the setting existing is not the same as it shipping.
@@ -669,35 +556,25 @@ def test_the_request_pins_the_temperature():
     finally:
         urllib.request.urlopen = real
 
-    ok = check("temperature is sent", "temperature" in seen.get("options", {}),
-               str(seen.get("options")))
-    ok &= check("and it is the setting, not a literal",
-                seen["options"]["temperature"] == S.MODEL_TEMP)
-    ok &= check("num_ctx is still set too, and explicitly",
-                seen["options"].get("num_ctx") == S.MODEL_CTX)
-    ok &= check("the tools went with it",
-                [t["function"]["name"] for t in seen.get("tools", [])]
-                == skills.NAMES)
-    return ok
+    assert "temperature" in seen.get("options", {}), "temperature is sent"
+    assert seen["options"]["temperature"] == S.MODEL_TEMP, "and it is the setting, not a literal"
+    assert seen["options"].get("num_ctx") == S.MODEL_CTX, "num_ctx is still set too, and explicitly"
+    assert ([t["function"]["name"] for t in seen.get("tools", [])]
+                == skills.NAMES), "the tools went with it"
 
 
 def test_human_turns_are_marked():
-    print("who said what")
     w = World()
     c, _ = rig(w)
     c.open_day(w)
     c.send("what do you want to know?")
-    ok = check("the human turn is labelled",
-               ("you", "what do you want to know?") in c.lines)
-    ok &= check("and reaches the model as a user turn",
-                {"role": "user", "content": "what do you want to know?"} in c.messages)
-    ok &= check("busy until it answers", c.busy)
-    ok &= check("a second turn cannot jump the queue", c.send("and another") is False)
-    return ok
+    assert ("you", "what do you want to know?") in c.lines, "the human turn is labelled"
+    assert {"role": "user", "content": "what do you want to know?"} in c.messages, "and reaches the model as a user turn"
+    assert c.busy, "busy until it answers"
+    assert c.send("and another") is False, "a second turn cannot jump the queue"
 
 
 def test_stream_settles():
-    print("a streamed reply")
     w = World()
     c = chat.Conversation(w)
     c.busy = True
@@ -707,23 +584,18 @@ def test_stream_settles():
     c.q.put(("done", ({"prompt_eval_count": 120, "eval_count": 8}, [])))
     c.pump()
 
-    ok = check("buffers cleared", c.say_buf == "" and c.think_buf == "")
-    ok &= check("no longer busy", not c.busy)
-    ok &= check("what it said is in the pane",
-                ("gemma", "I am beside the pad.") in c.lines)
-    ok &= check("and in the context",
-                c.messages[-1] == {"role": "assistant", "content": "I am beside the pad."})
+    assert c.say_buf == "" and c.think_buf == "", "buffers cleared"
+    assert not c.busy, "no longer busy"
+    assert ("gemma", "I am beside the pad.") in c.lines, "what it said is in the pane"
+    assert c.messages[-1] == {"role": "assistant", "content": "I am beside the pad."}, "and in the context"
     # The reasoning is the largest thing it produces, and what has to survive the night
     # is the part it chose to say out loud.
-    ok &= check("thinking shows but is not sent back",
-                ("think", "The pad is one cell south.") in c.lines
-                and not any("one cell south" in m["content"] for m in c.messages))
-    ok &= check("timings recorded", c.last == (c.last[0], 120, 8))
-    return ok
+    assert (("think", "The pad is one cell south.") in c.lines
+                and not any("one cell south" in m["content"] for m in c.messages)), "thinking shows but is not sent back"
+    assert c.last == (c.last[0], 120, 8), "timings recorded"
 
 
 def test_hiding_the_reasoning_is_a_display_choice_only():
-    print("H hides, it does not delete")
     import render
     w = World()
     c = chat.Conversation(w)
@@ -735,19 +607,15 @@ def test_hiding_the_reasoning_is_a_display_choice_only():
 
     shown = " ".join(t for t, _, _ in render._blocks(c, 80, show_thinking=True))
     hidden = " ".join(t for t, _, _ in render._blocks(c, 80, show_thinking=False))
-    ok = check("shown when on", "Weighing up" in shown)
-    ok &= check("gone when off", "Weighing up" not in hidden)
-    ok &= check("what it said survives either way",
-                "Going north-east." in shown and "Going north-east." in hidden)
+    assert "Weighing up" in shown, "shown when on"
+    assert "Weighing up" not in hidden, "gone when off"
+    assert "Going north-east." in shown and "Going north-east." in hidden, "what it said survives either way"
     # The tape is written in `write`, which hiding never touches -- so turning the
     # display off can never cost a run its record.
-    ok &= check("and the line is still on the record",
-                ("think", "Weighing up the north-east quadrant.") in c.lines)
-    return ok
+    assert ("think", "Weighing up the north-east quadrant.") in c.lines, "and the line is still on the record"
 
 
 def test_template_tokens_never_reach_the_context():
-    print("scaffolding")
     w = World()
     c, _ = rig(w)
     c.busy = True
@@ -757,20 +625,15 @@ def test_template_tokens_never_reach_the_context():
     # Found by reading a tape, not by testing: eight of eight gemma turns ended
     # `<channel|>`, and the reply becomes an assistant message, so the token went back
     # into context every turn and into the transcript. It looks like nothing.
-    ok = check("stripped from what it said",
-               ("gemma", "I am beside the pad.") in c.lines)
-    ok &= check("and from the context",
-                not any("channel" in m.get("content", "") for m in c.messages))
-    ok &= check("and counted, so a new one shows up", c.junk == 1)
+    assert ("gemma", "I am beside the pad.") in c.lines, "stripped from what it said"
+    assert not any("channel" in m.get("content", "") for m in c.messages), "and from the context"
+    assert c.junk == 1, "and counted, so a new one shows up"
     # Explicit list, not a catch-all: eating anything in angle brackets would one day
     # eat real content and never say so.
-    ok &= check("real angle brackets survive",
-                chat.clean("use <b>bold</b> and 3 < 4")[0] == "use <b>bold</b> and 3 < 4")
-    return ok
+    assert chat.clean("use <b>bold</b> and 3 < 4")[0] == "use <b>bold</b> and 3 < 4", "real angle brackets survive"
 
 
 def test_full_context_is_shouted():
-    print("the 4096 trap")
     w = World()
     c = chat.Conversation(w)
     c.busy = True
@@ -780,28 +643,23 @@ def test_full_context_is_shouted():
     c.pump()
     # Ollama drops the oldest messages without a word, so the model reads as forgetful
     # rather than starved. The pane has to say it or nobody finds out.
-    return check("says so in the pane",
-                 any(who == "error" and "context" in text for who, text in c.lines))
+    assert any(who == "error" and "context" in text for who, text in c.lines), "says so in the pane"
 
 
 def test_error_does_not_wedge():
-    print("ollama down")
     w = World()
     c, _ = rig(w)
     c.busy = True
     c.q.put(("error", "URLError: connection refused"))
     c.pump()
-    ok = check("shown", any(who == "error" for who, _ in c.lines))
-    ok &= check("and it can be talked to again", not c.busy and c.send("still there?"))
-    return ok
+    assert any(who == "error" for who, _ in c.lines), "shown"
+    assert not c.busy and c.send("still there?"), "and it can be talked to again"
 
 
 def test_an_error_in_the_stream_is_an_error():
     """A cloud model with the cloud down comes back from local Ollama as an `error`
     line, not a failed status. Read as nothing, the turn waited for a `done` for ever."""
-    print("ollama says no")
     import urllib.request
-    ok = True
     for lines, why in (([b'{"error":"model unavailable"}'], "an error line"),
                        ([b'{"message":{"content":"half"}}'], "a stream with no done")):
         c = chat.Conversation(World())
@@ -822,13 +680,10 @@ def test_an_error_in_the_stream_is_an_error():
         got = []
         while not c.q.empty():
             got.append(c.q.get()[0])
-        ok &= check(f"{why} ends in an error, not a wait", got and got[-1] == "error",
-                    str(got))
-    return ok
+        assert got and got[-1] == "error", f"{why} ends in an error, not a wait"
 
 
 def test_the_tape_keeps_the_view_the_pane_drops():
-    print("the tape")
     w = World()
     written = []
     c, _ = rig(w)
@@ -837,14 +692,12 @@ def test_the_tape_keeps_the_view_the_pane_drops():
     c.send("hello")
     c.pump()
     views = [r for r in written if r["who"] == "view"]
-    ok = check("a view was recorded", len(views) == 1)
+    assert len(views) == 1, "a view was recorded"
     # Context holds only the newest view, so unless every one is written down as it was,
     # a finished run cannot be read back -- and reading one back, not testing, is how
     # the rock bug was found.
-    ok &= check("in full, not summarised", sight.GRID_HEADING in views[0]["text"])
-    ok &= check("while the pane got one line",
-                all("\n" not in text for who, text in c.lines if who == "view"))
-    return ok
+    assert sight.GRID_HEADING in views[0]["text"], "in full, not summarised"
+    assert all("\n" not in text for who, text in c.lines if who == "view"), "while the pane got one line"
 
 
 def test_the_tape_says_what_each_response_cost():
@@ -858,7 +711,6 @@ def test_the_tape_says_what_each_response_cost():
     that has nothing to do with the map, and a row that did not
     say so would look like the view got smaller.
     """
-    print("cost")
     w = World()
     written = []
     c, _ = rig(w)
@@ -867,47 +719,11 @@ def test_the_tape_says_what_each_response_cost():
     c.send("hello")
     c.pump()
     rows = [r for r in written if r["who"] == "cost"]
-    ok = check("one row per response", len(rows) == 1, f"{len(rows)} rows")
-    if not ok:
-        return ok
+    assert len(rows) == 1, "one row per response"
     row = rows[0]
-    ok &= check("carrying Ollama's numbers, not a re-parse of the text",
-                row["tokens_in"] == 100 and row["tokens_out"] == 5, str(row))
-    ok &= check("and where in the turn it was asked, and what it carried",
-                row["hops"] == 0 and row["tools"] == skills.NAMES, str(row))
-    ok &= check("the day and the clock come along, like every other row",
-                row["day"] == w.day and isinstance(row["t"], float))
+    assert row["tokens_in"] == 100 and row["tokens_out"] == 5, "carrying Ollama's numbers, not a re-parse of the text"
+    assert row["hops"] == 0 and row["tools"] == skills.NAMES, "and where in the turn it was asked, and what it carried"
+    assert row["day"] == w.day and isinstance(row["t"], float), "the day and the clock come along, like every other row"
     # The footer already draws this live from `conv.last`. A copy per response in the
     # transcript would push the conversation off its own pane.
-    ok &= check("and it stays off the pane",
-                not any(who == "cost" for who, _ in c.lines))
-    return ok
-
-
-if __name__ == "__main__":
-    results = [test_sol_opens_with_the_numbers(),
-               test_every_prompt_promises_exactly_what_exists(),
-               test_the_view_is_replaced_not_appended(),
-               test_a_tool_call_round_trips(),
-               test_a_bad_call_is_counted_and_costs_nothing(),
-               test_only_one_call_of_a_batch_ever_runs(),
-               test_a_turn_runs_until_she_ends_it(),
-               test_looking_is_paid_for_with_driving(),
-               test_driving_is_capped_and_the_turn_ends_itself(),
-               test_what_each_phase_allows(),
-               test_words_on_an_open_line_cost_battery(),
-               test_a_call_written_as_text_is_read_and_run(),
-               test_a_run_of_typed_writes_all_runs(),
-               test_an_incomplete_call_is_refused_rather_than_guessed_at(),
-               test_ordinary_prose_is_left_alone(),
-               test_a_fabricated_view_never_reaches_the_context(),
-               test_the_request_pins_the_temperature(),
-               test_human_turns_are_marked(), test_stream_settles(),
-               test_hiding_the_reasoning_is_a_display_choice_only(),
-               test_template_tokens_never_reach_the_context(),
-               test_full_context_is_shouted(), test_error_does_not_wedge(),
-               test_an_error_in_the_stream_is_an_error(),
-               test_the_tape_keeps_the_view_the_pane_drops(),
-               test_the_tape_says_what_each_response_cost()]
-    print(f"\n{sum(results)}/{len(results)} groups passed")
-    sys.exit(0 if all(results) else 1)
+    assert not any(who == "cost" for who, _ in c.lines), "and it stays off the pane"

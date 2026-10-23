@@ -1,13 +1,12 @@
 """Quit, come back, and wake on the next sol as though the night had passed.
 
-    .venv/bin/python game/test_resume.py
 
 The whole claim is one comparison: a world rebuilt from `carry()` must be the world
 `next_day` would have produced, down to the view the model is sent.
 """
 
+import pytest
 import json
-import sys
 import tempfile
 from pathlib import Path
 
@@ -19,12 +18,10 @@ import sight
 import skills
 from world import World
 
-S.STORM_ON = True       # the storm is reseeded by sol, so a resumed sol must get the same one
 
-
-def check(name, cond, detail=""):
-    print(f"  {'ok  ' if cond else 'FAIL'}  {name}{'   ' + detail if detail else ''}")
-    return bool(cond)
+@pytest.fixture(autouse=True)
+def storm_on():
+    S.STORM_ON = True
 
 
 def played():
@@ -80,24 +77,20 @@ def same(a, b):
 
 
 def test_a_resumed_world_is_the_one_that_slept():
-    print("resume = next_day")
     w = played()
     kept = roundtrip(w)
     slept = w
     slept.next_day()
     woke = World(carried=kept)
     diff = [k for k, v in same(slept, woke).items() if not v]
-    ok = check("identical, view included", not diff, str(diff))
-    ok &= check("on the next sol", woke.day == 2)
-    ok &= check("the examined interest stays examined", (8, 20) not in woke.here.interests)
-    ok &= check("the placed objective is still there", (21, 22) in woke.here.objectives)
-    ok &= check("and the planted interest, still hidden",
-                (3, 25) in woke.here.interests and not woke.here.interests[(3, 25)].found)
-    ok &= check("the list did not survive", woke.notes.todos == [])
-    ok &= check("it ended the sol out on the plain, so it wakes there, stranded",
-                woke.stranded and woke.pos != C.SPAWN)
-    ok &= check("on the charge it had left, not a full one",
-                woke.battery == kept["battery"] < S.BATTERY, str(woke.battery))
+    assert not diff, "identical, view included"
+    assert woke.day == 2, "on the next sol"
+    assert (8, 20) not in woke.here.interests, "the examined interest stays examined"
+    assert (21, 22) in woke.here.objectives, "the placed objective is still there"
+    assert (3, 25) in woke.here.interests and not woke.here.interests[(3, 25)].found, "and the planted interest, still hidden"
+    assert woke.notes.todos == [], "the list did not survive"
+    assert woke.stranded and woke.pos != C.SPAWN, "it ended the sol out on the plain, so it wakes there, stranded"
+    assert woke.battery == kept["battery"] < S.BATTERY, "on the charge it had left, not a full one"
 
     # Twice over: a resumed sol carries again like any other.
     skills.call(woke, "goto", {"x": 2, "y": 2})
@@ -105,35 +98,27 @@ def test_a_resumed_world_is_the_one_that_slept():
     again = World(carried=roundtrip(woke))
     slept.next_day()
     diff = [k for k, v in same(slept, again).items() if not v]
-    ok &= check("and a second night the same way", not diff and again.day == 3, str(diff))
-    return ok
+    assert not diff and again.day == 3, "and a second night the same way"
 
 
 def test_a_night_from_before_stranding_wakes_at_the_pad():
-    print("older nights")
     kept = roundtrip(played())
     del kept["pos"], kept["stranded"]
     woke = World(carried=kept)
-    ok = check("no position saved means it woke at the pad, as it always did",
-               woke.pos == C.SPAWN and not woke.stranded)
+    assert woke.pos == C.SPAWN and not woke.stranded, "no position saved means it woke at the pad, as it always did"
     # Before 10c's memory and board: one paragraph and one order string.
     kept["memory"], kept["orders"] = "the C opens east", "finish objective 1"
     woke = World(carried=kept)
-    ok &= check("an old note wakes as one entry called note",
-                woke.notes.memory == {"note": "the C opens east"}, str(woke.notes.memory))
-    ok &= check("and an old order as a board of one",
-                woke.notes.orders == ["finish objective 1"], str(woke.notes.orders))
+    assert woke.notes.memory == {"note": "the C opens east"}, "an old note wakes as one entry called note"
+    assert woke.notes.orders == ["finish objective 1"], "and an old order as a board of one"
     kept["memory"], kept["orders"] = "", ""
     woke = World(carried=kept)
-    ok &= check("empty ones wake empty", woke.notes.memory == {} and woke.notes.orders == [])
+    assert woke.notes.memory == {} and woke.notes.orders == [], "empty ones wake empty"
     kept["version"] = 1
-    ok &= check("a night saved by 10c, whose work was all objectives, is refused",
-                _raises(lambda: World(carried=kept)))
-    return ok
+    assert _raises(lambda: World(carried=kept)), "a night saved by 10c, whose work was all objectives, is refused"
 
 
 def test_the_wrong_arena_is_refused():
-    print("the map belongs to its arena")
     kept = roundtrip(World())
     C.use("50")
     try:
@@ -143,11 +128,10 @@ def test_the_wrong_arena_is_refused():
         refused = True
     finally:
         C.use(C.DEFAULT_ARENA)
-    return check("a 30 resumed on the 50 is an error, not a scrambled map", refused)
+    assert refused, "a 30 resumed on the 50 is an error, not a scrambled map"
 
 
 def test_a_replay_of_a_resumed_run_starts_where_it_did():
-    print("replay")
     with tempfile.TemporaryDirectory() as d:
         run = Path(d)
         (run / "start.json").write_text(json.dumps(roundtrip(played())))
@@ -157,36 +141,29 @@ def test_a_replay_of_a_resumed_run_starts_where_it_did():
         script = replay.Script(run)
         keep = S.BATTERY
         try:
-            ok = check("it knows the state it began from", script.start["day"] == 1)
-            ok &= check("and its first sol", script.first_sol == 2)
+            assert script.start["day"] == 1, "it knows the state it began from"
+            assert script.first_sol == 2, "and its first sol"
             script.use_settings(script.first_sol)
-            ok &= check("whose settings it takes", S.BATTERY == 140)
+            assert S.BATTERY == 140, "whose settings it takes"
         finally:
             S.BATTERY = keep
-    return ok
 
 
 def test_the_night_is_written_down():
-    print("on disk")
     with tempfile.TemporaryDirectory() as d:
         run = logs.Run(Path(d), stamp="20261011-120000")
         w = played()
         run.save_night(w)
-        ok = check("night.json is written while the run is still pending",
-                   (run.dir / "night.json").exists())
+        assert (run.dir / "night.json").exists(), "night.json is written while the run is still pending"
         kept = run.keep()
         back = logs.load_night(kept)
-        ok &= check("and read back from the kept run",
-                    back["memory"][0] == ["the C", "it opens east"], str(back["memory"]))
-        ok &= check("a directory with no night says so",
-                    _raises(lambda: logs.load_night(Path(d))))
-    return ok
+        assert back["memory"][0] == ["the C", "it opens east"], "and read back from the kept run"
+        assert _raises(lambda: logs.load_night(Path(d))), "a directory with no night says so"
 
 
 def test_a_list_made_at_night_survives_a_resume():
     """Quit at night and the list she made is tomorrow's, resumed or not. Quit any
     earlier and it is today's, and goes with the sol -- `played()` is that case."""
-    print("the night's list, resumed")
     w = played()
     w.phase = "night"
     w.evening()
@@ -195,14 +172,11 @@ def test_a_list_made_at_night_survives_a_resume():
     w.next_day()
     woke = World(carried=kept)
     diff = [k for k, v in same(w, woke).items() if not v]
-    ok = check("identical, view included", not diff, str(diff))
-    ok &= check("the list made at night came with it",
-                woke.notes.todos == [["explore north", False]], str(woke.notes.todos))
+    assert not diff, "identical, view included"
+    assert woke.notes.todos == [["explore north", False]], "the list made at night came with it"
     older = dict(kept)
     del older["todos"]
-    ok &= check("a night kept before the list crossed it wakes with none",
-                World(carried=older).notes.todos == [])
-    return ok
+    assert World(carried=older).notes.todos == [], "a night kept before the list crossed it wakes with none"
 
 
 def _raises(fn):
@@ -211,10 +185,3 @@ def _raises(fn):
     except ValueError:
         return True
     return False
-
-
-if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    results = [t() for t in tests]
-    print(f"\n{sum(results)}/{len(results)} groups passed")
-    sys.exit(0 if all(results) else 1)

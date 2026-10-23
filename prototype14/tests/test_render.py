@@ -1,6 +1,5 @@
 """Drawing: the window's layout, the map, the dashboard, and the fog leak.
 
-    .venv/bin/python game/test_render.py
 
 No display is opened, so this runs anywhere `render` imports.
 """
@@ -9,11 +8,6 @@ import config as C
 import pygame
 import render
 import settings as S
-
-# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
-# but it is a scenario, not terrain -- letting one drift across an arena would make
-# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
-S.STORM_ON = False
 
 
 def test_the_whole_arena_fits_in_any_window():
@@ -168,10 +162,3 @@ def test_an_unseen_rock_changes_nothing_on_screen():
         assert picture() == before, f"an unseen rock showed beside a seen {ch!r}"
     put(seen, ".")
     put(hidden, ".")
-
-
-if __name__ == "__main__":
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_"):
-            fn()
-    print("all render checks passed")

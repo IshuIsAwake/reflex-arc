@@ -1,6 +1,5 @@
 """Watching the drive, and the one rule that makes it safe.
 
-    .venv/bin/python game/test_anim.py
 
 **The playback is a display of something that already happened.** The world jumps the
 moment `goto` is called, `nav` writes down what it did, and `anim.Reel` draws that
@@ -9,23 +8,12 @@ if the animation could alter anything, the model would be reasoning about a worl
 depends on how long somebody watched it, which is not a world at all.
 """
 
-import sys
 
 import anim
 import config as C
 import nav
 import settings as S
 from world import SOLID, World
-
-# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
-# but it is a scenario, not terrain -- letting one drift across an arena would make
-# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
-S.STORM_ON = False
-
-
-def check(name, cond, detail=""):
-    print(f"  {'ok  ' if cond else 'FAIL'}  {name}{'   ' + detail if detail else ''}")
-    return bool(cond)
 
 
 def play(reel, seconds=60.0, dt=1 / 60):
@@ -43,7 +31,6 @@ def kinds(timeline):
 
 
 def test_a_drive_is_recorded_as_it_happens():
-    print("what nav writes down")
     # Pinned above the shipped 5, so the drive has room to be surprised as often as this
     # route surprises it. The shipped value is left alone deliberately: this test is
     # about what the reel records, not about the knob, and pinning it is how the two
@@ -64,52 +51,43 @@ def _a_drive_is_recorded():
     # ground rather than an objective, because an objective is solid without being rock
     # and the last block would not be an outcrop at all.
     r = nav.goto(w, 0, 10)
-    ok = check("it gets there", r.code == "DONE", str(r))
-    ok &= check("one reel queued", len(w.reel) == 1, str(len(w.reel)))
+    assert r.code == "DONE", "it gets there"
+    assert len(w.reel) == 1, "one reel queued"
 
     tl = w.reel[0]
-    ok &= check("it starts where the rover did", tl[0] == ("start", C.SPAWN), str(tl[0]))
+    assert tl[0] == ("start", C.SPAWN), "it starts where the rover did"
     ks = kinds(tl)
-    ok &= check("it plans before it moves", ks[1] == "plan")
-    ok &= check("it was surprised", ks.count("block") > 1, f"{ks.count('block')} blocks")
+    assert ks[1] == "plan", "it plans before it moves"
+    assert ks.count("block") > 1, "it was surprised"
     # A fresh plan after every surprise, and that is the thing worth watching: each one
     # ran through an outcrop nobody had seen.
-    ok &= check("and laid a fresh plan after each",
-                ks.count("plan") == ks.count("block") + 1,
-                f"{ks.count('plan')} plans, {ks.count('block')} blocks")
+    assert ks.count("plan") == ks.count("block") + 1, "and laid a fresh plan after each"
 
     steps = [d for k, d in tl if k == "step"]
-    ok &= check("a step per tile actually driven", len(steps) == r.steps,
-                f"{len(steps)} steps vs {r.steps}")
-    ok &= check("and none of them is rock",
-                all(C.ARENA[c[1]][c[0]] not in SOLID for c, _ in steps))
-    ok &= check("the last step is where it ended up", steps[-1][0] == w.pos)
-    ok &= check("every block really is rock",
-                all(C.ARENA[c[1]][c[0]] == "#" for k, c in tl if k == "block"))
+    assert len(steps) == r.steps, "a step per tile actually driven"
+    assert all(C.ARENA[c[1]][c[0]] not in SOLID for c, _ in steps), "and none of them is rock"
+    assert steps[-1][0] == w.pos, "the last step is where it ended up"
+    assert all(C.ARENA[c[1]][c[0]] == "#" for k, c in tl if k == "block"), "every block really is rock"
 
     first_plan = next(d for k, d in tl if k == "plan")
-    ok &= check("the first plan drove through rock it had not seen",
-                any(C.ARENA[y][x] == "#" for x, y in first_plan))
+    assert any(C.ARENA[y][x] == "#" for x, y in first_plan), "the first plan drove through rock it had not seen"
 
     # The one case that legitimately has a single plan: the target itself turns out to
     # be rock, so there is nowhere else to re-route to and nav stops rather than
     # inventing a destination.
     w2 = World()
     r2 = nav.goto(w2, 14, 9)       # the south face of the formation due north
-    ok &= check("blocked *on* the target lays no second plan",
-                r2.code == "BLOCKED" and kinds(w2.reel[0]).count("plan") == 1, str(r2))
-    return ok
+    assert r2.code == "BLOCKED" and kinds(w2.reel[0]).count("plan") == 1, "blocked *on* the target lays no second plan"
 
 
 def test_pricing_a_trip_is_blue_and_moves_nothing():
-    print("distance")
     w = World()
     before = w.pos, w.steps
     nav.distance(w, 15, 0)
-    ok = check("one reel queued", len(w.reel) == 1)
+    assert len(w.reel) == 1, "one reel queued"
     ks = kinds(w.reel[0])
-    ok &= check("a probe, not a drive", ks == ["start", "probe"], str(ks))
-    ok &= check("nothing moved and nothing was spent", (w.pos, w.steps) == before)
+    assert ks == ["start", "probe"], "a probe, not a drive"
+    assert (w.pos, w.steps) == before, "nothing moved and nothing was spent"
 
     # An unreachable price has no route to draw, so it queues nothing rather than an
     # empty reel that would flash for a frame and mean nothing.
@@ -117,8 +95,7 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
     w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
     w2.pos = (16, 20)
     nav.distance(w2, 17, 20)         # straight into a known outcrop
-    ok &= check("an unreachable price draws nothing", not w2.reel)
-    return ok
+    assert not w2.reel, "an unreachable price draws nothing"
 
 
 def test_the_fog_opens_in_time_with_the_drive():
@@ -133,27 +110,22 @@ def test_the_fog_opens_in_time_with_the_drive():
     Prototype 7 tested exactly this and prototype 8 could not -- a blind rover has no
     fog to hold back. It is the drive's assertion again.
     """
-    print("the fog is held shut")
     w = World()
     nav.goto(w, 15, 0)
     far = w.pos
-    ok = check("the world has already seen where it ended up", w.here.visible(*far))
+    assert w.here.visible(*far), "the world has already seen where it ended up"
 
     reel = anim.Reel(w)
     reel.tick(0.001)
-    ok &= check("but the reel holds it back until the rover is drawn there",
-                reel.veiled(far),
-                "otherwise the map opens before the rover has left the pad")
-    ok &= check("and it is drawn back at the pad", reel.where(w.pos) == C.SPAWN)
+    assert reel.veiled(far), "but the reel holds it back until the rover is drawn there"
+    assert reel.where(w.pos) == C.SPAWN, "and it is drawn back at the pad"
 
     play(reel)
-    ok &= check("by the end nothing is veiled", not reel.veiled(far))
-    ok &= check("and the rover has arrived", reel.where(w.pos) == w.pos)
-    return ok
+    assert not reel.veiled(far), "by the end nothing is veiled"
+    assert reel.where(w.pos) == w.pos, "and the rover has arrived"
 
 
 def test_the_plan_is_torn_up_when_it_is_wrong():
-    print("yellow, then no yellow")
     w = World()
     # West across the C's mouth. The plan is drawn straight through the spine, which is
     # fog until it is driven at, so the yellow really does cross rock and really is torn
@@ -175,14 +147,12 @@ def test_the_plan_is_torn_up_when_it_is_wrong():
     if len(lengths) > 2:
         saw_retracting = any(b < a for a, b in zip(lengths, lengths[1:]))
 
-    ok = check("the plan was drawn straight through an outcrop", saw_plan_over_rock)
-    ok &= check("and withdrew a cell at a time when one refused", saw_retracting)
-    ok &= check("back to the cell the rover was standing on", saw_pruned_to_rover)
-    return ok
+    assert saw_plan_over_rock, "the plan was drawn straight through an outcrop"
+    assert saw_retracting, "and withdrew a cell at a time when one refused"
+    assert saw_pruned_to_rover, "back to the cell the rover was standing on"
 
 
 def test_the_reel_never_changes_the_world():
-    print("a display, and only a display")
     w = World()
     nav.goto(w, 15, 0)
     after = (w.pos, w.steps, w.day, len(w.here.seen), len(w.here.visited),
@@ -192,104 +162,76 @@ def test_the_reel_never_changes_the_world():
     play(reel)
     now = (w.pos, w.steps, w.day, len(w.here.seen), len(w.here.visited),
            len(w.nav_log), w.last_walk[1][:], w.last_path[1][:])
-    ok = check("nothing about the world moved", after == now)
+    assert after == now, "nothing about the world moved"
 
     # And the same holds if nobody ever draws it, which is how every other test runs.
     w2 = World()
     nav.goto(w2, 15, 0)
-    ok &= check("an undrawn reel changes nothing either", w2.pos == w.pos)
-    return ok
+    assert w2.pos == w.pos, "an undrawn reel changes nothing either"
 
 
 def test_skipping_lands_exactly_where_the_world_already_is():
-    print("SPACE")
     w = World()
     nav.goto(w, 15, 0)
     nav.goto(w, 12, 0)
     reel = anim.Reel(w)
     for _ in range(30):
         reel.tick(1 / 60)
-    ok = check("mid-drive, the drawing is behind", reel.where(w.pos) != w.pos)
+    assert reel.where(w.pos) != w.pos, "mid-drive, the drawing is behind"
 
     reel.skip()
-    ok &= check("skipping empties the queue", not reel.busy and not w.reel)
-    ok &= check("and shows the rover where it really is", reel.where(w.pos) == w.pos)
-    ok &= check("with nothing left veiled", not reel.veiled((15, 0)))
-    return ok
+    assert not reel.busy and not w.reel, "skipping empties the queue"
+    assert reel.where(w.pos) == w.pos, "and shows the rover where it really is"
+    assert not reel.veiled((15, 0)), "with nothing left veiled"
 
 
 def test_a_long_stall_catches_up_rather_than_crawling():
-    print("one big dt")
     w = World()
     nav.goto(w, 15, 0)
     reel = anim.Reel(w)
     reel.tick(0.001)
     reel.tick(30.0)              # the model held the loop for thirty seconds
-    ok = check("it does not then play out in slow motion", not reel.busy)
-    ok &= check("and it is caught up", reel.where(w.pos) == w.pos)
-    return ok
+    assert not reel.busy, "it does not then play out in slow motion"
+    assert reel.where(w.pos) == w.pos, "and it is caught up"
 
 
 def test_turning_it_off_records_nothing():
-    print("ANIMATE = False")
     S.ANIMATE = False
     try:
         w = World()
         nav.goto(w, 15, 0)
         nav.distance(w, 5, 5)
-        ok = check("no reels are kept", not w.reel)
-        ok &= check("but the drive still happened", w.pos == (15, 0), str(w.pos))
-        ok &= check("and a reel over an empty queue is never busy",
-                    not anim.Reel(w).busy)
+        assert not w.reel, "no reels are kept"
+        assert w.pos == (15, 0), "but the drive still happened"
+        assert not anim.Reel(w).busy, "and a reel over an empty queue is never busy"
     finally:
         S.ANIMATE = True
-    return ok
 
 
 def test_work_takes_time_on_screen_like_driving():
     """The day's clock is the wall clock, so work is drawn a step at a time: that is
     what makes `execute` cost the day as well as the battery."""
-    print("work is drawn, step by step")
     w = World()
     i = w.interests[0]
     w.pos = (i.cell[0], i.cell[1] + 1)
     w.execute(i)
-    ok = check("examining queues a reel of its own", len(w.reel) == 1
-               and kinds(w.reel[0]) == ["work"], str(w.reel))
+    assert (len(w.reel) == 1
+               and kinds(w.reel[0]) == ["work"]), "examining queues a reel of its own"
     frames = anim.frames(w.reel[0])
-    ok &= check("one frame a step of work", len(frames) == i.cost
-                and frames[-1][1] == (i.cell, i.cost, i.cost), str(frames[-1]))
+    assert (len(frames) == i.cost
+                and frames[-1][1] == (i.cell, i.cost, i.cost)), "one frame a step of work"
     reel = anim.Reel(w)
     reel.tick(1 / 60)
-    ok &= check("while it plays, the reel is busy and shows the progress",
-                reel.busy and reel.work and reel.work[0] == i.cell)
+    assert reel.busy and reel.work and reel.work[0] == i.cell, "while it plays, the reel is busy and shows the progress"
     drawn = play(reel) / 60
     step = S.ANIM_STEP / S.ANIM_SPEED
-    ok &= check("and it takes a driving step's time per step of work, to within one",
-                abs(drawn - i.cost * step) <= step + 0.05, f"{drawn:.2f}s for {i.cost} steps")
-    ok &= check("then it clears", not reel.busy and reel.work is None)
-    return ok
+    assert abs(drawn - i.cost * step) <= step + 0.05, "and it takes a driving step's time per step of work, to within one"
+    assert not reel.busy and reel.work is None, "then it clears"
 
 
 def test_the_queue_cannot_grow_forever():
-    print("headless, nobody watching")
     w = World()
     for i in range(S.REEL_MAX * 3):
         w.pos = C.SPAWN
         nav.distance(w, 15, 0)
-    return check("capped", len(w.reel) == S.REEL_MAX, f"{len(w.reel)} kept")
-
-
-if __name__ == "__main__":
-    results = [test_a_drive_is_recorded_as_it_happens(),
-               test_pricing_a_trip_is_blue_and_moves_nothing(),
-               test_the_fog_opens_in_time_with_the_drive(),
-               test_the_plan_is_torn_up_when_it_is_wrong(),
-               test_the_reel_never_changes_the_world(),
-               test_skipping_lands_exactly_where_the_world_already_is(),
-               test_a_long_stall_catches_up_rather_than_crawling(),
-               test_turning_it_off_records_nothing(),
-               test_work_takes_time_on_screen_like_driving(),
-               test_the_queue_cannot_grow_forever()]
-    print(f"\n{sum(results)}/{len(results)} groups passed")
-    sys.exit(0 if all(results) else 1)
+    assert len(w.reel) == S.REEL_MAX, "capped"

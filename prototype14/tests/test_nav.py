@@ -1,6 +1,5 @@
 """Checks the planner plans over what the rover knows and nothing more.
 
-    .venv/bin/python game/test_nav.py
 
 The load-bearing ones are `test_the_planner_is_not_omniscient`,
 `test_only_one_door_onto_the_grid` and
@@ -19,11 +18,6 @@ import plan_txt
 import settings as S
 from nav import DIRS
 from world import SOLID, THINGS, World
-
-# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
-# but it is a scenario, not terrain -- letting one drift across an arena would make
-# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
-S.STORM_ON = False
 
 
 NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
@@ -146,7 +140,7 @@ def test_the_planner_is_not_omniscient():
 def test_only_one_door_onto_the_grid():
     """nav.known() is the single fog-gated read. A second `.at(` in that file is how
     the planner goes quietly omniscient, so fail loudly if one appears."""
-    src = open(os.path.join(os.path.dirname(__file__), "nav.py")).read()
+    src = open(nav.__file__).read()
     assert src.count(".at(") == 1, "nav.py must reach the grid only through known()"
 
 
@@ -736,11 +730,3 @@ def test_a_call_that_did_not_arrive_leaves_nothing_for_the_next_one():
         C.use(C.DEFAULT_ARENA)
         if os.path.exists(out):
             os.remove(out)
-
-
-if __name__ == "__main__":
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_"):
-            fn()
-    C.use(C.DEFAULT_ARENA)   # `_roomy` pins the 50; leave the module as we found it
-    print("all nav checks passed")

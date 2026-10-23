@@ -1,6 +1,5 @@
 """Checks the grid model and the Manhattan/Chebyshev check. No hardware.
 
-    python test_grid.py
 
 The load-bearing one is `test_the_two_distances_disagree_usefully`: if Manhattan and
 Chebyshev ever agree on a both-axes miss, the check loses the one thing it says about
@@ -80,10 +79,3 @@ def test_frame_matches_10d():
     # 10d's nav.DIRS; if this drifts, a 10d plan.txt drives somewhere else
     assert grid.DIRS == ((0, -1), (1, 0), (0, 1), (-1, 0))
     assert grid.HEADING_NAMES == ("N", "E", "S", "W")
-
-
-if __name__ == "__main__":
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_"):
-            fn()
-    print("all grid checks passed")

@@ -1,6 +1,5 @@
 """Checks Level 3's hook against the game's real planner. No window, no model, no Pi.
 
-    python test_level3.py
 
 The game's `goto` drives a goal far enough off to need several legs; a stand-in rover
 records what it was sent. The load-bearing check is that the rover gets exactly the
@@ -8,22 +7,13 @@ legs the game wrote to its route file, in order, each one while the game is stil
 paused on it.
 """
 
-import os
-import sys
 import threading
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype13/game
-sys.path.insert(0, GAME)
-sys.path.insert(0, HERE)
-
-import config as C10   # noqa: E402  the game's config, not the rover's
-import level3          # noqa: E402
-import nav             # noqa: E402
-import settings as S   # noqa: E402
-from world import World  # noqa: E402
-
-S.STORM_ON = False
+import config as C10
+import level3
+import nav
+import settings as S
+from world import World
 
 
 class StandIn:
@@ -38,8 +28,7 @@ class StandIn:
 
 
 def test_every_leg_reaches_the_rover_while_the_game_waits():
-    keep = (nav.publish, nav._await_rover, S.PLAN_FILE)
-    S.PLAN_FILE = os.path.join(HERE, "runs", "test_plan.txt")
+    keep = (nav.publish, nav._await_rover)
     rover, done = StandIn(), threading.Event()
     handed = []
 
@@ -58,10 +47,8 @@ def test_every_leg_reaches_the_rover_while_the_game_waits():
         assert rover.legs == handed, (rover.legs, handed)
         assert open(nav.plan_file()).read() == "", "file not wiped after the last leg"
     finally:
-        nav.publish, nav._await_rover, S.PLAN_FILE = keep
+        nav.publish, nav._await_rover = keep
         C10.use(C10.DEFAULT_ARENA)
-        p = os.path.join(HERE, "runs", "test_plan.txt")
-        os.path.exists(p) and os.remove(p)
     print(f"  {len(handed)} legs, {sum(map(len, handed))} moves handed over")
 
 
@@ -69,8 +56,7 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
     """The 22 Oct run: SPACE pressed by hand let the game run ahead, and the rover refused the
     next legs as BUSY. Now they queue, and no SPACE is sent into a pause it does not own."""
     import time
-    keep = (nav.publish, nav._await_rover, S.PLAN_FILE)
-    S.PLAN_FILE = os.path.join(HERE, "runs", "test_plan.txt")
+    keep = (nav.publish, nav._await_rover)
     busy, driven, released = threading.Lock(), [], []
 
     class Slow:
@@ -123,10 +109,8 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
         assert len(handed) > 1, "need more than one leg to test this"
         assert driven == handed, ("legs lost or out of order", driven, handed)
     finally:
-        nav.publish, nav._await_rover, S.PLAN_FILE = keep
+        nav.publish, nav._await_rover = keep
         C10.use(C10.DEFAULT_ARENA)
-        p = os.path.join(HERE, "runs", "test_plan.txt")
-        os.path.exists(p) and os.remove(p)
     print(f"  {len(handed)} legs, first released by hand, all driven in order")
 
 
@@ -135,8 +119,7 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
     screen says where the leg ends; once a person releases the game, the rover is told
     it stands there."""
     import time
-    keep = (nav.publish, nav._await_rover, S.PLAN_FILE)
-    S.PLAN_FILE = os.path.join(HERE, "runs", "test_plan.txt")
+    keep = (nav.publish, nav._await_rover)
     guard, handed, told, released, hints = level3.Guard(), [], [], [], []
 
     class Stopped:
@@ -166,10 +149,8 @@ def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
         while len(told) < len(handed) and time.time() < deadline:
             time.sleep(0.01)
     finally:
-        nav.publish, nav._await_rover, S.PLAN_FILE = keep
+        nav.publish, nav._await_rover = keep
         C10.use(C10.DEFAULT_ARENA)
-        p = os.path.join(HERE, "runs", "test_plan.txt")
-        os.path.exists(p) and os.remove(p)
     assert handed and not released, "SPACE was sent for a leg that never finished"
     assert told[0] == level3.leg_end({"x": 0, "y": 0, "heading": "N"}, handed[0]), told
     assert len(told) == len(handed), (told, handed)
@@ -196,12 +177,3 @@ def test_a_hand_space_is_dropped_while_the_rover_drives():
     assert g.filter([hand, other]) == [hand, other], "nothing driving: every key passes"
     g.driving = 1
     assert g.filter([hand, ours, other]) == [ours, other], "driving: only our SPACE passes"
-
-
-if __name__ == "__main__":
-    test_a_hand_space_is_dropped_while_the_rover_drives()
-    test_every_leg_reaches_the_rover_while_the_game_waits()
-    test_a_hand_released_pause_still_drives_every_leg_in_order()
-    test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends()
-    test_the_person_is_told_the_cell_from_home()
-    print("all level3 checks passed")

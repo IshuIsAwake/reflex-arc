@@ -1,6 +1,5 @@
 """The arena itself, and the shape of a sol.
 
-    .venv/bin/python game/test_world.py
 
 **Run this after editing the map in config.py.** The flood-fill is the reason it
 exists: a sealed pocket of ground is invisible until somebody has wasted a whole sol
@@ -12,11 +11,6 @@ from collections import Counter, deque
 import config as C
 import settings as S
 from world import SOLID, World
-
-# Clear skies unless a suite asks otherwise. The weather is real and shipped on,
-# but it is a scenario, not terrain -- letting one drift across an arena would make
-# every route assertion here depend on STORM_RADIUS. `test_hazards.py` turns it on.
-S.STORM_ON = False
 
 
 def flood(start):
@@ -345,10 +339,3 @@ def test_the_recorder_hears_everything_and_is_optional():
     assert kinds == ["day_open", "say", "day_close", "day_open"], kinds
     assert seen[1][1]["tone"] == "bad"
     assert seen[2][1]["day"] == 1 and seen[3][1]["day"] == 2
-
-
-if __name__ == "__main__":
-    for name, fn in sorted(globals().items()):
-        if name.startswith("test_"):
-            fn()
-    print("all world checks passed")
