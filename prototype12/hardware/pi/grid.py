@@ -138,7 +138,7 @@ def check(expected, measured, lost_at=2):
     OFF  -- a miss, within `lost_at` cells (Chebyshev). Report it and carry on from
             `measured`; fix the heading if that is what is wrong.
     LOST -- `lost_at` cells or more out on some axis. Something bigger than slip
-            happened; stop and let a person (or later the LiDAR) say where it is.
+            happened; stop and let a person say where it is.
     """
     m, c = manhattan(expected, measured), chebyshev(expected, measured)
     h = turns_to_face(measured.heading, expected.heading)

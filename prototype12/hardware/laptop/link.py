@@ -9,6 +9,7 @@ the wifi drops: it reconnects, asks again under the same id (the rover answers a
 finished id from memory, so nothing drives twice), and sends whatever had not been
 driven yet. The command that was moving when the link dropped is driven again in
 full, because the rover stopped part-way through it and cannot say how far it got.
+A stop from any window is the exception: it ends the drive, and nothing is resent.
 """
 
 import itertools
@@ -26,12 +27,13 @@ class LinkError(Exception):
 
 
 class RoverStopped(LinkError):
-    """A checked drive the rover ended itself: LOST (2+ cells out) or UNSURE (the LiDAR
-    fit not trusted). Not retried -- the rover is not where the plan thinks."""
+    """A stop came in mid-drive -- the pad, /stop, any window. Not retried: a person has
+    taken over, and the rest of the list is theirs to finish or drop."""
 
     def __init__(self, msg):
         self.result, self.pose = msg["result"], msg.get("pose")
-        super().__init__(f"{msg['result']} at {self.pose}: {msg.get('note', '')}")
+        note = f": {msg['note']}" if msg.get("note") else ""
+        super().__init__(f"{msg['result']} at {self.pose}{note}")
 
 
 class RoverLink:
@@ -87,31 +89,9 @@ class RoverLink:
     def reset(self, heading="N"):
         return self._ask({"op": "reset", "heading": heading})
 
-    def scan(self):
-        """The rover's latest full LiDAR turn: {"ok", "angle_ddeg", "range_mm", ...}."""
-        return self._ask({"op": "scan"})
-
     def set_pose(self, x, y, heading):
         """Tell the rover which cell it is on, after a person has put it there."""
         return self._ask({"op": "set_pose", "x": x, "y": y, "heading": heading})
-
-    def ref_home(self):
-        """Record the room's reference where the rover stands: (0,0) facing north."""
-        return self._ask({"op": "ref_home"})
-
-    def ref_add(self, min_matched=0.0):
-        return self._ask({"op": "ref_add", "min_matched": min_matched})
-
-    def room(self, save=False):
-        """Does the game's 30 x 30 map fit this room, and at what cell size (room_fit.py)."""
-        return self._ask({"op": "room", "save": save})
-
-    def where(self):
-        """Where the LiDAR says the rover is: status, x, y, yaw_deg, cell, matched."""
-        return self._ask({"op": "where"})
-
-    def reference(self):
-        return self._ask({"op": "ref"})
 
     def manual(self, left, right):
         """Wheel power, -1..1 each side. Send it again within 0.4 s or the rover stops."""
@@ -123,13 +103,9 @@ class RoverLink:
         except OSError:
             pass
 
-    def drive(self, cmds, on_step=None, check=False):
-        """Drive every command in `cmds`. Returns the rover's last pose.
-
-        `check=True` asks the rover to check each move with its LiDAR (Level 4); steps
-        then carry a "check", and a check that falls inside one command arrives as an
-        event of its own, also passed to `on_step`. Raises RoverStopped on LOST/UNSURE.
-        """
+    def drive(self, cmds, on_step=None):
+        """Drive every command in `cmds`. Returns the rover's last pose. Raises
+        RoverStopped if a stop ends it part-way."""
         todo = list(cmds)
         for attempt in range(self.retries + 1):
             if not todo:
@@ -137,10 +113,7 @@ class RoverLink:
             did = next(_ids)
             got = 0
             try:
-                req = {"op": "drive", "id": did, "cmds": todo}
-                if check:
-                    req["check"] = True
-                self._send(req)
+                self._send({"op": "drive", "id": did, "cmds": todo})
                 while True:
                     msg = self._recv()
                     if msg.get("id") != did:
@@ -148,17 +121,12 @@ class RoverLink:
                     if msg.get("event") == "step":
                         got = msg["i"]
                         on_step and on_step(msg)
-                    elif msg.get("event") == "check":
-                        on_step and on_step(msg)
                     elif msg.get("event") == "done":
                         if msg["result"] == "DONE":
                             return msg["pose"]
-                        if msg["result"] in ("LOST", "UNSURE"):
+                        if msg["result"] == "STOPPED":
                             raise RoverStopped(msg)
-                        if msg["result"] in ("BUSY", "REFUSED"):
-                            raise LinkError(f"rover said {msg['result']}: {msg.get('note', '')}")
-                        todo = todo[got:]      # STOPPED: carry on with what is left
-                        break
+                        raise LinkError(f"rover said {msg['result']}: {msg.get('note', '')}")
             except (OSError, ConnectionError, ValueError) as e:
                 todo = todo[got:]
                 print(f"  link dropped ({e}); {len(todo)} command(s) left, reconnecting...")

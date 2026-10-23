@@ -27,7 +27,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pi"))
 import grid                       # noqa: E402
-from link import LinkError, RoverLink  # noqa: E402
+from link import LinkError, RoverLink, RoverStopped  # noqa: E402
 
 OLLAMA = "http://localhost:11434/api/chat"
 
@@ -123,6 +123,10 @@ def main():
             continue
         try:
             p = rover.drive(cmds, on_step=lambda m: print(f"    {m['i']}. {m['cmd']}  -> {m['pose']}"))
+            pose = grid.Pose(p["x"], p["y"], grid.HEADING_NAMES.index(p["heading"]))
+        except RoverStopped as e:         # stopped part-way: carry on from where it stopped
+            print(f"  ROVER: {e}")
+            p = e.pose
             pose = grid.Pose(p["x"], p["y"], grid.HEADING_NAMES.index(p["heading"]))
         except (LinkError, OSError) as e:
             print(f"  ROVER: {e}")

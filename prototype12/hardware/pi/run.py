@@ -12,7 +12,6 @@ from is the `--measure` option, and it is the part that grows with the levels:
           Enter means "where it should be".
   trust   the measured pose *is* the expected one. Every check passes, so this
           proves nothing about the floor; it is for dry runs with --fake.
-  (lidar) Level 4. Same check, the pose read from the LD19 instead of a person.
 
 What happens on a miss follows ARCHITECTURE.md:
   * position: reported, never driven back. The rover carries on from where it

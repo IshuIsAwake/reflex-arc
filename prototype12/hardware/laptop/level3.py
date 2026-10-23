@@ -13,12 +13,12 @@ presses SPACE for you. If the link fails, nothing is pressed: the HUD keeps wait
 you put the rover where the screen says it should be, and press SPACE yourself.
 
 With no LiDAR the simulation is the truth: the map, the fog and the battery all come
-from 10d, and the rover replays what 10d already drove. Where the floor disagrees
-with the screen is the error Level 4 measures.
+from 10d, and the rover replays what 10d already drove. Nothing measures where the
+floor disagrees with the screen; that is Level 4, deferred.
 
-`--check` is Level 4: the rover checks every move with its LiDAR, and correct.py moves
-the simulation's rover to the measured cell after every leg (`--no-correct` to only
-report).
+A stop from the control pad ends the leg there and hands the rover to you, the same as
+a failed link: put it where the screen shows it, facing the way the leg ended, and
+press SPACE. The rover is then told it is there.
 
 Before starting: rover on the cell that stands for 10d's landing cell, facing grid
 north (up on 10d's screen).
@@ -36,6 +36,8 @@ GAME = os.path.normpath(os.path.join(HERE, "..", "..", "game"))   # prototype12/
 sys.path.insert(0, HERE)
 
 from link import LinkError, RoverLink, RoverStopped  # noqa: E402
+
+STEP = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}   # 10d's frame and the rover's
 
 
 class Guard:
@@ -65,23 +67,21 @@ KEYDOWN, K_SPACE = 768, 32           # pygame's values; set properly once pygame
 
 
 def show(m):
-    """One line per step from the rover; with the LiDAR check, what it found."""
-    line = (f"[rover]   {m['cmd']} -> {m['pose']}" if "cmd" in m
-            else f"[rover]   (part-way) -> {m['pose']}")
-    c = m.get("check")
-    if c:
-        line += f"   lidar {c['result']}"
-        if c.get("manhattan"):
-            line += f" (manhattan {c['manhattan']}, chebyshev {c['chebyshev']})"
-        if c.get("fixes"):
-            line += f", heading {c['heading_err_was']:+.0f} deg fixed in {c['fixes']} turn(s)"
-        if c.get("heading_note"):
-            line += f", heading not fixed: {c['heading_note']}"
-    print(line)
+    """One line per step from the rover."""
+    print(f"[rover]   {m['cmd']} -> {m['pose']}")
+
+
+def leg_end(pose, dirs):
+    """Where a leg leaves the rover, from the pose it started in: the cell, facing the
+    way its last move went."""
+    x, y = pose["x"], pose["y"]
+    for d in dirs:
+        x, y = x + STEP[d][0], y + STEP[d][1]
+    return x, y, dirs[-1]
 
 
 def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=None,
-            check=False, correct=False):
+            start=None):
     """Wrap `nav.publish` so every leg 10d hands over is also driven by `rover`, and
     `finished()` is called once the rover has done it. 10d calls `publish` with the
     leg, then waits at its rover pause, then calls it again with [] -- so the wait is
@@ -94,19 +94,16 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
     (`still_waiting`); a SPACE posted after a hand-released pause would otherwise
     land in the next one, or in the chat.
 
-    `correct=True` (Level 4, needs `check`) moves the simulation's rover to the cell
-    the LiDAR measured after every leg -- correct.py. Returns a function that undoes
-    every wrap.
+    A leg that does not finish -- stopped, or the link failed -- leaves the rover to a
+    person. When they release 10d's pause, the rover is told it stands where that leg
+    ends (`start` is the rover's pose before the first leg). Returns a function that
+    undoes the wrap.
     """
     original = nav.publish
     legs = queue.Queue()
     guard = guard or Guard()
-    # Telling the rover its cell goes through the same queue as the legs, so it can never
-    # reach the rover in the middle of one.
-    fix = None
-    if correct:
-        from correct import Corrector
-        fix = Corrector(nav, send_pose=lambda x, y, h: legs.put(("pose", (x, y, h))))
+    at = [start or {"x": 0, "y": 0, "heading": "N"}]   # the rover's pose before the next leg
+    owed = [None]                 # the pose to tell it once a person has put it right
 
     def release(world, dirs):
         # 10d marks its pause just after `publish` returns; a short leg can beat it.
@@ -122,7 +119,8 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
             kind, item = legs.get()
             if kind == "pose":
                 try:
-                    print(f"[rover] told it is on cell {rover.set_pose(*item)['pose']}")
+                    at[0] = rover.set_pose(*item)["pose"]
+                    print(f"[rover] told it is on cell {at[0]}")
                 except (LinkError, OSError) as e:
                     print(f"[rover] could not tell the rover its cell: {e}")
                 continue
@@ -131,36 +129,22 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
             print(f"[rover] leg: {' '.join(dirs)}"
                   + (f"   ({legs.qsize()} more queued -- the sim is ahead)" if legs.qsize() else ""))
             try:
-                pose = rover.drive(dirs, on_step=show, check=check)
-                print(f"[rover] leg done, rover {'measured' if check else 'believes'} {pose}")
-                if fix:
-                    fix.leg_driven(pose)
+                at[0] = rover.drive(dirs, on_step=show)
+                print(f"[rover] leg done, rover believes {at[0]}")
                 ok = True
                 guard.driving -= 1
                 release(world, dirs)
             except RoverStopped as e:
-                if fix and e.result == "LOST":
-                    # It knows where it is, just not where it was sent: the simulation is moved
-                    # there and the model replans. Nobody needs to touch it.
-                    print(f"[rover] STOPPED, 2+ cells from the plan: {e}\n"
-                          f"[rover] the simulation is moved to where it really is")
-                    fix.leg_driven(e.pose)
-                    ok = True
-                    guard.driving -= 1
-                    release(world, dirs)
-                    continue
-                if fix:
-                    fix.leg_unsure(e.pose)
-                print(f"[rover] STOPPED BY ITS LIDAR CHECK: {e}\n"
-                      f"[rover] put the rover where the screen shows it, then press SPACE in the game")
+                print(f"[rover] STOPPED: {e}")
             except (LinkError, OSError) as e:
-                print(f"[rover] FAILED: {e}\n"
-                      f"[rover] put the rover where the screen shows it, then press SPACE in the game")
+                print(f"[rover] FAILED: {e}")
             except Exception as e:        # a bug here must say so, not kill the leg thread quietly
-                print(f"[rover] FAILED (a bug in level3.py): {e!r}\n"
-                      f"[rover] put the rover where the screen shows it, then press SPACE in the game")
+                print(f"[rover] FAILED (a bug in level3.py): {e!r}")
             finally:
                 if not ok:
+                    owed[0] = leg_end(at[0], dirs)
+                    print(f"[rover] the rover is yours: put it where the screen shows it, facing "
+                          f"{dirs[-1]}, then press SPACE in the game")
                     guard.driving = 0     # hand control back to the person
 
     threading.Thread(target=worker, daemon=True).start()
@@ -170,19 +154,18 @@ def install(nav, rover, finished, still_waiting=lambda world, dirs: True, guard=
         if not nav.live_file(world):
             return
         if dirs:
-            if fix:
-                fix.leg_handed(world, dirs)
             guard.driving += 1            # before 10d's pause starts reading keys
             legs.put(("leg", (world, list(dirs))))
-        elif fix:
-            fix.after_pause(world)        # the pause is over; 10d plans next, from here
+        elif owed[0]:
+            # The pause is over and a person put the rover right; it goes through the same
+            # queue as the legs, so it can never reach the rover in the middle of one.
+            legs.put(("pose", owed[0]))
+            owed[0] = None
 
     nav.publish = publish
 
     def restore():
         nav.publish = original
-        if fix:
-            fix.restore()
     return restore
 
 
@@ -191,26 +174,15 @@ def main():
     ap.add_argument("--rover", required=True, help="the Pi's address, or 127.0.0.1 for a fake")
     ap.add_argument("--no-reset", action="store_true",
                     help="keep the rover's heading from last time instead of 'facing north now'")
-    ap.add_argument("--check", action="store_true",
-                    help="Level 4: the rover checks every move with its LiDAR")
-    ap.add_argument("--no-correct", action="store_true",
-                    help="with --check: report what the LiDAR measured, but leave the "
-                         "simulation's rover where the plan put it")
     ours, theirs = ap.parse_known_args()
 
     rover = RoverLink(ours.rover, timeout=300)
     try:
         hi = rover.hello()
-        if ours.check and hi.get("can_check") != "yes":
-            sys.exit(f"the rover cannot check with its LiDAR: {hi.get('can_check', 'old server')}")
-        if not ours.no_reset:
-            rover.reset("N")
+        start = hi["pose"] if ours.no_reset else rover.reset("N")["pose"]
     except OSError as e:
         sys.exit(f"cannot reach the rover at {ours.rover}:5005 ({e}). Is server.py running?")
-    correct = ours.check and not ours.no_correct
-    print(f"rover connected ({'fake' if hi['fake'] else 'REAL'} motors"
-          f"{', LiDAR checks on' if ours.check else ''}"
-          f"{', the simulation follows the LiDAR' if correct else ''}).")
+    print(f"rover connected ({'fake' if hi['fake'] else 'REAL'} motors).")
 
     sys.path.insert(0, GAME)
     os.chdir(os.path.dirname(GAME))           # 10d's own working directory
@@ -234,7 +206,7 @@ def main():
     # 10d sets `world.awaiting_rover` to the leg for exactly as long as it holds on it.
     install(nav, rover, press_space,
             still_waiting=lambda world, dirs: getattr(world, "awaiting_rover", None) == dirs,
-            guard=guard, check=ours.check, correct=correct)
+            guard=guard, start=start)
     if "--pause" not in theirs:
         theirs += ["--pause", "key"]
     sys.argv = ["game/main.py"] + theirs

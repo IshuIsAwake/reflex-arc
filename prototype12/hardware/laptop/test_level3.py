@@ -29,7 +29,7 @@ class StandIn:
     def __init__(self):
         self.legs = []
 
-    def drive(self, dirs, on_step=None, check=False):
+    def drive(self, dirs, on_step=None):
         on_disk = open(nav.plan_file(), encoding="utf-8").read().split()
         assert on_disk == dirs, ("rover sent something other than the file", on_disk, dirs)
         self.legs.append(dirs)
@@ -73,7 +73,7 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
     busy, driven, released = threading.Lock(), [], []
 
     class Slow:
-        def drive(self, dirs, on_step=None, check=False):
+        def drive(self, dirs, on_step=None):
             assert busy.acquire(blocking=False), "two legs reached the rover at once"
             try:
                 time.sleep(0.15)
@@ -129,111 +129,48 @@ def test_a_hand_released_pause_still_drives_every_leg_in_order():
     print(f"  {len(handed)} legs, first released by hand, all driven in order")
 
 
-class Measuring:
-    """A stand-in rover that keeps its own cell, like the real one, and whose LiDAR says
-    each leg ended one cell short of where it was sent -- a slip the simulation cannot
-    see. `misreport` replaces the measured cell outright."""
-
-    STEP = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}
-
-    def __init__(self, misreport=None):
-        self.cell, self.told, self.misreport = (0, 0), [], misreport
-
-    def drive(self, dirs, on_step=None, check=False):
-        for d in dirs[:-1]:                          # the last step is lost to slip
-            self.cell = (self.cell[0] + self.STEP[d][0], self.cell[1] + self.STEP[d][1])
-        x, y = self.misreport or self.cell
-        return {"x": x, "y": y, "heading": dirs[-1]}
-
-    def set_pose(self, x, y, h):
-        self.told.append((x, y, h))
-        self.cell = (x, y)
-        return {"ok": True, "pose": {"x": x, "y": y, "heading": h}}
-
-
-def _run_level4(rover, goal_dx):
-    """Drive one goto through level3 with correction on; returns (world, result, events)."""
-    keep = (nav.publish, nav._await_rover, nav.goto, S.PLAN_FILE)
+def test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends():
+    """A stop from the pad ends the leg: nothing is resent and no SPACE is sent. Once a
+    person releases 10d, the rover is told it stands where the leg ends."""
+    import time
+    keep = (nav.publish, nav._await_rover, S.PLAN_FILE)
     S.PLAN_FILE = os.path.join(HERE, "runs", "test_plan.txt")
-    done, events = threading.Event(), []
+    guard, handed, told, released = level3.Guard(), [], [], []
 
-    def wait(world, dirs):
-        world.awaiting_rover = list(dirs)
-        try:
-            assert done.wait(5), "the rover never finished the leg"
-            done.clear()
-        finally:
-            world.awaiting_rover = None
+    class Stopped:
+        def drive(self, dirs, on_step=None):
+            raise level3.RoverStopped({"result": "STOPPED", "pose": {"x": 0, "y": 0,
+                                                                     "heading": "N"}})
+
+        def set_pose(self, x, y, h):
+            told.append((x, y, h))
+            return {"ok": True, "pose": {"x": x, "y": y, "heading": h}}
+
+    def wait(world, dirs):              # the person: waits for the rover, then presses SPACE
+        handed.append(list(dirs))
+        deadline = time.time() + 5
+        while guard.driving and time.time() < deadline:
+            time.sleep(0.01)
+        assert not guard.driving, "the stopped leg was never handed back"
 
     try:
-        C10.use("50")
-        w = World(recorder=lambda kind, **f: events.append((kind, f)))
-        w.awaiting_rover = None
-        level3.install(nav, rover, done.set, check=True, correct=True,
-                       still_waiting=lambda world, dirs: world.awaiting_rover == dirs)
+        level3.install(nav, Stopped(), lambda: released.append(1), guard=guard)
         nav._await_rover = wait
-        start = w.pos
-        r = nav.goto(w, start[0] + goal_dx, start[1])
-        return w, start, r, events
+        C10.use("50")
+        w = World(recorder=lambda *a, **k: None)
+        nav.goto(w, w.pos[0] + 3, w.pos[1])
+        deadline = time.time() + 5
+        while len(told) < len(handed) and time.time() < deadline:
+            time.sleep(0.01)
     finally:
-        nav.publish, nav._await_rover, nav.goto, S.PLAN_FILE = keep
+        nav.publish, nav._await_rover, S.PLAN_FILE = keep
         C10.use(C10.DEFAULT_ARENA)
         p = os.path.join(HERE, "runs", "test_plan.txt")
         os.path.exists(p) and os.remove(p)
-
-
-def test_level4_moves_the_simulation_to_where_the_lidar_says():
-    w, start, r, events = _run_level4(Measuring(), goal_dx=3)
-    # one leg of three cells east; the rover measured itself one short
-    assert w.pos == (start[0] + 2, start[1]), f"simulation's rover at {w.pos}"
-    assert r.at == w.pos, f"the model is told {r.at}, the map says {w.pos}"
-    assert "LiDAR measured it" in r.advice and "plan from there" in r.advice, r.advice
-    fixes = [f for k, f in events if k == "lidar_fix"]
-    assert fixes and tuple(fixes[-1]["measured"]) == w.pos, events[-3:]
-    assert w.pos in w.here.visited, "moved there without arriving: fog and visits skipped"
-
-
-def test_level4_does_not_move_the_simulation_into_nothing():
-    w, start, r, _ = _run_level4(Measuring(misreport=(-200, 0)), goal_dx=3)
-    assert w.pos == (start[0] + 3, start[1]), "moved off the map"
-    assert "LiDAR" not in (r.advice or ""), "told the model about a move that did not happen"
-
-
-def test_after_an_unsure_stop_the_rover_is_told_where_the_person_put_it():
-    import correct
-    told = []
-    fix = correct.Corrector(type("Nav", (), {"goto": lambda *a: None, "Result": object})(),
-                            send_pose=lambda x, y, h: told.append((x, y, h)))
-    world = type("W", (), {"pos": (15, 15)})()
-    fix.leg_handed(world, ["E", "E"])            # sim drove (13,15) -> (15,15)
-    fix.leg_unsure({"x": 1, "y": 0, "heading": "E"})
-    fix.after_pause(world)                        # the person put it on (15,15)'s spot
-    assert told == [(2, 0, "E")], told
-
-
-def test_a_refused_correction_is_not_mistaken_for_a_jump():
-    """23 Oct: a measured cell off the simulation's map was refused, and the next leg
-    took the disagreement for the simulation teleporting -- and told the rover a cell its
-    LiDAR had just measured it was not in."""
-    import correct
-    told = []
-    fix = correct.Corrector(type("Nav", (), {"goto": lambda *a: None, "Result": object})(),
-                            send_pose=lambda x, y, h: told.append((x, y, h)))
-    W = type("W", (), {})
-    world = W()
-    world.pos, world.here = (29, 15), type("A", (), {"w": 30, "h": 30})()
-    fix.leg_handed(world, ["E", "E"])            # (27,15) -> (29,15): offset (27,15)
-    fix.leg_driven({"x": 3, "y": 0, "heading": "E"})   # measured one further: (30,15)
-    fix.after_pause(world)                        # off the map: refused, sim stays (29,15)
-    assert world.pos == (29, 15)
-    world.pos = (29, 17)                          # the simulation drives on from there
-    fix.leg_handed(world, ["S", "S"])
-    assert told == [], f"the rover was told a cell its LiDAR contradicts: {told}"
-    world.pos = (10, 10)                          # a real jump, with no leg
-    fix.after_pause(world)
-    world.pos = (12, 5)
-    fix.leg_handed(world, ["E", "E"])             # starts at (10,5), not where it was left
-    assert told and told[-1][:2] == (10 - 27, 5 - 15), told
+    assert handed and not released, "SPACE was sent for a leg that never finished"
+    assert told[0] == level3.leg_end({"x": 0, "y": 0, "heading": "N"}, handed[0]), told
+    assert len(told) == len(handed), (told, handed)
+    print(f"  {len(handed)} stopped leg(s), the rover told {told[0]}")
 
 
 def test_a_hand_space_is_dropped_while_the_rover_drives():
@@ -252,8 +189,5 @@ if __name__ == "__main__":
     test_a_hand_space_is_dropped_while_the_rover_drives()
     test_every_leg_reaches_the_rover_while_10d_waits()
     test_a_hand_released_pause_still_drives_every_leg_in_order()
-    test_level4_moves_the_simulation_to_where_the_lidar_says()
-    test_level4_does_not_move_the_simulation_into_nothing()
-    test_after_an_unsure_stop_the_rover_is_told_where_the_person_put_it()
-    test_a_refused_correction_is_not_mistaken_for_a_jump()
+    test_a_stopped_leg_is_handed_over_and_the_rover_told_where_it_ends()
     print("all level3 checks passed")

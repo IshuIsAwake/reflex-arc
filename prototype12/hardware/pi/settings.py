@@ -8,8 +8,8 @@ Restart the rover server after a change; it reads them when it starts.
 
 How the simulation and the floor line up:
   * one simulation cell is CELL_M metres of floor;
-  * the simulation's landing cell is the rover's home spot -- where home is recorded and
-    where the rover stands when Level 3 or 4 starts;
+  * the simulation's landing cell is the rover's home spot -- where the rover stands
+    when Level 3 starts;
   * north, up on the simulation's screen, is the way the rover faces on that spot;
   * a cell takes FORWARD_S_PER_CELL seconds to drive and a quarter turn TURN_S_PER_90
     -- measure both with calibrate.py on the floor rather than typing them.
@@ -32,14 +32,6 @@ MEANING = {
     "TURN_POWER": "share of the duty band used turning, 0..1",
     "MIN_DUTY": "PWM duty below which the wheels do not move (measured on PI_5)",
     "MAX_DUTY": "PWM duty ceiling (PI_5's, keeps the taped tyres controllable)",
-    "LIDAR_CLOCKWISE": "LD19 angles run clockwise (lidar_check.py --mount sets it)",
-    "LIDAR_OFFSET_DEG": "where the LD19's 0 deg points on the rover (--mount sets it)",
-    "LIDAR_MIN_INTENSITY": "LiDAR returns weaker than this are dropped",
-    "LIDAR_MOUNT_CHECKED": "--mount has been run; checked drives refuse until it has",
-    "LIDAR_CHECK_EVERY": "a checked forward run is checked at least every this many cells",
-    "HEADING_TOL_DEG": "heading error a checked drive leaves alone",
-    "FIX_MIN_S": "shortest pulse that moves the chassis; smaller fixes are not tried",
-    "POSITION_TOL_M": "a miss this small counts as the right cell, whatever the cell size",
 }
 
 DEFAULTS = C.DEFAULTS

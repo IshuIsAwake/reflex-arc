@@ -75,7 +75,7 @@ def main():
         C.save(TURN_S_PER_90=round(value, 3))
         print(f"TURN_S_PER_90 = {value:.2f} s  (saved)")
     if spread > 15:
-        print("spread over 15 % -- open-loop moves will miss often. That is what Level 4 fixes.")
+        print("spread over 15 % -- open-loop moves will miss often.")
 
 
 if __name__ == "__main__":
