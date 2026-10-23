@@ -29,8 +29,8 @@ driven on real hardware. Designed in [`ROVER.md`](ROVER.md).
 
 ## Current plan
 
-*As of 24 October 2026.* Prototypes 11 and 12 came back to `main` and are merged as 13. 14 tidies
-the code for the team to take over. Each step below gets its own conversation. Prototype
+*As of 24 October 2026.* Prototypes 11 and 12 came back to `main` and are merged as 13. 14 is
+13's code made plain for the team to take over, and Ishan reviews it before they start. Each step below gets its own conversation. Prototype
 numbers carry no plan: a new prototype takes the next free number.
 
 The rover carries a 360° camera, which mimics the simulation's sight, and a LiDAR. The LiDAR
@@ -60,22 +60,25 @@ waits until after prototype 14.
   driving every leg up to Level 3. Under Level 3 it opens on the 30, 3 m of floor, and the
   screen says the rover reports when it has stopped. The rover's driving costs her day, as
   everything else does, so on the rover the clock will end most days before the battery does.
+- [`prototype14/`](prototype14/) is 13 brought to [`repo_rules.md`](repo_rules.md) §7 and
+  behaving exactly as 13 did. It is checked against 13's replays, screens and fake rover.
+  - The tests are in one folder, run by pytest.
+  - Level 3 reaches the game through named hooks.
+  - The link's messages are written down in `hardware/LINK.md`.
+  - The levels are `level1_pad.py`, `level2_words.py` and `level3_game.py`.
+  - Level 1 over SSH, with DONE, OFF and LOST, is cut.
 - The rover's chassis is built and laser-cut.
 
 **Next:**
-1. **Prototype 14: the simplification.** 13's code is brought to
-   [`repo_rules.md`](repo_rules.md) §7, so any teammate can explain it line by line, and it is
-   handed over clean. The rover goes up to Level 3. Names review found unclear change here: the
-   `run_` files, and DONE, OFF and LOST if they survive.
-2. **An ESP32 version of Level 3,** built by Abhishek and the others from 14, and tested on the
+1. **An ESP32 version of Level 3,** built by Abhishek and the others from 14, and tested on the
    hardware straight away.
-3. **Then the team's final hardware:**
+2. **Then the team's final hardware:**
    - Level 4 and the LiDAR, redone by Koushik and Abhishek with Nithin, starting from the
      branch `old_level4`;
    - the bots and their circuits simulated in software, in a simulator such as Wokwi;
    - later, sensors: a thermometer, and temperature and humidity sensors. Their readings could
      become objectives in the simulation.
-4. **Then optimisation:**
+3. **Then optimisation:**
    - her memory and list overflow the context, past 90% of 16k tokens by sol 7 or 8. Try 32k,
      and hard rules in her prompt for when to do what and what goes in her memory and list;
    - what other papers tried, such as fine-tuning a small model on a large model's outputs;

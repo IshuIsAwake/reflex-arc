@@ -32,6 +32,7 @@ prototype10d/                    the sol in four phases; DESIGN.md is its scope
 prototype11/                     10d with Harsh's screen, the newest simulation; DESIGN.md is its scope
 prototype12/                     10d's game driving the real rover, up to Level 3 — Koushik's; DESIGN.md is its scope
 prototype13/                     11 and 12 merged: 11's simulation driving the real rover, up to Level 3; DESIGN.md is its scope
+prototype14/                     13 made plain for the hand-over, behaving as 13; the team builds on this; DESIGN.md is its scope
 archive/                         prototypes 1–9 as a tarball; also the git tag prototypes-1-9
 docs/findings.md                 what prototypes 1–9 settled — the conclusions, without the code
 docs/course.md                   the coursework track — design, experiments, constraints
