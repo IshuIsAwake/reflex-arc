@@ -1,9 +1,5 @@
-"""Quit, come back, and wake on the next sol as though the night had passed.
-
-
-The whole claim is one comparison: a world rebuilt from `carry()` must be the world
-`next_day` would have produced, down to the view the model is sent.
-"""
+"""Quit, come back, and wake on the next sol. A world rebuilt from carry() must be the
+world next_day would have made, down to the view the model is sent."""
 
 import pytest
 import json

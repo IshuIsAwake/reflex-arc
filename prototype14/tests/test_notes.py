@@ -1,15 +1,6 @@
-"""The write path: today's list, and the memory that survives the night.
-
-
-Two claims hold this file up, and they are the two the demo is about. An id means the
-same item all sol, whatever is struck in between -- a list that renumbers underneath her
-retires the wrong decision silently. And `next_day` takes the list and leaves the memory,
-which is the entire difference between the two stores.
-
-The rest is the house rule: rejected loudly, and never at the cost of a step. A write
-that quietly did nothing is the vanishing call, which this project has now paid for
-three times.
-"""
+"""Her list and her memory. An item's number means the same item all sol, whatever is
+struck. The night takes the list and leaves the memory. Bad writes are refused loudly and
+never cost a step."""
 
 
 import settings
@@ -76,8 +67,7 @@ def test_the_same_item_is_never_written_twice():
 
 
 def test_an_entry_replaces_rather_than_appends():
-    """Append-only means she can never correct herself, and correction is the thing
-    most worth watching. Settled in prototype 1, docs/findings.md -- now per entry."""
+    """Replaced, not appended, so she can correct herself, one entry at a time."""
     w = World()
     first = skills.call(w, "remember", {"name": "ridge",
                                         "text": "R4 blocks the whole north-east ridge"})
@@ -144,9 +134,7 @@ def test_the_night_takes_the_list_and_leaves_the_memory():
 
 
 def test_a_list_made_at_night_is_the_next_days():
-    """The list is cleared when dusk ends, not at dawn. In the 14 Oct team run the desk
-    took an order down at night and she planned "explore north, explore east" in
-    answer; by morning her list was empty and she copied the objectives instead."""
+    """The list is cleared when dusk ends, not at dawn, so a plan made at night survives to the morning."""
     w = World()
     skills.call(w, "todo", {"text": "explore south"})
     w.phase = "dusk"
@@ -195,8 +183,7 @@ def test_a_malformed_write_is_loud_and_free():
 
 
 def test_both_blocks_are_in_the_view_from_the_first_request():
-    """Injected, not fetched. A forgotten `read_notes()` costs a whole day and teaches
-    nobody anything -- prototype 1 settled this (docs/findings.md); not re-argued."""
+    """Her notes are in every view: she never has to ask for them."""
     w = World()
     v = sight.view(w)
     assert "YOUR LIST FOR TODAY" in v, "the empty list is shown"

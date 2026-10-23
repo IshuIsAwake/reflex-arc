@@ -1,8 +1,4 @@
-"""Drawing: the window's layout, the map, the dashboard, and the fog leak.
-
-
-No display is opened, so this runs anywhere `render` imports.
-"""
+"""Drawing: the window's layout, the map, the dashboard, and the fog. No display is opened."""
 
 import config
 import pygame
@@ -12,10 +8,8 @@ import settings
 
 
 def test_the_whole_arena_fits_in_any_window():
-    """1536x864 is 1920x1080 at the 125% scaling Windows ships on, and the window opens
-    that size less its border. When it did not fit, the HUD went under the taskbar and a
-    running game looked like one that never started. 960x640 is the smallest a resize
-    allows."""
+    """1536x864 is 1920x1080 at Windows' 125% scaling, the size the window opens at; 960x640
+    is the smallest a resize allows. The whole arena and the strip under it must fit both."""
     tile, chat, size = config.TILE, settings.CHAT_W, render.DISPLAY_SIZE
     config.use("50")
     try:

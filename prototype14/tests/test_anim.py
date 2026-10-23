@@ -1,12 +1,5 @@
-"""Watching the drive, and the one rule that makes it safe.
-
-
-**The playback is a display of something that already happened.** The world jumps the
-moment `goto` is called, `nav` writes down what it did, and `anim.Reel` draws that
-afterwards. So the load-bearing test here is `test_the_reel_never_changes_the_world`:
-if the animation could alter anything, the model would be reasoning about a world that
-depends on how long somebody watched it, which is not a world at all.
-"""
+"""Drawing a drive that has already happened. The world jumps the moment goto is
+called and anim.Reel draws it afterwards, so the reel must never change the world."""
 
 
 import anim
@@ -31,10 +24,7 @@ def kinds(timeline):
 
 
 def test_a_drive_is_recorded_as_it_happens():
-    # Pinned above the shipped 5, so the drive has room to be surprised as often as this
-    # route surprises it. The shipped value is left alone deliberately: this test is
-    # about what the reel records, not about the knob, and pinning it is how the two
-    # stop being one measurement.
+    # More replans than the shipped 5, so the drive can be surprised as often as this route surprises it.
     keep = settings.NAV_REPLANS
     settings.NAV_REPLANS = 10
     try:
@@ -45,11 +35,8 @@ def test_a_drive_is_recorded_as_it_happens():
 
 def _a_drive_is_recorded():
     w = World()
-    # The long run west across the C and out to the far edge, three surprises deep. With
-    # the rover seeing again a short route mostly walks around what it meets, so the
-    # drive worth recording is a long one into ground the landing disc never lit. Open
-    # ground rather than an objective, because an objective is solid without being rock
-    # and the last block would not be an outcrop at all.
+    # The long run west across the C and out to the far edge, into ground the landing
+    # didn't light, so the drive meets rock it couldn't see.
     r = nav.goto(w, 0, 10)
     assert r.code == "DONE", "it gets there"
     assert len(w.reel) == 1, "one reel queued"
@@ -72,9 +59,7 @@ def _a_drive_is_recorded():
     first_plan = next(d for k, d in tl if k == "plan")
     assert any(config.ARENA[y][x] == "#" for x, y in first_plan), "the first plan drove through rock it had not seen"
 
-    # The one case that legitimately has a single plan: the target itself turns out to
-    # be rock, so there is nowhere else to re-route to and nav stops rather than
-    # inventing a destination.
+    # The one case with a single plan: the target itself is rock, so there is nowhere to re-route to.
     w2 = World()
     r2 = nav.goto(w2, 14, 9)  # the south face of the formation due north
     assert r2.code == "BLOCKED" and kinds(w2.reel[0]).count("plan") == 1, "blocked *on* the target lays no second plan"
@@ -99,17 +84,8 @@ def test_pricing_a_trip_is_blue_and_moves_nothing():
 
 
 def test_the_fog_opens_in_time_with_the_drive():
-    """The reel holds revealed ground shut until the step that revealed it is drawn.
-
-    The world jumps and the screen lags it on purpose: `goto` returns with the whole
-    route driven and every disc along it already open in `seen`. If the reel showed that
-    straight away, the map would peel back before the rover had been drawn moving, and
-    the drive would explain nothing. So what the world has seen stays veiled until the
-    step that bought it plays.
-
-    Prototype 7 tested exactly this and prototype 8 could not -- a blind rover has no
-    fog to hold back. It is the drive's assertion again.
-    """
+    """The reel keeps revealed ground fogged until the step that revealed it is drawn, or
+    the map would open before the rover was drawn moving."""
     w = World()
     nav.goto(w, 15, 0)
     far = w.pos
@@ -127,9 +103,8 @@ def test_the_fog_opens_in_time_with_the_drive():
 
 def test_the_plan_is_torn_up_when_it_is_wrong():
     w = World()
-    # West across the C's mouth. The plan is drawn straight through the spine, which is
-    # fog until it is driven at, so the yellow really does cross rock and really is torn
-    # up. A route that merely passes a rectangle walks around it with nothing to see.
+    # West across the C's mouth: the plan is drawn through the spine, which is fog until
+    # driven at, so the yellow route really crosses rock and really is pulled back.
     nav.goto(w, 2, 14)
     reel = anim.Reel(w)
 

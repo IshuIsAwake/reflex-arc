@@ -1,17 +1,11 @@
-"""The arena itself, and the shape of a sol.
-
-
-**Run this after editing the map in config.py.** The flood-fill is the reason it
-exists: a sealed pocket of ground is invisible until somebody has wasted a whole sol
-driving toward it, and prototype 1's version of this test caught two of them.
-"""
+"""The arenas themselves, and the shape of a sol. Run this after editing the maps in
+config.py: a sealed pocket of ground is invisible until a sol is wasted driving at it."""
 
 from collections import Counter, deque
 
 import config
 import settings
 from world import SOLID, World
-
 
 
 def arena_rock():
@@ -55,11 +49,7 @@ def test_the_map_is_the_shape_it_claims():
 
 
 def test_the_whole_arena_is_one_region():
-    """No sealed pockets. Cheap to check, and the failure it prevents costs a sol.
-
-    It also lets the prompt promise that every non-rock cell is reachable, which is
-    otherwise a claim nobody is holding to.
-    """
+    """No sealed pockets, so the prompt can promise every non-rock cell is reachable."""
     rows = config.ARENA
     h, w = len(rows), len(rows[0])
     ground = {(x, y) for y in range(h) for x in range(w) if rows[y][x] in ".@"}
@@ -67,18 +57,12 @@ def test_the_whole_arena_is_one_region():
     stranded = ground - reached
     assert not stranded, f"{len(stranded)} cells sealed off, e.g. {sorted(stranded)[:5]}"
     assert len(ground) > 700, f"only {len(ground)} drivable cells -- the arena got dense"
-    # The other direction, added 2026-08-29 when the map went from 517 rock to 241. A
-    # one-sided bound only ever caught the arena filling up, and the failure available
-    # now is the opposite one: a plain empty enough that no route costs more than its
-    # straight line and `distance` is never wrong about anything.
+    # ...and not so empty that no route ever costs more than its straight line.
     assert len(ground) < 830, f"{len(ground)} drivable cells -- the arena got empty"
 
 
-# The thirteen boulders, as one cell of each and the size the finder must recover. Written
-# down rather than computed, because a test that recomputes the thing it is checking
-# agrees with any map at all.
-# Two medium classes now, not one. The 30 used to be twelve nines and a sixteen; it is
-# sixes and eights under a single twelve, which is the C.
+# The 30's formations, as one cell of each and the size the flood fill must recover.
+# Written down rather than computed: a test that recomputes what it checks agrees with any map.
 MEDIUM, LARGE = (6, 8), 12
 BOULDERS = [(12, (3, 11)),
             (6, (2, 22)), (6, (9, 3)), (6, (13, 7)), (6, (17, 20)), (6, (21, 26)),
@@ -86,23 +70,15 @@ BOULDERS = [(12, (3, 11)),
             (8, (10, 24)), (8, (20, 2)), (8, (25, 17))]
 
 
-# What each arena is made of, written down rather than computed, for the reason above.
-# `(a cell in the largest formation, the whole size histogram)`.
-#
-# **Both arenas are guarded, and that is the point of this table.** Only the default one
-# used to be, so the 50x50 sat at twenty tied sixteens with no largest formation at all
-# and "which is the biggest rock" was put to a model four times before anyone checked.
+# What each arena is made of: (a cell in the largest formation, the size histogram).
+# Both arenas are checked.
 GEOLOGY = {"30": ((3, 11), {6: 6, 8: 3, 12: 1}),
            "50": ((30, 15), {9: 10, 16: 20, 30: 1})}
 
 
 def test_every_arena_has_one_largest_formation():
-    """The question "which is the biggest" must have exactly one answer, on every map.
-
-    A tie is not a harder question, it is an unanswerable one, and a model asked it will
-    invent a ranking rather than say so -- measured 2026-09-04, the 31B produced a tidy
-    descending list of nine sizes where the truth was twenty ties.
-    """
+    """"Which is the biggest formation" must have exactly one answer on every map: a tie is
+    unanswerable, and a model asked one invents a ranking."""
     from world import components
     was = config.ARENA
     try:
@@ -126,24 +102,9 @@ def test_every_arena_has_one_largest_formation():
 
 
 def test_the_geology_is_exactly_what_was_authored():
-    """Nine medium formations, exactly one large, and nothing else at all.
-
-    Formation identity is not written on the map -- there is no tile character for it.
-    It is recovered by flood-filling the rock and reading sizes, so the map has to be
-    authored such that the answer is unambiguous.
-
-    **No size bands.** An older arena mixed boulders with ridges and had to classify by
-    a size *range*, where a ridge segment landing in it became a boulder nobody placed.
-    Every component here is six, eight or twelve, so a merge (14) or a split fails
-    outright rather than being absorbed as a legal size.
-
-    **Exactly one large one** is the other half. Twenty tied sixteens made "the biggest
-    formation" a question with no answer, and it was asked twice before anyone noticed.
-
-    Checked by the size of the component *containing a named cell*, not just the
-    histogram, because two formations merging while a third splits leaves the count
-    right.
-    """
+    """The 30 has nine medium formations, exactly one large, and nothing else. Each is
+    checked by the size of the formation containing a named cell, so a merge plus a split
+    can't leave the count looking right."""
     from world import components
     h, w = len(config.ARENA), len(config.ARENA[0])
     rock = components(w, h, arena_rock())
@@ -164,9 +125,7 @@ def test_the_geology_is_exactly_what_was_authored():
         got = len(by_cell[cell])
         assert got == size, f"the boulder at {cell} is {got} cells, not {size}"
 
-    # **Two clear cells between any two of them**, in Chebyshev. The flood fill separates
-    # them at one, but on screen a run of near-touching lumps reads as a single mass, and
-    # being recognisable as separate boulders is what the arena is for.
+    # Two clear cells between any two formations, so they look separate on screen too.
     for a in rock:
         near = {(x + dx, y + dy) for (x, y) in a
                 for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2)} - a
@@ -215,13 +174,8 @@ def test_a_move_into_rock_costs_nothing():
 
 
 def test_driving_opens_fog_and_still_remembers_where_it_went():
-    """Driving west across the landing plain. The route is not assumed to be clear --
-    it stops where the ground does, and the assertions are about whatever it reached.
-
-    The rover can see again, so this is prototype 8's assertion back the right way up.
-    Seen and stood-on stay two different sets, and it is the *other* direction that
-    matters now: everything driven over has been seen, and a great deal more besides.
-    """
+    """Driving west across the landing plain, as far as the ground goes. Everything driven
+    over has been seen, and a great deal more besides."""
     w = World()
     start = w.pos
     seen_before = set(w.here.seen)
@@ -335,9 +289,7 @@ def test_the_day_runs_on_the_wall_clock():
 
 
 def test_the_recorder_hears_everything_and_is_optional():
-    """`world.py` does no I/O. The log gets written because `logs.Run.record` is
-    handed in, and everything else -- every test above -- runs with no recorder at
-    all."""
+    """world.py does no I/O: the log is written only through a recorder handed in."""
     assert World().recorder is None
 
     seen = []

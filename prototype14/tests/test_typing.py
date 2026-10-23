@@ -1,6 +1,4 @@
-"""Typing a line: the caret moves, and keys act where it is, not only at the end.
-
-"""
+"""Typing a line: the caret moves, and keys act where it is."""
 
 
 import pygame

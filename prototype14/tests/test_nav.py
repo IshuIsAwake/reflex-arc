@@ -1,11 +1,5 @@
-"""Checks the planner plans over what the rover knows and nothing more.
-
-
-The load-bearing ones are `test_the_planner_is_not_omniscient`,
-`test_only_one_door_onto_the_grid` and
-`test_a_known_rock_is_not_somewhere_you_can_arrive`. If any of them goes green for the
-wrong reason the arena stops being a test of anything and nothing looks broken.
-"""
+"""The planner plans over what the rover knows and nothing more. If the planner could
+see through fog, nothing would look broken, so these tests check it can't."""
 
 import os
 import tempfile
@@ -23,29 +17,21 @@ NEIGHBOURS = ((0, -1), (0, 1), (-1, 0), (1, 0))
 
 
 def _roomy():
-    """A world on the 50, with a recorder, for the route-file tests.
-
-    They need a goal far enough off to force replans, and (40,40) does not exist on
-    the 30. `C.use` is put back by the runner at the bottom of the file.
-    """
+    """A world on the 50, with a recorder, for the route-file tests: they need a goal far enough off to force replans."""
     config.use("50")
     return World(recorder=lambda *a, **k: None)
 
 
 def reference_bfs(rows, start, goal):
-    """Plain BFS over the true grid with the planner's own rules about what is
-    drivable. On a fully-surveyed arena A* must agree with this exactly -- if it ever
-    comes out longer the heuristic is overestimating, and if shorter it is cheating.
-    """
+    """Plain BFS over the true grid with the planner's rules. On a fully seen arena A* must
+    agree with it exactly: longer means the heuristic overestimates, shorter means it cheats."""
     def ch(cell):
         x, y = cell
         if not (0 <= x < len(rows[0]) and 0 <= y < len(rows)):
             return "#"
         return "." if rows[y][x] == "@" else rows[y][x]
 
-    # Only a *thing* gets the "stop beside it" rule. Rock does not -- widen this to
-    # SOLID and the reference quietly starts agreeing with the bug nav is written to
-    # avoid, which is the one way a test like this can go green for nothing.
+    # Only a thing (the pad) gets the stop-beside-it rule. Rock doesn't.
     targets = {goal}
     if ch(goal) in THINGS:
         targets = {n for n in _around(goal) if ch(n) not in SOLID}
@@ -68,12 +54,7 @@ def _around(cell):
 
 
 def surveyed():
-    """A world with the whole arena already seen, so there is no fog to reason about.
-
-    There is no map to buy in prototype 2 -- ground is earned by driving over it -- so
-    the tests reach into `Area.seen` directly. That is a test shortcut and the only
-    one; nothing in the game can do this.
-    """
+    """A world with the whole arena already seen. A test shortcut: nothing in the game can do this."""
     w = World()
     w.here.seen = {(x, y) for y in range(w.here.h) for x in range(w.here.w)}
     return w
@@ -105,20 +86,10 @@ def test_a_surveyed_arena_agrees_with_bfs():
 
 
 def test_the_planner_is_not_omniscient():
-    """`Area.at()` returns ground truth whether or not the cell is fogged. A plan made
-    through fog must therefore be a fantasy that drives straight into rock it has never
-    met -- that is what makes a blocked goto informative and exploring worth doing."""
-    # West across the mouth of the C: the fogged plan goes straight through the spine,
-    # which it has never met, so it comes out shorter than the truth. A target where the
-    # two happen to tie would pass this by luck, hence the margin. **The truth is
-    # computed, not written down** -- it was hardcoded as 36 until 2026-08-30, which is a
-    # number about one particular arena and not about the planner.
-    #
-    # The old note here said there was no slack left in the 4, that isolated convex
-    # squares are cheap to walk around, and that if a future arena kept them convex and
-    # separated this is the test that would fail first -- and that the fix would be
-    # concave rock rather than a smaller margin. That is exactly what happened when the
-    # 30 was rebuilt for prototype 10, and the C is the fix it called for.
+    """A plan made through fog must drive straight into rock it has never met: that is what
+    makes a blocked goto informative."""
+    # West across the mouth of the C: the fogged plan goes through the spine it has never
+    # met, so it comes out shorter than the truth. The truth is computed, not written down.
     truth = reference_bfs(config.ARENA, config.SPAWN, (2, 14))
     assert truth is not None, "(2,14) has to be reachable at all"
 
@@ -144,9 +115,8 @@ def test_only_one_door_onto_the_grid():
 
 
 def test_distance_is_optimistic():
-    """West across the C's mouth, which is the one route on this arena where fog hides
-    a detour worth measuring: 14 cells if the spine is assumed drivable, 18 once it is
-    known. Every other crossing is a straight line the fog cannot flatter."""
+    """West across the C's mouth: 14 cells if the spine is assumed drivable, 18 once it is
+    known. Every other crossing is a straight line the fog can't flatter."""
     w = World()
     guess = nav.price(w, 2, 14)
     truth = reference_bfs(config.ARENA, w.pos, (2, 14))
@@ -158,10 +128,8 @@ def test_distance_is_optimistic():
 
 
 def test_the_arena_has_no_rim_wall():
-    """Prototype 1 walled every area and 22% of gemma's calls were wasted on it: the
-    prompt says aim far, the far thing was the border, and a known wall is deliberately
-    UNREACHABLE. Here the outer rows and columns are ordinary ground and the system
-    prompt says so, which only stays true while this passes."""
+    """The arena has no wall round it: the outer rows and columns are ordinary ground, as the
+    prompt says."""
     w = surveyed()
     n = len(config.ARENA)
     edge = ([(x, 0) for x in range(n)] + [(x, n - 1) for x in range(n)] +
@@ -188,11 +156,8 @@ def test_steps_charged_equal_tiles_driven():
 
 
 def test_a_solid_target_lands_you_next_to_it():
-    """And the answer has to say so. `DONE(at=(15,15))` for a `goto(15,16)` reads as
-    not having arrived, and gemma asked for the same cell three times running on
-    2026-08-25. `beside` is only safe because known rock is refused before this can
-    fire -- see test_a_known_rock_is_not_somewhere_you_can_arrive, the other half of
-    the same rule."""
+    """And the answer has to say so: DONE(at=(15,15)) for goto(15,16) reads as not having
+    arrived. `beside` is only safe because known rock is refused first."""
     w = surveyed()
     w.pos = (12, 20)
     r = nav.goto(w, 15, 16)  # the base pad
@@ -211,9 +176,8 @@ def test_a_solid_target_lands_you_next_to_it():
 
 
 def test_a_known_rock_is_not_somewhere_you_can_arrive():
-    """"Get next to it" is for things you interact with. Rock already on the map is a
-    mistake, and answering DONE says you arrived somewhere you never went -- which
-    leaves the caller nothing to correct. It cost four days on 2026-08-26."""
+    """"Get next to it" is for things you work on. Driving at rock already on the map is a
+    mistake, and DONE would say she arrived somewhere she never went."""
     w = surveyed()
     w.pos = (16, 20)
     assert config.ARENA[20][17] == "#", "this test is about rock"
@@ -222,9 +186,8 @@ def test_a_known_rock_is_not_somewhere_you_can_arrive():
     assert r.code == "UNREACHABLE", str(r)
     assert w.steps == 0, "and it does not pretend to drive"
 
-    # ...but rock it has *not* seen stays a hypothesis worth driving into, which is the
-    # whole design. Only known rock is refused. A far boulder, because BASE_REVEAL lights
-    # up six cells and the one above is inside that.
+    # ...but rock she has not seen is still worth driving at; only known rock is refused. A
+    # far boulder, since the landing site's reveal lights the near one.
     fresh = World()
     assert config.ARENA[2][20] == "#"
     assert not fresh.here.visible(20, 2), "needs to still be fogged"
@@ -234,10 +197,8 @@ def test_a_known_rock_is_not_somewhere_you_can_arrive():
 
 def test_rock_it_could_not_have_known_about_stops_the_drive():
     w = World()  # everything past the landing site is fog
-    # Driven *at* a formation it cannot see. On a sparse arena of rectangles that is the
-    # way to earn a BLOCKED: with NAV_REPLANS at 5, a drive merely *passing* one walks
-    # around it and still reports DONE, listing the rock it met in `walls`. The C is the
-    # other way, and `test_distance_is_optimistic` drives across its mouth.
+    # Driven at a formation it can't see. A drive merely passing one walks around it and
+    # reports DONE, listing the rock it met.
     r = nav.goto(w, 14, 9)
     assert r.code == "BLOCKED", str(r)
     assert r.walls, "every outcrop found on the way is reported"
@@ -248,10 +209,8 @@ def test_rock_it_could_not_have_known_about_stops_the_drive():
 
 
 def test_the_map_keeps_the_drive_as_well_as_the_plan():
-    """The plan is thrown away on every replan, so after a blocked goto the drawing
-    explains neither the rock reported nor where the rover ended up standing. The drive
-    is the record that survives, and unlike the plan it can never cross rock -- which
-    is what makes the two worth drawing together."""
+    """The plan is replaced on every replan, so the drive is the record that survives, and
+    unlike the plan it can never cross rock."""
     w = World()
     r = nav.goto(w, 10, 0)  # 20 through fog, 26 in fact: it must be surprised
     assert r.code in ("BLOCKED", "DONE"), str(r)
@@ -264,11 +223,8 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
     for x, y in walk:
         assert config.ARENA[y][x] not in SOLID, ("the drive never crosses rock", x, y)
 
-    # ...while a plan, made through fog, is still allowed to be wrong.
-    #
-    # Ask the reel, not `last_path`: that field holds only the newest hypothesis, so a
-    # drive that replans through to DONE leaves behind the one plan that turned out
-    # right. Every plan the drive actually laid is in the reel.
+    # ...while a plan, made through fog, may still be wrong. Every plan the drive laid is
+    # in the reel; last_path only holds the newest.
     plans = [cells for kind, cells in w.reel[-1] if kind == "plan"]
     assert plans, "a drive lays at least one plan"
     assert any(config.ARENA[y][x] == "#" for cells in plans for x, y in cells), \
@@ -279,16 +235,8 @@ def test_the_map_keeps_the_drive_as_well_as_the_plan():
 
 
 def test_a_drive_buys_the_map_it_drove_past():
-    """`steps` says what a drive cost; `new` is the map it bought.
-
-    With the rover seeing again, driving into fog is how the map grows, and `new` is
-    what makes that legible to the caller -- a drive worth its steps opened ground, and
-    one that opened none went somewhere already known. Prototype 8 pinned this at zero
-    by construction and the field said nothing; this is it earning its place back.
-
-    Ground already seen still buys nothing, which is the half that keeps the number
-    honest. `_stuck` reads exactly this to notice a run of calls going nowhere.
-    """
+    """`steps` is what a drive cost; `new` is the map it bought. Ground already seen buys
+    nothing, and _stuck reads `new` to notice calls going nowhere."""
     w = World()
     first = nav.goto(w, 15, 10)
     assert first.code == "DONE" and first.new > 0, ("driving into fog buys map",
@@ -323,19 +271,9 @@ def test_a_drive_buys_the_map_it_drove_past():
 
 
 def test_running_into_rock_reveals_the_cell_that_stopped_the_drive():
-    """Contact reveals the cell hit. That is what stops the replan loop deadlocking, and
-    it is a separate thing from the disc driving opens.
-
-    `_passable` treats fog as clear, so a rock the rover cannot see is a rock the planner
-    routes straight back into. Without the reveal on contact the replan returns the
-    identical path, the rover bumps the same cell until NAV_REPLANS runs out, and every
-    drive into unmapped ground dies at the first obstacle. The proof that it does not is
-    a drive that hits *several distinct* walls and still arrives.
-
-    Vision alone does not cover this. A wall met head-on is by definition a cell the
-    rover was driven at rather than one it stood next to and looked at, and at
-    VISION_RADIUS 2 the disc trails the drive rather than leading it.
-    """
+    """Hitting rock reveals the cell hit, or the replan would return the same path and the
+    rover would bump the same cell until NAV_REPLANS ran out. A drive that hits several
+    distinct walls and still arrives proves it."""
     config.use("50")
     try:
         w = World()
@@ -359,10 +297,7 @@ def test_running_into_rock_reveals_the_cell_that_stopped_the_drive():
 
 
 def test_pricing_a_trip_says_what_it_costs_and_nothing_else():
-    """Prototype 7 returned `(steps, reveals)`. Driving reveals nothing here, so the
-    second number was always zero and is gone rather than shipped as a constant --
-    a field that can only ever hold one value teaches the caller a false rule.
-    """
+    """distance returns one number: the steps."""
     w = World()
     steps = nav.price(w, 15, 27)
     assert isinstance(steps, int) and steps > 0, steps
@@ -424,9 +359,7 @@ def test_the_console_parses_what_a_human_would_type():
 
     w = surveyed()
     w.pos = (12, 20)
-    # Two lines: the code form, then the clause that says landing beside a solid target
-    # is arriving. The human is shown the same words gemma is, laid out for a console
-    # that truncates -- so check both, not just the last.
+    # Two lines: the result, then the clause that says landing beside a solid target is arriving.
     pad = console.run(w, "goto 15 16")
     assert "DONE" in pad[1][0], pad
     assert "IS arriving" in pad[-1][0], pad
@@ -439,9 +372,8 @@ def test_the_console_parses_what_a_human_would_type():
 
 
 def test_the_log_records_what_the_plan_promised():
-    """Northwest, past the formation at (9,3), so the drive costs more than the plan
-    promised and both numbers are on the line. Due north is a clean 15 either way, and
-    a log that only ever agreed with itself would not be recording anything."""
+    """Northwest, past the formation at (9,3), so the drive costs more than the plan promised
+    and both numbers are on the line."""
     w = World()
     nav.goto(w, 10, 0)
     last = w.nav_log[-1]
@@ -450,10 +382,8 @@ def test_the_log_records_what_the_plan_promised():
 
 
 def test_the_directions_replay_to_the_planned_path():
-    """The one that matters. `route_actions` turns cells into the directions the file
-    speaks, and getting the DIRS order wrong lands the rover somewhere else while the
-    file still looks perfectly reasonable. So drive it back and compare.
-    """
+    """route_actions turns cells into the file's directions. A wrong DIRS order would send
+    the rover somewhere else while the file looked fine, so drive it back and compare."""
     w = World()
     path = nav.plan(w.here, w.pos, (25, 5))
     assert path and len(path) > 3, path
@@ -471,10 +401,7 @@ def test_the_directions_replay_to_the_planned_path():
 
 
 def test_a_direction_is_the_step_and_nothing_else():
-    """Absolute, so each of the four steps is one letter regardless of what the rover
-    was doing before. The old encoding spent a turn plus a FORWARD on three of these
-    and had a BACKWARD for the fourth; all of it was arithmetic against a heading
-    nobody measured."""
+    """Absolute directions: each of the four steps is one letter, whatever the rover's heading."""
     assert nav.route_actions([(5, 5), (5, 4)]) == ["N"]
     assert nav.route_actions([(5, 5), (6, 5)]) == ["E"]
     assert nav.route_actions([(5, 5), (5, 6)]) == ["S"]
@@ -486,14 +413,8 @@ def test_a_direction_is_the_step_and_nothing_else():
 
 
 def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
-    """Two halves, both of which fail silently if they break.
-
-    A test world has no recorder, so it must leave nothing on disk -- otherwise every
-    suite drops a route where the next reader will find it and believe it.
-
-    A real run rewrites the one file instead of adding another, so what is on disk is
-    the current plan and never a backlog somebody has to work out the order of.
-    """
+    """A test world has no recorder, so it leaves nothing on disk. A real run rewrites the
+    one file, so it always holds the current leg."""
     out = os.path.join(tempfile.gettempdir(), "reflex_live_plan.txt")
     keep = settings.PLAN_FILE
     settings.PLAN_FILE = out
@@ -522,19 +443,13 @@ def test_the_live_file_is_rewritten_in_place_and_only_for_a_real_run():
 
 
 def _legs_handed_over(w, *goto_args, **kw):
-    """Every leg the robot was actually given, in order.
-
-    `wait_for_rover` runs between the write and the wipe, which is the only moment the
-    file holds anything -- so standing in for the robot there reads exactly what the
-    robot would have read, and proves the pause sits between the two.
-    """
+    """Every leg the robot was given, in order. `wait_for_rover` runs between the write and
+    the wipe, the only moment the file holds anything, so this reads what the robot would."""
     seen = []
 
     def spy(world, dirs):
         on_disk = open(nav.plan_file(), encoding="utf-8").read().split()
-        # What the pause is handed and what is actually on the file are two ways of
-        # saying the same thing, and a demo that showed one while the robot drove the
-        # other would be lying on screen.
+        # What the pause is handed and what is on the file must be the same.
         assert on_disk == list(dirs), (on_disk, dirs)
         seen.append(on_disk)
 
@@ -547,14 +462,8 @@ def _legs_handed_over(w, *goto_args, **kw):
 
 
 def test_the_robot_is_only_ever_handed_ground_the_simulation_drove():
-    """The safety property the whole seam exists for.
-
-    `goto` plans over fog it assumes is drivable, so a plan routinely runs into rock
-    nobody knew about. The old file held that plan. This one holds the prefix that
-    worked, written *after* the drive -- so a hypothesis that turns out wrong costs a
-    replan instead of a collision, and there is no arrangement of the file in which
-    the robot is pointed at an outcrop.
-    """
+    """The safety property the route file exists for: it holds only the cells the
+    simulation actually drove, so the robot can never be pointed at rock."""
     out = os.path.join(tempfile.gettempdir(), "reflex_driven_only.txt")
     keep = settings.PLAN_FILE
     settings.PLAN_FILE = out
@@ -583,10 +492,8 @@ def test_the_robot_is_only_ever_handed_ground_the_simulation_drove():
 
 
 def test_a_replan_hands_over_the_leg_before_planning_the_next_one():
-    """The pause, and the reason it is the demo. The robot is behind the simulation
-    from the moment a leg is planned, and a route computed from a cell it has not
-    reached yet belongs to somebody else. So each leg goes over and is driven before
-    the next is worked out -- several handovers for one `goto`, not one at the end."""
+    """Each leg is handed to the robot and driven before the next is planned: several
+    handovers for one goto, not one at the end."""
     out = os.path.join(tempfile.gettempdir(), "reflex_pause.txt")
     keep = settings.PLAN_FILE
     settings.PLAN_FILE = out
@@ -609,14 +516,8 @@ def test_a_replan_hands_over_the_leg_before_planning_the_next_one():
 
 
 def test_a_call_that_did_not_arrive_leaves_nothing_for_the_next_one():
-    """Gemma calls `goto` again from wherever a BLOCKED one stopped, and prototype 9
-    kept those calls in the file as one accumulating journey.
-
-    The seam ends that. The file is the leg being driven right now, and the journey --
-    every wall, every detour -- lives in the tape instead. So what a call leaves behind
-    is nothing at all, however many times it took, and the file is never a backlog the
-    robot has to work out the order of.
-    """
+    """The file is the leg being driven right now. The whole journey lives in the tape, so
+    a finished goto leaves the file empty, however many tries it took."""
     out = os.path.join(tempfile.gettempdir(), "reflex_journey.txt")
     keep_file, keep_replans = settings.PLAN_FILE, settings.NAV_REPLANS
     settings.PLAN_FILE, settings.NAV_REPLANS = out, 0  # stop at the first wall, so it takes several

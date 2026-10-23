@@ -1,18 +1,5 @@
-"""The weather: where it lands, what it blocks, and that two runs get the same one.
-
-
-This is the one suite that runs with the sky switched on. Every other file pins
-`S.STORM_ON = False`, because a storm drifting across an arena would make their route
-assertions depend on STORM_RADIUS rather than on the thing they are about.
-
-The load-bearing one is `test_the_same_sol_gets_the_same_storm`. An unseeded storm makes
-every tape a different world, two runs of one prompt stop being comparable, and nothing
-about that is visible from a transcript -- the run just reads as the model behaving
-differently for no reason.
-
-`test_a_storm_never_walls_the_rover_in` is the other. A sol nobody can drive out of
-looks exactly like a sol the model failed.
-"""
+"""The weather: where the storm lands, what it blocks, and that two runs of a sol get
+the same storm. The one suite with the storm on; conftest.py turns it off for the rest."""
 
 import pytest
 
@@ -65,14 +52,8 @@ def test_the_same_sol_gets_the_same_storm():
 
 
 def test_a_storm_never_walls_the_rover_in():
-    """A hard sol and a broken one read identically in a transcript -- the model reports
-    STORM_BLOCKED either way and nothing says which it was. These are the two properties
-    that keep the difference real.
-
-    The second one is the one that actually bit. On the rebuilt 30, sol 1 put the storm
-    squarely on objective 2 and it was unreachable all day, while the share-of-the-arena
-    check sailed through at 97%. The objectives were not in `keep_clear` at all.
-    """
+    """A sol whose work can't be reached is broken, not hard, and the transcript can't tell
+    them apart. The storm must leave the rover and every piece of work reachable."""
     for name in ("30", "50"):
         config.use(name)
         w = World()
@@ -83,9 +64,6 @@ def test_a_storm_never_walls_the_rover_in():
                 open_now = hazards._reach(w.here, config.SPAWN, s.cells)
                 open_clear = hazards._reach(w.here, config.SPAWN, frozenset())
                 share = len(open_now) / len(open_clear)
-                # Written here rather than read from settings: the knob this compared
-                # against went with the rejection loop in `hazards.py`, once a radius of
-                # 2 made it reject nothing. The property was worth keeping even so.
                 assert share >= 0.75, f"{name} sol {w.day}: most of the arena is still reachable"
                 # ...and the part a share of the arena can never see. An interest is
                 # solid, so what it needs is one open neighbour still reachable.

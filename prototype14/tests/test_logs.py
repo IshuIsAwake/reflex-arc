@@ -1,11 +1,5 @@
-"""The run directory, and the promise that a crash never costs a run.
-
-
-The feature is "ask at quit whether to keep the logs". The way *not* to build it is to
-buffer everything in memory until the answer arrives, because then a crash loses the
-run and says nothing. So the whole file is really one assertion:
-`test_a_run_is_on_disk_before_anyone_is_asked`.
-"""
+"""The run directory. Everything is on disk as it happens, so a crash never costs a run;
+quitting only decides whether the logs are kept."""
 
 import json
 import tempfile
@@ -103,14 +97,8 @@ def test_a_settled_run_stops_recording():
 
 
 def test_every_record_survives_a_real_recorder():
-    """`World.record` stamps `day` itself, so a caller passing `day=` again raises --
-    and only on a live run, because every test world has `recorder=None` and `record`
-    is a no-op in all of them.
-
-    That is exactly how `execute` shipped broken: eleven green suites, and the first
-    console call after them was a TypeError. So this drives one world with a real
-    recorder through every path that writes a line.
-    """
+    """A real recorder through every path that writes a line. World.record adds `day` itself,
+    so a caller passing it again would fail only on a live run."""
     import config
     import skills
     settings.STORM_ON = True  # the storm records on spawn; that counts too

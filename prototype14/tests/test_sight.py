@@ -1,13 +1,5 @@
-"""What gemma is told, and what it must not be told.
-
-
-Two of these are load-bearing. `test_the_grid_has_one_door_onto_the_world` reads the
-source, because `Area.at` returns ground truth at every fog setting and one missing
-`visible()` check hands over the whole arena with nothing ever looking wrong.
-`test_decoration_never_reaches_the_view` is its twin for the other direction: the
-pebbles `render.py` scatters are texture, and they stop being harmless the instant
-anything reads them.
-"""
+"""What the model is shown, and what it must not be. Two tests read sight.py's source:
+every grid read goes through nav.known, and nothing reads the screen's pebbles."""
 
 import pathlib
 import re
@@ -169,8 +161,6 @@ def test_the_view_stays_affordable():
     # growing one.
     assert worst < 7000, "a fully surveyed arena fits a sane budget"
 
-    # The intuition is wrong: a sol-one view is not smaller than a surveyed one, since
-    # the grid is one character per cell whatever it holds. In *characters* the view is
-    # flat from the first request. Tokens are another story this test cannot see -- a run
-    # of fifty '?' merges into far fewer tokens than a mixed row.
+    # A first-sol view is no smaller than a surveyed one in characters: the grid is one
+    # character a cell whatever it holds.
     assert abs(worst - day_one) < worst * 0.05, "the character cost is flat, not growing"

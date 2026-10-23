@@ -1,9 +1,5 @@
-"""Settings changed inside the app, and when each change lands.
-
-
-Every test writes to a temporary file and puts the modules back, because a registry
-change is a global one and would otherwise resize or retime the next suite.
-"""
+"""Settings changed inside the app, and when each change lands. Every test writes to a
+temporary file."""
 
 import json
 import tempfile

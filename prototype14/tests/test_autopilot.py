@@ -1,12 +1,6 @@
-"""The sol's four phases and the desk's place in each: dawn, a day on the wall clock,
-dusk, night -- with the one urgent message, the radio line, and replay.
-
-
-The model is a script and threads run inline, as in `test_chat.py`. `fly` stands in for
-`main.py`'s loop -- pump, tick the clock, roll the night over when it says so -- with
-one frame a second of pretend time, so the day's clock and the desk's waits are counted
-rather than slept through. Nobody is at the desk unless a test says so.
-"""
+"""The sol's four phases and the desk's place in each, with the urgent message, the
+radio line, and replay. The model is a script and threads run inline. `fly` stands in for
+main.py's loop, one frame a second of pretend time."""
 
 import pytest
 import json
@@ -42,10 +36,8 @@ REPORT = ("Today I drove north. Nothing found yet; the east is still unseen.", [
 
 
 class Model:
-    """Replies in order, shared across every sol's conversation. Past the end it ends.
-
-    A reply that is the string "down" is a request that never reached the model.
-    """
+    """Replies in order, shared across every sol's conversation. Past the end it ends. The
+    string "down" is a request that never reached the model."""
 
     def __init__(self, replies):
         self.replies = list(replies)
@@ -108,9 +100,8 @@ class Desk:
 
 
 def sol(w, model, rover=None, attended=True):
-    """One sol's conversation and clock, as `main.py` holds them with a window open.
-    `rover`, a one-item list, says whether the rover has finished its leg -- False holds
-    the next request."""
+    """One sol's conversation and clock, as main.py holds them with a window open. `rover`, a
+    one-item list, says whether the rover has finished its leg; False holds the next request."""
     rows = []
     w.recorder = lambda kind, **f: rows.append({"kind": kind, **f})
     c = model.talk(chat.Conversation(w))
@@ -160,8 +151,7 @@ def test_a_sol_runs_its_four_phases_by_itself():
 
 
 def test_the_mission_stands_whatever_the_board_says():
-    """14 Oct: once any order was posted the day's opening said only "carry out your
-    orders", the orders were conditions, and she went home with half her battery."""
+    """The mission stands whatever the orders say, so she uses the whole day."""
     w = World()
     assert "explore" in autopilot.begin(w), "with no orders, the day says to explore"
     w.notes.order("return at about 100 battery")
@@ -610,9 +600,8 @@ def test_a_two_sol_run_replays_exactly():
 
 
 def test_a_list_made_at_night_wakes_with_her_and_replays():
-    """Dusk's end clears the day's list, and what she writes at night is the next
-    day's. A replay re-issues the whole sol before it walks the phases, so it clears
-    the list from the tape's row for the night beginning instead."""
+    """Dusk's end clears the list, and what she writes at night is the next day's. A replay
+    clears it from the tape's own row for the night beginning."""
     model = Model([READY, ("", [call("todo", text="explore south")]), END,
                    ("", [call("remember", name="n", text="south done")]), REPORT,
                    ("North first, then.", [call("todo", text="explore north")]),

@@ -1,10 +1,4 @@
-"""Checks the grid model and the Manhattan/Chebyshev check. No hardware.
-
-
-The load-bearing one is `test_the_two_distances_disagree_usefully`: if Manhattan and
-Chebyshev ever agree on a both-axes miss, the check loses the one thing it says about
-*why* the rover missed.
-"""
+"""The rover's grid: commands, poses and the moves a command expands into. No hardware."""
 
 import grid
 from grid import Pose

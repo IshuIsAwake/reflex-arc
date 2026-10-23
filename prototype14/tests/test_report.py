@@ -1,6 +1,4 @@
-"""The mission report: the world's record first, her note after it as hers.
-
-"""
+"""The mission report: the world's record first, her own words after it."""
 
 
 import report

@@ -1,15 +1,6 @@
-"""The work, both kinds: interests she has to find, objectives the desk gives her.
-
-
-The load-bearing ones are the two about what she is told. `test_an_interest_is_hidden_until_seen`
-and `test_what_an_interest_is_lives_only_in_the_result`: 10c's `execute` named every
-objective on the arena, fog or not, and the 31B drove straight to both high-priority ones
-on that list. Anything that says where unfound work is, or what an interest was after the
-fact, breaks the thing being measured.
-
-`test_work_is_not_done_by_driving_over_it` is the other: make work drivable and every
-piece gets done for free on the way past, and nothing looks broken.
-"""
+"""The work: interests she has to find, and objectives the desk gives her. Nothing may
+say where unfound work is, or what an interest was, except examining it. Work is solid, so
+driving over it does nothing."""
 
 
 import config
@@ -204,9 +195,7 @@ def test_interests_cannot_be_placed_where_work_cannot_happen():
 
 
 def test_done_is_not_the_end_of_the_day():
-    """All five sols of the two 14 Oct runs ended on "Nothing else you know of is left
-    to do" or "Nothing is left open on your list", then the drive home, with 271 to 333
-    of 500 steps unspent. By day those results now say what the day still holds."""
+    """By day, "nothing left to do" goes on to say what the day still holds."""
     w = World()
     w.phase = "day"
     a = w.here

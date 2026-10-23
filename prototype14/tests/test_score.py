@@ -1,6 +1,4 @@
-"""The scorecard, against a run written by hand, so every number is known in advance.
-
-"""
+"""The scorecard, against a run written by hand, so every number is known in advance."""
 
 import json
 import tempfile

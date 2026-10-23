@@ -1,14 +1,6 @@
-"""The skill interface: tolerant in, loud out.
-
-
-The whole file is about one failure. An `avoid` list that quietly parses to "avoid
-nothing" drives gemma through the exact cell it asked to dodge, says nothing, and the
-notes file takes the blame for a parser bug. Every rejection here has to be audible,
-and none of them may cost a step -- a malformed call is a mistake, not an action.
-
-Gemma emits the literal string '<nil>' for an argument it means to omit. That is not
-hypothetical; it was watched on 2026-08-26.
-"""
+"""The skills: tolerant of how arguments are written, loud when they can't be used, and
+a malformed call never costs a step. The model writes '<nil>' for an argument it means to
+leave out, so that must mean "left out", never "avoid nothing"."""
 
 import re
 
@@ -30,9 +22,7 @@ def test_a_plain_goto_drives():
     # The pad is solid, so this lands beside it. Without `beside=` in the answer,
     # DONE(at=(15,15)) for a goto(15,16) reads as failure and gets reissued.
     assert "beside=" in c.result, "and says it stopped beside a solid target"
-    # ...and the field alone was not enough. Watched 2026-08-26: gemma read the beside=
-    # form as failure and spent the rest of the run trying to drive into a counter.
-    # Arrival has to be stated, not encoded.
+    # The field alone isn't enough: arriving beside the target has to be said in words.
     assert "IS arriving" in c.result, "in words as well as a field"
 
     already = skills.call(w, "goto", {"x": w.pos[0], "y": w.pos[1], "why": "again"})
@@ -55,16 +45,13 @@ def test_going_nowhere_twice_is_said_out_loud():
     args = {**PAD, "why": "the pad"}
     skills.call(w, "goto", args)  # already beside it
     history = _repeat(w, args)
-    # Watched 2026-08-26: seven identical calls, seven DONE(steps=0), and gemma kept
-    # asking because a costless success gave it nothing to correct.
+    # A costless success gives the model nothing to correct, so a repeat is said out loud.
     assert "asked for this" not in history[0].result, "the first repeat is answered plainly"
     assert "nothing has changed" in history[-1].result, "the third says it is going nowhere"
     assert history[-1].result.startswith("DONE"), "still honest about arriving"
     assert all(h.steps == 0 for h in history), "and still free"
 
-    # The hole this had until 2026-08-26: the check read the code instead of the fact,
-    # so a live run looped five times on UNREACHABLE and was never told. The rule is now
-    # the invariant -- no steps spent means nothing changed means same answer.
+    # No steps spent means nothing changed, so the same answer, whatever the code.
     w2 = World()
     w2.here.seen = {(x, y) for y in range(w2.here.h) for x in range(w2.here.w)}
     w2.pos = (16, 20)
@@ -91,21 +78,8 @@ def test_going_nowhere_twice_is_said_out_loud():
 
 
 def test_drives_that_buy_no_map_are_said_out_loud_even_when_they_differ():
-    """The loop of 2026-08-29, and prototype 7's test for it, back again.
-
-    Gemma drove (0,49) to (0,10) and back, six times, then (0,49) to (45,49) three
-    times: 439 steps, 358 of them revealing nothing. Every call spent steps, so "spent
-    nothing" never fired -- and every call had a *different* target from the one before,
-    so no test of repetition would have fired either. What the two have in common is the
-    only thing worth saying: none of it bought any map.
-
-    Prototype 9 moved the accusation to the flyer, because a drive there could not buy
-    map however well aimed. Driving buys map again, so the accusation comes back to it.
-    Two separate things are said and this test keeps them apart:
-
-      "revealed nothing new"        -- `Result.advice`, on every gainless drive, at once
-      "bought no new map at all"    -- `_stuck`, only once there is a pattern
-    """
+    """Drives that buy no map are said out loud even when every target differs: once on each
+    gainless drive (Result.advice), and once there is a pattern (_stuck)."""
     w = World()
     w.here.seen = {(x, y) for y in range(w.here.h) for x in range(w.here.w)}  # nothing left
 
@@ -146,12 +120,7 @@ def test_distance_spends_nothing():
 
 
 def test_a_missing_why_never_stops_the_call():
-    """Inverted on 2026-09-01. It used to assert the opposite, and that was the bug.
-
-    Requiring the field cost 16 of 21 calls in `runs/20260901-000753/` once A5 had
-    removed every example of one from history -- see `skills._why`. The field survives
-    because the tape wants it; the refusal does not.
-    """
+    """`why` is optional: a call without one still runs."""
     # Not PAD: the rover lands next to the pad, so arriving there costs nothing and
     # would not show that the drive ran. This is a destination it has to travel to.
     away = {"x": 25, "y": 20}
@@ -184,9 +153,7 @@ def test_a_bad_avoid_never_becomes_an_empty_one():
     for bad in ("north", "the ridge", "(3,4),(5", "auto", "AUTO", 7, {"x": 1}):
         c = skills.call(w, "goto", {**PAD, "why": "w", "avoid": bad})
         assert c.result.startswith("BAD_ARGS"), f"avoid={bad!r} is refused"
-    # `avoid="auto"` is refused by name rather than by falling through, because the
-    # probe on 2026-08-26 showed gemma volunteering it unasked. It comes back when
-    # mark() does -- which is still not built.
+    # avoid=auto is refused by name: she has no way to mark cells.
     c = skills.call(w, "goto", {**PAD, "why": "w", "avoid": "auto"})
     assert "mark" in c.result, "...and auto says why, not just no"
 
@@ -202,13 +169,7 @@ def test_avoid_is_read_however_it_is_punctuated():
 
 
 def _steps_in(result):
-    """The step count out of a DISTANCE line, whatever the comparator in front of it.
-
-    It read `steps=` literally until 2026-08-30, when the field became `steps>=` -- the
-    number is a floor and now says so. That turned a wrong answer here into an
-    IndexError, which is the good version of this failure, but the test was pinning the
-    punctuation when what it cares about is the number moving when `avoid` is obeyed.
-    """
+    """The step count out of a DISTANCE line, whatever the comparator in front of it."""
     return int(re.search(r"steps\D*?(\d+)", result).group(1))
 
 
@@ -243,9 +204,7 @@ def test_coordinates_are_taken_generously():
 
 def test_an_unknown_skill_says_what_there_is():
     w = World()
-    # Gemma will reach for skills that do not exist yet -- and in this prototype most
-    # of the ones it will imagine (interact, fly, sample) genuinely do not. The answer
-    # has to name the ones that do, or it keeps guessing at the same absent verb.
+    # An unknown skill's answer names the ones that exist, or she keeps guessing at the same absent verb.
     for absent in ("look", "interact", "fly"):
         c = skills.call(w, absent, {"why": "trying it on"})
         assert c.result.startswith("NO_SUCH_SKILL"), f"{absent} refused"
@@ -261,9 +220,7 @@ def _surveyed():
 
 
 def test_counting_is_exact_where_reading_the_map_is_not():
-    # The failure this exists for, measured 2026-09-04 on the 50x50: nine bounding boxes
-    # named, nine of them real formations, one of nine sizes correct. It knows where the
-    # rocks are and cannot say how many cells they have. So the sizes must be exact.
+    # She can see where the rocks are but can't count their cells, so the sizes must be exact.
     import config
     was = config.ARENA
     try:
@@ -332,17 +289,8 @@ def test_a_formation_keeps_its_name_as_it_comes_out_of_the_fog():
 
 
 def test_every_dialect_of_a_written_call_is_recovered():
-    """The backstop has to speak whatever the model happens to serialise into.
-
-    On 2026-09-04 `gemma4:31b-cloud` stopped populating `tool_calls` and began writing
-    every call into the content as `call:goto{x:49,y:0,why:...}`. Three runs died on
-    turn one, 0 steps in 108 seconds, because the recovery only knew `name(a, b)`.
-    Verified against a one-line prompt with the stock schema: `gemma4:e4b` answers with
-    a real tool call, so this is the model, not the request.
-
-    `count` and `end` matter as much as `goto` here. Recovery used to demand x and y,
-    so with every call narrated she could not have counted or handed a turn back.
-    """
+    """Typed calls are read in every dialect the model writes: `goto(35, 25)`, keywords, and
+    `call:goto{x:49,y:0}`. `count` and `end` need no arguments, so they must be read too."""
     for text, want in [
         # The brace dialect, both argument orders it has been seen in.
         ("call:goto{why:Mapping the north-east quadrant.,x:49,y:0}",
@@ -378,10 +326,8 @@ def test_every_dialect_of_a_written_call_is_recovered():
 
 
 def test_a_typed_write_is_read_in_its_own_argument_order():
-    """14 Oct team run: three replies typed their list writes as `todo("...", "why")`.
-    Recovery read every unnamed argument as goto's x, y and why, and detection wanted a
-    digit in the brackets, so seven writes -- her plan made at night among them -- were
-    dropped without a word."""
+    """Typed list writes (`todo("...", "why")`) are read with the skill's own argument order,
+    and need no digit in the brackets."""
     for text, want in [
         ('todo("Explore north of the pad", "Initial mapping")',
          [("todo", {"text": "Explore north of the pad", "why": "Initial mapping"})]),
@@ -427,29 +373,21 @@ def test_the_schema_matches_what_is_wired_up():
     assert (names == {"goto", "distance", "execute", "count", "count_cells",
                          "todo", "strike", "remember", "forget", "radio", "end"}), "exactly eleven skills"
     blob = str(skills.TOOLS)
-    # Optional since 2026-09-01, and the schema has to say so or the model infers the
-    # requirement from the shape and goes back to failing calls it never had to fail.
+    # Optional, and the schema has to say so.
     assert (all("why" in t["function"]["parameters"]["properties"]
                     for t in skills.TOOLS)), "why is offered on all of them"
     assert (not any("why" in t["function"]["parameters"]["required"]
                         for t in skills.TOOLS)), "...and required on none"
-    # Only where a cell is what the call is *about*. `count` takes no coordinate and
-    # `end` takes nothing at all, and a schema demanding x and y from them would have
-    # the model inventing a pair to satisfy it.
+    # Only where a cell is what the call is about. count and end take none.
     placed = {"goto", "distance", "count_cells"}
     assert (all(({"x", "y"} <= set(t["function"]["parameters"]["required"]))
                     == (t["function"]["name"] in placed) for t in skills.TOOLS)), "...and x and y are required exactly where a cell is meant"
-    # Never advertised on 2026-08-26, so gemma stepped one tile per call for a whole
-    # run. Free to fix; it changes the shape of everything after it.
+    # goto says it drives the whole way, or the model steps one cell per call.
     assert "whole way" in blob, "goto says it drives the whole way"
     assert "ABSOLUTE" in blob, "and that coordinates are absolute"
     # avoid="auto" has no mark() behind it yet, so it must not be offered.
     assert "auto'" not in blob and '"auto"' not in blob, "auto is not offered"
-    # Nothing may be promised that is not built. These are items 2 to 7.
-    # `storm` is off this list now the weather exists, but no *skill* takes one as an
-    # argument -- the schemas must still not mention it.
-    # `scout` and the flyer join this list now Ingenuity is cut. A schema still offering
-    # it is exactly how prototype 10 spent a build telling the model it was blind.
+    # Nothing unbuilt may be promised in the schemas.
     for absent in ("interact", "sample", "storm", "Ingenuity",
                    "scout", "flyer"):
         assert absent.lower() not in blob.lower(), f"{absent} is not advertised"
