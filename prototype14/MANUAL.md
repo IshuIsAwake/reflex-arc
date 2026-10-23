@@ -1,4 +1,4 @@
-# Prototype 13 — the manual
+# Prototype 14 — the manual
 
 Everything you can do in the simulation and what it does. Setup is in [`README.md`](README.md),
 and why it is built this way is in [`DESIGN.md`](DESIGN.md). In the app, `/help` in her chat and
@@ -28,7 +28,7 @@ reports.
 | `--resume runs/<stamp>` | carry on a kept run from the sol after it stopped |
 | `--replay runs/<stamp>` | play a kept run again, exactly, with no model |
 | `--outage N` | cut the cloud model off for sol N, to watch the fallback |
-| `--map grid\|rle`, `--think`, `--pause key\|none`, `--executor teleport\|plan` | how the map is written, a reasoning trace, the SPACE pause per leg, and whether `goto` drives |
+| `--think`, `--pause key\|none` | a reasoning trace, and the SPACE pause per leg |
 
 ## A sol, start to finish
 
