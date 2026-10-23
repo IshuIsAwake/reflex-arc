@@ -34,19 +34,18 @@ git diff 24eb7c0:prototype12/hardware HEAD:prototype13/hardware
   the 50, and the game alone still opens on it.
 - **The window's title says prototype 13.**
 
-## The rover's driving comes off her day
+## The rover's driving costs her day
 
 Nothing pauses the day's clock, by 11's design, so every second the rover drives is a second
-of her day. The placeholder timings are a second per cell and two per quarter turn, with
-0.6 s to settle after each stop. So a full 500-step battery of driving costs at least 500 s
-of a 600-second day. That is before her thinking, and before the screen redraws each drive
-after the rover has finished it, though SPACE skips the redraw. On the rover, the clock rather
-than the battery will end most days. The clock also stands still on screen while a leg drives,
-and drops by the whole leg when it ends.
+of her day. That stays: the rover physically moving should cost her the day (Ishan, 24 Oct).
+
+The placeholder timings are a second per cell and two per quarter turn, with 0.6 s to settle
+after each stop. So a full 500-step battery of driving costs at least 500 s of a 600-second
+day. That is before her thinking, and before the screen redraws each drive after the rover
+has finished it, though SPACE skips the redraw. On the rover, the clock rather than the
+battery will end most days. The clock also stands still on screen while a leg drives, and
+drops by the whole leg when it ends.
 
 ## Not decided
 
-- **How the day and the rover's driving fit.** The options are a longer day under Level 3, or
-  a clock that stops while the rover drives. Neither is built. To be settled once the timings
-  are measured on the floor.
 - **The room,** as in 12. Nothing is measured yet.
