@@ -43,7 +43,9 @@ The game sends `N E S W`. Level 2 sends `F B L R`.
 for information. Level 3 uses `cell_m` to tell a person how far to move the rover.
 
 An unknown `op` is answered `{"ok": false, "note": "unknown op ..."}`. A line that isn't JSON
-is answered `{"ok": false, "note": "not JSON"}`.
+is answered `{"ok": false, "note": "not JSON"}`, and a message with a missing or wrong field,
+such as a heading that isn't `N E S W`, `{"ok": false, "note": "bad message: ..."}`. The
+connection stays open after any of them.
 
 ## Rover to laptop, during a drive
 

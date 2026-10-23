@@ -58,3 +58,11 @@ def test_a_stop_then_a_reset_gets_the_reset_answer(rover):
     rover.hello()
     rover.stop()
     assert rover.reset("N")["pose"] == {"x": 0, "y": 0, "heading": "N"}
+
+
+def test_a_bad_message_is_answered_and_the_connection_stays(rover):
+    answer = rover.ask({"op": "reset", "heading": "Q"})
+    assert answer["ok"] is False and "note" in answer
+    answer = rover.ask({"op": "set_pose", "y": 2, "heading": "N"})
+    assert answer["ok"] is False
+    assert rover.hello()["ok"], "the same connection still answers"

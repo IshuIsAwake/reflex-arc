@@ -181,7 +181,11 @@ def serve(conn, rover, fake, who):
                 except ValueError:
                     send({"ok": False, "note": "not JSON"})
                     continue
-                answer(msg, rover, fake, who, send, workers)
+                try:
+                    answer(msg, rover, fake, who, send, workers)
+                except (ValueError, KeyError, TypeError) as e:
+                    # A heading that isn't N E S W, or a missing x: say so, and keep the window.
+                    send({"ok": False, "note": f"bad message: {e!r}"})
     except OSError:
         pass
     finally:
